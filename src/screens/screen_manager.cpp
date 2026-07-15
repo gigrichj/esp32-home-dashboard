@@ -62,7 +62,7 @@ void screen_manager_init() {
 
 void screen_manager_refresh() {
   if (g_weather.valid) {
-    lv_label_set_text_fmt(lblWeather, "%.0f\xC2\xB0F  %s", g_weather.tempF, g_weather.condition.c_str());
+    lv_label_set_text_fmt(lblWeather, "%.0f°F  %s", g_weather.tempF, g_weather.condition.c_str());
   }
   if (g_iss.valid) {
     lv_label_set_text_fmt(lblIss, "ISS alt: %.0f km", g_iss.altitudeKm);
