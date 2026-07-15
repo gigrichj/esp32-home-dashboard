@@ -1,0 +1,13 @@
+# PlatformIO
+.pio/
+.vscode/
+*.o
+*.elf
+*.bin
+
+# Secrets — never commit real credentials
+include/secrets.h
+
+# OS junk
+.DS_Store
+Thumbs.db
