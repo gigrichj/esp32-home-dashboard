@@ -17,6 +17,8 @@ static IPAddress apIP(192, 168, 4, 1);
 static uint32_t lastReconnectAttempt = 0;
 static const uint32_t RECONNECT_INTERVAL_MS = 10000;
 static const uint32_t CONNECT_TIMEOUT_MS = 15000;
+static String lastAttemptedSsid = "";
+static int lastStatusCode = -1;
 
 static String htmlWrap(const String& title, const String& body) {
   String page = "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'>";
@@ -108,6 +110,7 @@ static bool connectWithSavedCredentials() {
   if (ssid.length() == 0) {
     return false;
   }
+  lastAttemptedSsid = ssid;
 
   Serial.printf("[WiFi] Connecting to %s...\n", ssid.c_str());
   WiFi.mode(WIFI_STA);
@@ -119,6 +122,7 @@ static bool connectWithSavedCredentials() {
     Serial.print(".");
   }
   Serial.println();
+  lastStatusCode = (int)WiFi.status();
   return WiFi.status() == WL_CONNECTED;
 }
 
@@ -166,4 +170,12 @@ bool wifi_manager_is_connected() {
 
 bool wifi_manager_in_setup_mode() {
   return inApMode;
+}
+
+String wifi_manager_last_attempted_ssid() {
+  return lastAttemptedSsid;
+}
+
+int wifi_manager_last_status_code() {
+  return lastStatusCode;
 }

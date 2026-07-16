@@ -11,11 +11,11 @@
 
 using namespace PanelDisplay;
 
-static const uint32_t WEATHER_POLL_MS    = 10UL * 60UL * 1000UL; // 10 min
-static const uint32_t AVIATION_POLL_MS   = 15UL * 1000UL;        // 15 sec
-static const uint32_t ISS_POLL_MS        = 60UL * 1000UL;        // 1 min
-static const uint32_t SMARTHOME_POLL_MS  = 5UL * 1000UL;         // 5 sec
-static const uint32_t DRAW_INTERVAL_MS   = 200UL;                // ~5 fps
+static const uint32_t WEATHER_POLL_MS    = 10UL * 60UL * 1000UL;
+static const uint32_t AVIATION_POLL_MS   = 15UL * 1000UL;
+static const uint32_t ISS_POLL_MS        = 60UL * 1000UL;
+static const uint32_t SMARTHOME_POLL_MS  = 5UL * 1000UL;
+static const uint32_t DRAW_INTERVAL_MS   = 200UL;
 
 uint32_t lastWeather = 0, lastAviation = 0, lastIss = 0, lastSmartHome = 0, lastDraw = 0;
 bool wasInSetupMode = false;
@@ -45,6 +45,17 @@ static void draw_setup_screen() {
   screen.setTextColor(text, bg);
   screen.drawString("3. Enter your home WiFi name and password.", 30, 320);
   screen.drawString("   The device will restart and connect.", 30, 350);
+
+  String lastSsid = wifi_manager_last_attempted_ssid();
+  if (lastSsid.length() > 0) {
+    screen.setTextSize(1);
+    screen.setTextColor(screen.color565(200, 90, 90), bg);
+    char line[96];
+    snprintf(line, sizeof(line), "Last attempt: '%s' -> status code %d",
+             lastSsid.c_str(), wifi_manager_last_status_code());
+    screen.drawString(line, 30, 420);
+    screen.drawString("(3=connected, 1=no network found, 4=connect failed/bad password, 6=disconnected)", 30, 440);
+  }
 }
 
 void setup() {
@@ -69,7 +80,7 @@ void setup() {
     draw_setup_screen();
     screen.present();
     wasInSetupMode = true;
-    return; // don't start services/data fetching until WiFi is configured
+    return;
   }
 
   mqtt_service_begin();
@@ -87,15 +98,11 @@ void loop() {
   wifi_manager_loop();
 
   if (wifi_manager_in_setup_mode()) {
-    // Still waiting for the person to submit WiFi credentials through
-    // the setup portal — keep serving that instead of the dashboard.
     delay(10);
     return;
   }
 
   if (wasInSetupMode) {
-    // Just came out of setup mode this loop (shouldn't normally happen
-    // without a restart, but handle it gracefully just in case).
     wasInSetupMode = false;
     mqtt_service_begin();
   }
@@ -128,6 +135,21 @@ void loop() {
   if (now - lastDraw > DRAW_INTERVAL_MS) {
     lastDraw = now;
     screen_manager_draw();
+
+    uint16_t dbgBg = screen.color565(0, 0, 0);
+    uint16_t dbgText = touched ? screen.color565(80, 220, 100) : screen.color565(120, 120, 120);
+    screen.fillRect(0, HEIGHT - 24, 240, 24, dbgBg);
+    screen.setTextSize(1);
+    screen.setTextColor(dbgText, dbgBg);
+    screen.setTextDatum(textdatum_t::top_left);
+    char touchDbg[48];
+    if (touched) {
+      snprintf(touchDbg, sizeof(touchDbg), "TOUCH: x=%d y=%d", touchX, touchY);
+    } else {
+      snprintf(touchDbg, sizeof(touchDbg), "TOUCH: (no touch detected)");
+    }
+    screen.drawString(touchDbg, 6, HEIGHT - 18);
+
     if (!screen.present()) {
       Serial.println("[loop] present failed; restarting");
       Serial.flush();
