@@ -1,4 +1,5 @@
 #pragma once
+#include <stdint.h>
 
 // Builds and draws all dashboard "screens" using the raw-framebuffer
 // Canvas API (src/panel_display.h) rather than LVGL. Screens are plain
