@@ -1,4 +1,6 @@
 #include <Arduino.h>
+#include <WiFi.h>
+#include "secrets.h"
 #include "panel_display.h"
 #include "version.h"
 
@@ -11,12 +13,15 @@ void setup() {
     delay(20);
   }
 
-  Serial.println("[boot] display begin (WIFI-FREE TEST BUILD)");
+  Serial.println("[boot] display begin (WIFI-RADIO-ONLY TEST BUILD)");
   if (!screen.begin()) {
     Serial.println("[boot] display FAILED — halting");
     while (true) delay(1000);
   }
   Serial.println("[boot] display ready");
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 }
 
 void loop() {
@@ -31,7 +36,7 @@ void loop() {
   screen.setTextSize(3);
   screen.setTextColor(accent, bg);
   screen.setTextDatum(textdatum_t::top_left);
-  screen.drawString("TOUCH TEST (no WiFi)", 30, 60);
+  screen.drawString("TOUCH TEST (WiFi radio only)", 30, 60);
 
   screen.setTextSize(2);
   screen.setTextColor(text, bg);
@@ -43,6 +48,10 @@ void loop() {
              touchX, touchY, screen.lastTouchReadCount());
   }
   screen.drawString(touchDbg, 30, 150);
+
+  char wifiDbg[64];
+  snprintf(wifiDbg, sizeof(wifiDbg), "WiFi status: %d", (int)WiFi.status());
+  screen.drawString(wifiDbg, 30, 200);
 
   screen.setTextSize(1);
   screen.setTextColor(screen.color565(90, 100, 110), bg);
