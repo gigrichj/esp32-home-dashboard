@@ -1,10 +1,17 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WebServer.h>
 #include "secrets.h"
 #include "panel_display.h"
 #include "version.h"
 
 using namespace PanelDisplay;
+
+WebServer server(80);
+
+void handleRoot() {
+  server.send(200, "text/plain", "test");
+}
 
 void setup() {
   Serial.begin(115200);
@@ -13,7 +20,7 @@ void setup() {
     delay(20);
   }
 
-  Serial.println("[boot] display begin (WIFI-RADIO-ONLY TEST BUILD)");
+  Serial.println("[boot] display begin (WIFI+WEBSERVER TEST BUILD)");
   if (!screen.begin()) {
     Serial.println("[boot] display FAILED — halting");
     while (true) delay(1000);
@@ -22,9 +29,14 @@ void setup() {
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+  server.on("/", handleRoot);
+  server.begin();
 }
 
 void loop() {
+  server.handleClient();
+
   uint16_t touchX = 0, touchY = 0;
   bool touched = screen.readTouch(&touchX, &touchY);
 
@@ -36,7 +48,7 @@ void loop() {
   screen.setTextSize(3);
   screen.setTextColor(accent, bg);
   screen.setTextDatum(textdatum_t::top_left);
-  screen.drawString("TOUCH TEST (WiFi radio only)", 30, 60);
+  screen.drawString("TOUCH TEST (WiFi+WebServer)", 30, 60);
 
   screen.setTextSize(2);
   screen.setTextColor(text, bg);
