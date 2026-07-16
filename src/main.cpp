@@ -1,6 +1,9 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WebServer.h>
+#include <Preferences.h>
+#include <ESPmDNS.h>
+#include <PubSubClient.h>
 #include "secrets.h"
 #include "panel_display.h"
 #include "version.h"
@@ -8,6 +11,9 @@
 using namespace PanelDisplay;
 
 WebServer server(80);
+Preferences prefs;
+WiFiClient wifiClient;
+PubSubClient mqttClient(wifiClient);
 
 void handleRoot() {
   server.send(200, "text/plain", "test");
@@ -20,22 +26,32 @@ void setup() {
     delay(20);
   }
 
-  Serial.println("[boot] display begin (WIFI+WEBSERVER TEST BUILD)");
+  Serial.println("[boot] display begin (TEST BUILD 5)");
   if (!screen.begin()) {
     Serial.println("[boot] display FAILED — halting");
     while (true) delay(1000);
   }
   Serial.println("[boot] display ready");
 
+  prefs.begin("dashboard", false);
+
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   server.on("/", handleRoot);
   server.begin();
+
+  MDNS.begin("dashboard");
+
+  mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
 }
 
 void loop() {
   server.handleClient();
+  if (!mqttClient.connected()) {
+    mqttClient.connect("esp32-dashboard-test", MQTT_USER, MQTT_PASSWORD);
+  }
+  mqttClient.loop();
 
   uint16_t touchX = 0, touchY = 0;
   bool touched = screen.readTouch(&touchX, &touchY);
@@ -48,7 +64,7 @@ void loop() {
   screen.setTextSize(3);
   screen.setTextColor(accent, bg);
   screen.setTextDatum(textdatum_t::top_left);
-  screen.drawString("TOUCH TEST (WiFi+WebServer)", 30, 60);
+  screen.drawString("TOUCH TEST 5", 30, 60);
 
   screen.setTextSize(2);
   screen.setTextColor(text, bg);
