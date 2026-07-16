@@ -234,7 +234,7 @@ bool Canvas::readTouch(uint16_t *x, uint16_t *y) {
         return false;
     }
     TouchPoint points[1];
-    int count = touch->readPoints(points, 1, 0);
+    int count = touch->readPoints(points, 1, 30);
     if (count <= 0) {
         return false;
     }
