@@ -1,2 +1,2 @@
 #pragma once
-#define FIRMWARE_VERSION "v20"
+#define FIRMWARE_VERSION "TEST-NOWIFI"
