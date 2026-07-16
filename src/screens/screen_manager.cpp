@@ -1,73 +1,118 @@
 #include "screen_manager.h"
-#include <lvgl.h>
+#include "../panel_display.h"
 #include "../services/weather_service.h"
 #include "../services/smarthome_service.h"
 #include "../services/iss_service.h"
+#include "../services/aviation_service.h"
 
-static lv_obj_t* tabview;
+using namespace PanelDisplay;
 
-// Labels that get updated on refresh — kept as static pointers so
-// screen_manager_refresh() doesn't need to re-walk the widget tree.
-static lv_obj_t* lblTime;
-static lv_obj_t* lblWeather;
-static lv_obj_t* lblIss;
-static lv_obj_t* lblHouseStatus;
+static const char* TAB_NAMES[] = {
+  "DASHBOARD", "AVIATION", "PORSCHE", "SMART HOME", "ISS", "WEATHER"
+};
+static const int TAB_COUNT = sizeof(TAB_NAMES) / sizeof(TAB_NAMES[0]);
+static int currentTab = 0;
 
-static void build_dashboard_tab(lv_obj_t* parent) {
-  lblTime = lv_label_create(parent);
-  lv_obj_set_style_text_font(lblTime, &lv_font_montserrat_28, 0);
-  lv_obj_align(lblTime, LV_ALIGN_TOP_LEFT, 10, 10);
-  lv_label_set_text(lblTime, "--:--");
+static uint16_t colorBg;
+static uint16_t colorText;
+static uint16_t colorDim;
+static uint16_t colorAccent;
 
-  lblWeather = lv_label_create(parent);
-  lv_obj_align(lblWeather, LV_ALIGN_TOP_RIGHT, -10, 10);
-  lv_label_set_text(lblWeather, "Weather: --");
+// Touch-tap tracking, mirroring the confirmed-working reference project's
+// pattern: a short press-then-release cycles to the next tab.
+static bool touchWasDown = false;
+static uint32_t touchDownMs = 0;
+static const uint32_t TAP_MIN_MS = 50;
+static const uint32_t TAP_MAX_MS = 600;
 
-  lblIss = lv_label_create(parent);
-  lv_obj_align(lblIss, LV_ALIGN_LEFT_MID, 10, 0);
-  lv_label_set_text(lblIss, "ISS: --");
+static void drawHeader() {
+  screen.fillRect(0, 0, WIDTH, 40, colorAccent);
+  screen.setTextSize(2);
+  screen.setTextColor(colorBg, colorAccent);
+  screen.setTextDatum(textdatum_t::top_left);
+  screen.drawString(TAB_NAMES[currentTab], 10, 12);
 
-  lblHouseStatus = lv_label_create(parent);
-  lv_obj_align(lblHouseStatus, LV_ALIGN_BOTTOM_LEFT, 10, -10);
-  lv_label_set_text(lblHouseStatus, "House: --");
-
-  // TODO: Porsche connection status, aircraft-nearby count, and
-  // notifications feed follow the same
-  // "lv_label_create + align + store pointer" pattern as above.
+  screen.setTextSize(1);
+  screen.setTextColor(colorBg, colorAccent);
+  screen.setTextDatum(textdatum_t::top_right);
+  char tabIndicator[16];
+  snprintf(tabIndicator, sizeof(tabIndicator), "%d/%d  TAP>", currentTab + 1, TAB_COUNT);
+  screen.drawString(tabIndicator, WIDTH - 10, 15);
 }
 
-static void build_placeholder_tab(lv_obj_t* parent, const char* name) {
-  lv_obj_t* lbl = lv_label_create(parent);
-  lv_label_set_text_fmt(lbl, "%s\n(screen not built yet)", name);
-  lv_obj_center(lbl);
+static void draw_dashboard() {
+  screen.setTextSize(2);
+  screen.setTextColor(colorText, colorBg);
+  screen.setTextDatum(textdatum_t::top_left);
+
+  int y = 60;
+  if (g_weather.valid) {
+    char line[64];
+    snprintf(line, sizeof(line), "Weather: %.0fF  %s", g_weather.tempF, g_weather.condition.c_str());
+    screen.drawString(line, 20, y);
+  } else {
+    screen.drawString("Weather: --", 20, y);
+  }
+  y += 40;
+
+  if (g_iss.valid) {
+    char line[64];
+    snprintf(line, sizeof(line), "ISS altitude: %.0f km", g_iss.altitudeKm);
+    screen.drawString(line, 20, y);
+  } else {
+    screen.drawString("ISS: --", 20, y);
+  }
+  y += 40;
+
+  char line[64];
+  snprintf(line, sizeof(line), "House: %d devices online", g_deviceCount);
+  screen.drawString(line, 20, y);
+  y += 40;
+
+  snprintf(line, sizeof(line), "Aircraft nearby: %d", g_aircraftCount);
+  screen.drawString(line, 20, y);
+}
+
+static void draw_placeholder(const char* label) {
+  screen.setTextSize(2);
+  screen.setTextColor(colorDim, colorBg);
+  screen.setTextDatum(textdatum_t::middle_center);
+  char msg[64];
+  snprintf(msg, sizeof(msg), "%s\n(screen not built yet)", label);
+  screen.drawString(msg, WIDTH / 2, HEIGHT / 2);
 }
 
 void screen_manager_init() {
-  tabview = lv_tabview_create(lv_scr_act(), LV_DIR_TOP, 50);
-
-  lv_obj_t* tDash   = lv_tabview_add_tab(tabview, "Dashboard");
-  lv_obj_t* tAvi    = lv_tabview_add_tab(tabview, "Aviation");
-  lv_obj_t* tCar    = lv_tabview_add_tab(tabview, "Porsche");
-  lv_obj_t* tHome   = lv_tabview_add_tab(tabview, "Smart Home");
-  lv_obj_t* tIss    = lv_tabview_add_tab(tabview, "ISS");
-  lv_obj_t* tWx     = lv_tabview_add_tab(tabview, "Weather");
-
-  build_dashboard_tab(tDash);
-  build_placeholder_tab(tAvi,  "Aviation / Radar");
-  build_placeholder_tab(tCar,  "Porsche");
-  build_placeholder_tab(tHome, "Smart Home");
-  build_placeholder_tab(tIss,  "ISS Tracker");
-  build_placeholder_tab(tWx,   "Weather Detail");
+  colorBg = screen.color565(10, 12, 16);
+  colorText = screen.color565(235, 240, 245);
+  colorDim = screen.color565(120, 130, 140);
+  colorAccent = screen.color565(70, 130, 220);
 }
 
-void screen_manager_refresh() {
-  if (g_weather.valid) {
-    lv_label_set_text_fmt(lblWeather, "%.0f°F  %s", g_weather.tempF, g_weather.condition.c_str());
+void screen_manager_draw() {
+  screen.fillScreen(colorBg);
+  drawHeader();
+
+  switch (currentTab) {
+    case 0: draw_dashboard(); break;
+    case 1: draw_placeholder("Aviation / Radar"); break;
+    case 2: draw_placeholder("Porsche"); break;
+    case 3: draw_placeholder("Smart Home"); break;
+    case 4: draw_placeholder("ISS Tracker"); break;
+    case 5: draw_placeholder("Weather Detail"); break;
   }
-  if (g_iss.valid) {
-    lv_label_set_text_fmt(lblIss, "ISS alt: %.0f km", g_iss.altitudeKm);
+}
+
+void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
+  uint32_t now = millis();
+  if (touched && !touchWasDown) {
+    touchDownMs = now;
   }
-  if (g_deviceCount > 0) {
-    lv_label_set_text_fmt(lblHouseStatus, "House: %d devices online", g_deviceCount);
+  if (!touched && touchWasDown) {
+    uint32_t held = now - touchDownMs;
+    if (held >= TAP_MIN_MS && held <= TAP_MAX_MS) {
+      currentTab = (currentTab + 1) % TAB_COUNT;
+    }
   }
+  touchWasDown = touched;
 }

@@ -1,10 +1,15 @@
 #pragma once
 
-// Builds the tabview and all child screens (dashboard, aviation, porsche,
-// smarthome, cameras, iss, weather, calendar) and wires their LVGL widgets
-// to the service data structs (g_weather, g_aircraft, g_devices, etc).
+// Builds and draws all dashboard "screens" using the raw-framebuffer
+// Canvas API (src/panel_display.h) rather than LVGL. Screens are plain
+// functions that draw into PanelDisplay::screen; screen_manager_draw()
+// picks which one runs based on the current tab, and the caller is
+// responsible for calling PanelDisplay::screen.present() afterward.
+
 void screen_manager_init();
 
-// Called periodically (or via LVGL timers) to refresh widget contents
-// from the latest service data without rebuilding the whole screen.
-void screen_manager_refresh();
+// Draws the current tab's content (does not call present() itself).
+void screen_manager_draw();
+
+// Call once per loop with the latest touch state; short taps cycle tabs.
+void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y);
