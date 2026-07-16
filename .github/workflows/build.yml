@@ -25,3 +25,14 @@ jobs:
 
       - name: Build firmware
         run: pio run
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: |
+            .pio/build/esp32-s3-touch-lcd-7/firmware.bin
+            .pio/build/esp32-s3-touch-lcd-7/firmware.elf
+            .pio/build/esp32-s3-touch-lcd-7/bootloader.bin
+            .pio/build/esp32-s3-touch-lcd-7/partitions.bin
+          if-no-files-found: warn
