@@ -19,7 +19,9 @@ static lv_indev_drv_t indev_drv;
 
 static void disp_flush_cb(lv_disp_drv_t* drv, const lv_area_t* area, lv_color_t* color_p) {
   if (lcd != nullptr) {
-    lcd->drawBitmap(area->x1, area->y1, area->x2 + 1, area->y2 + 1, (const void*)color_p);
+    int width = area->x2 - area->x1 + 1;
+    int height = area->y2 - area->y1 + 1;
+    lcd->drawBitmap(area->x1, area->y1, width, height, (const uint8_t*)color_p);
   }
   lv_disp_flush_ready(drv);
 }
