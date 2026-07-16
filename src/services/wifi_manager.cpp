@@ -41,8 +41,6 @@ static void handlePortalRoot() {
 }
 
 static void handlePortalNotFound() {
-  // Captive-portal trick: redirect any unknown path back to the setup
-  // form, so phones auto-pop the "sign in to network" browser prompt.
   server.sendHeader("Location", "/", true);
   server.send(302, "text/plain", "");
 }
@@ -104,14 +102,11 @@ static bool connectWithSavedCredentials() {
   String pass = prefs.getString("pass", "");
 
   if (ssid.length() == 0) {
-    // Fall back to whatever was compiled into secrets.h, if anything,
-    // purely so a fresh device with WIFI_SSID filled in there can boot
-    // straight onto the network once without needing the portal first.
     ssid = WIFI_SSID;
     pass = WIFI_PASSWORD;
   }
   if (ssid.length() == 0) {
-    return false; // nothing saved and nothing compiled in either
+    return false;
   }
 
   Serial.printf("[WiFi] Connecting to %s...\n", ssid.c_str());
@@ -154,9 +149,6 @@ void wifi_manager_loop() {
   }
 
   server.handleClient();
-  if (mdnsStarted) {
-    MDNS.update();
-  }
 
   if (WiFi.status() != WL_CONNECTED) {
     uint32_t now = millis();
