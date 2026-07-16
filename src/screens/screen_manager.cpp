@@ -1,9 +1,11 @@
 #include "screen_manager.h"
 #include "../panel_display.h"
+#include "../version.h"
 #include "../services/weather_service.h"
 #include "../services/smarthome_service.h"
 #include "../services/iss_service.h"
 #include "../services/aviation_service.h"
+#include <math.h>
 
 using namespace PanelDisplay;
 
@@ -18,8 +20,6 @@ static uint16_t colorText;
 static uint16_t colorDim;
 static uint16_t colorAccent;
 
-// Touch-tap tracking, mirroring the confirmed-working reference project's
-// pattern: a short press-then-release cycles to the next tab.
 static bool touchWasDown = false;
 static uint32_t touchDownMs = 0;
 static const uint32_t TAP_MIN_MS = 50;
@@ -73,6 +73,184 @@ static void draw_dashboard() {
   screen.drawString(line, 20, y);
 }
 
+static const int RADAR_CX = 240;
+static const int RADAR_CY = 260;
+static const int RADAR_RADIUS = 190;
+static const float RADAR_MAX_RANGE_NM = 40.0f;
+static const int RADAR_RINGS = 4;
+
+static void draw_aviation() {
+  uint16_t colorGrid = screen.color565(40, 60, 55);
+  uint16_t colorPlane = screen.color565(255, 70, 90);
+  uint16_t colorLabel = screen.color565(200, 220, 210);
+
+  for (int i = 1; i <= RADAR_RINGS; i++) {
+    int r = RADAR_RADIUS * i / RADAR_RINGS;
+    screen.drawCircle(RADAR_CX, RADAR_CY, r, colorGrid);
+  }
+  screen.drawLine(RADAR_CX - RADAR_RADIUS, RADAR_CY, RADAR_CX + RADAR_RADIUS, RADAR_CY, colorGrid);
+  screen.drawLine(RADAR_CX, RADAR_CY - RADAR_RADIUS, RADAR_CX, RADAR_CY + RADAR_RADIUS, colorGrid);
+
+  screen.setTextSize(1);
+  screen.setTextColor(colorLabel, colorBg);
+  screen.setTextDatum(textdatum_t::middle_center);
+  screen.drawString("N", RADAR_CX, RADAR_CY - RADAR_RADIUS - 10);
+  screen.drawString("S", RADAR_CX, RADAR_CY + RADAR_RADIUS + 10);
+  screen.drawString("E", RADAR_CX + RADAR_RADIUS + 12, RADAR_CY);
+  screen.drawString("W", RADAR_CX - RADAR_RADIUS - 12, RADAR_CY);
+
+  for (int i = 0; i < g_aircraftCount; i++) {
+    Aircraft& a = g_aircraft[i];
+    float rangeFrac = a.distanceNm / RADAR_MAX_RANGE_NM;
+    if (rangeFrac > 1.0f) continue;
+
+    float bearingRad = a.bearingFromHome * (PI / 180.0f);
+    int px = RADAR_CX + (int)(sinf(bearingRad) * rangeFrac * RADAR_RADIUS);
+    int py = RADAR_CY - (int)(cosf(bearingRad) * rangeFrac * RADAR_RADIUS);
+
+    screen.fillCircle(px, py, 4, colorPlane);
+
+    screen.setTextColor(colorLabel, colorBg);
+    screen.setTextDatum(textdatum_t::top_left);
+    const char* label = a.callsign.length() > 0 ? a.callsign.c_str() : "????";
+    screen.drawString(label, px + 8, py - 6);
+  }
+
+  int listX = 470;
+  int listY = 55;
+  screen.setTextSize(2);
+  screen.setTextColor(colorText, colorBg);
+  screen.setTextDatum(textdatum_t::top_left);
+  char header[32];
+  snprintf(header, sizeof(header), "NEARBY (%d)", g_aircraftCount);
+  screen.drawString(header, listX, listY);
+  listY += 36;
+
+  screen.setTextSize(1);
+  int shown = 0;
+  for (int i = 0; i < g_aircraftCount && shown < 8; i++) {
+    Aircraft& a = g_aircraft[i];
+    char row[64];
+    const char* callsign = a.callsign.length() > 0 ? a.callsign.c_str() : "????";
+    snprintf(row, sizeof(row), "%-8s %5dft  %.0fnm", callsign, a.altitudeFt, a.distanceNm);
+    screen.setTextColor(colorText, colorBg);
+    screen.drawString(row, listX, listY);
+    listY += 22;
+    shown++;
+  }
+  if (g_aircraftCount == 0) {
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString("No aircraft in range", listX, listY);
+  }
+}
+
+static void draw_smarthome() {
+  screen.setTextSize(2);
+  screen.setTextColor(colorText, colorBg);
+  screen.setTextDatum(textdatum_t::top_left);
+  char header[32];
+  snprintf(header, sizeof(header), "%d DEVICES ONLINE", g_deviceCount);
+  screen.drawString(header, 20, 55);
+
+  if (g_deviceCount == 0) {
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString("No devices found — check Hubitat/HA connection", 20, 100);
+    return;
+  }
+
+  const int colWidth = 380;
+  const int rowHeight = 90;
+  const int rowsPerCol = 4;
+  const int startX = 20;
+  const int startY = 100;
+
+  for (int i = 0; i < g_deviceCount && i < rowsPerCol * 2; i++) {
+    int col = i / rowsPerCol;
+    int row = i % rowsPerCol;
+    int x = startX + col * colWidth;
+    int y = startY + row * rowHeight;
+
+    bool isOn = g_devices[i].state.equalsIgnoreCase("on") ||
+                g_devices[i].state.equalsIgnoreCase("locked") ||
+                g_devices[i].state.equalsIgnoreCase("closed");
+    uint16_t stateColor = isOn ? screen.color565(80, 200, 120) : colorDim;
+
+    screen.fillRect(x, y, colWidth - 20, rowHeight - 12, screen.color565(25, 28, 34));
+
+    screen.setTextSize(2);
+    screen.setTextColor(colorText, screen.color565(25, 28, 34));
+    screen.setTextDatum(textdatum_t::top_left);
+    const char* name = g_devices[i].name.length() > 0 ? g_devices[i].name.c_str() : "(unnamed)";
+    screen.drawString(name, x + 12, y + 10);
+
+    screen.setTextSize(1);
+    screen.setTextColor(colorDim, screen.color565(25, 28, 34));
+    screen.drawString(g_devices[i].type.c_str(), x + 12, y + 38);
+
+    screen.setTextSize(2);
+    screen.setTextColor(stateColor, screen.color565(25, 28, 34));
+    screen.drawString(g_devices[i].state.c_str(), x + 12, y + 54);
+  }
+
+  if (g_deviceCount > rowsPerCol * 2) {
+    screen.setTextSize(1);
+    screen.setTextColor(colorDim, colorBg);
+    char more[32];
+    snprintf(more, sizeof(more), "+ %d more not shown", g_deviceCount - rowsPerCol * 2);
+    screen.drawString(more, startX, startY + rowsPerCol * rowHeight + 10);
+  }
+}
+
+static void draw_weather() {
+  screen.setTextDatum(textdatum_t::top_left);
+
+  if (!g_weather.valid) {
+    screen.setTextSize(2);
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString("No weather data yet", 20, 100);
+    return;
+  }
+
+  screen.setTextSize(4);
+  screen.setTextColor(colorText, colorBg);
+  char tempStr[16];
+  snprintf(tempStr, sizeof(tempStr), "%.0fF", g_weather.tempF);
+  screen.drawString(tempStr, 30, 70);
+
+  screen.setTextSize(2);
+  screen.setTextColor(colorAccent, colorBg);
+  screen.drawString(g_weather.condition.c_str(), 30, 130);
+
+  int y = 190;
+  screen.setTextSize(2);
+  char row[48];
+
+  screen.setTextColor(colorDim, colorBg);
+  screen.drawString("Feels like", 30, y);
+  screen.setTextColor(colorText, colorBg);
+  snprintf(row, sizeof(row), "%.0fF", g_weather.feelsLikeF);
+  screen.drawString(row, 260, y);
+  y += 44;
+
+  screen.setTextColor(colorDim, colorBg);
+  screen.drawString("Wind", 30, y);
+  screen.setTextColor(colorText, colorBg);
+  snprintf(row, sizeof(row), "%.0f mph", g_weather.windMph);
+  screen.drawString(row, 260, y);
+  y += 44;
+
+  screen.setTextColor(colorDim, colorBg);
+  screen.drawString("Humidity", 30, y);
+  screen.setTextColor(colorText, colorBg);
+  snprintf(row, sizeof(row), "%d%%", g_weather.humidity);
+  screen.drawString(row, 260, y);
+  y += 44;
+
+  screen.setTextSize(1);
+  screen.setTextColor(colorDim, colorBg);
+  screen.drawString("Hourly / 7-day forecast not wired up yet", 30, y + 20);
+}
+
 static void draw_placeholder(const char* label) {
   screen.setTextSize(2);
   screen.setTextColor(colorDim, colorBg);
@@ -95,12 +273,17 @@ void screen_manager_draw() {
 
   switch (currentTab) {
     case 0: draw_dashboard(); break;
-    case 1: draw_placeholder("Aviation / Radar"); break;
+    case 1: draw_aviation(); break;
     case 2: draw_placeholder("Porsche"); break;
-    case 3: draw_placeholder("Smart Home"); break;
+    case 3: draw_smarthome(); break;
     case 4: draw_placeholder("ISS Tracker"); break;
-    case 5: draw_placeholder("Weather Detail"); break;
+    case 5: draw_weather(); break;
   }
+
+  screen.setTextSize(1);
+  screen.setTextColor(colorDim, colorBg);
+  screen.setTextDatum(textdatum_t::top_right);
+  screen.drawString(FIRMWARE_VERSION, WIDTH - 6, HEIGHT - 14);
 }
 
 void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
