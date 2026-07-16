@@ -102,7 +102,7 @@
 #define ESP_PANEL_BOARD_TOUCH_MIRROR_Y (0)
 #define ESP_PANEL_BOARD_TOUCH_RST_IO (-1)
 #define ESP_PANEL_BOARD_TOUCH_RST_LEVEL (0)
-#define ESP_PANEL_BOARD_TOUCH_INT_IO (4)
+#define ESP_PANEL_BOARD_TOUCH_INT_IO (-1)
 #define ESP_PANEL_BOARD_TOUCH_INT_LEVEL (0)
 #endif // ESP_PANEL_BOARD_USE_TOUCH
 
@@ -159,7 +159,7 @@
 #if ESP_PANEL_BOARD_USE_TOUCH
 #define ESP_PANEL_BOARD_TOUCH_PRE_BEGIN_FUNCTION(p) \
     { \
-        constexpr gpio_num_t TP_INT = static_cast<gpio_num_t>(ESP_PANEL_BOARD_TOUCH_INT_IO); \
+        constexpr gpio_num_t TP_INT = GPIO_NUM_4; \
         constexpr int TP_RST = 1; \
         auto board = static_cast<Board *>(p); \
         auto expander = board->getIO_Expander()->getBase(); \
