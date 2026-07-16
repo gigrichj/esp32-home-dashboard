@@ -24,6 +24,7 @@ public:
     bool begin();
     bool present();
     bool readTouch(uint16_t *x, uint16_t *y);
+    bool touchAvailable() const;
     const uint16_t *displayedFrameBuffer() const;
 
     uint16_t color565(uint8_t r, uint8_t g, uint8_t b) const;

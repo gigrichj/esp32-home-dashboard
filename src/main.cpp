@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "secrets.h"
 #include "panel_display.h"
+#include "version.h"
 #include "services/wifi_manager.h"
 #include "services/mqtt_service.h"
 #include "services/weather_service.h"
@@ -56,6 +57,11 @@ static void draw_setup_screen() {
     screen.drawString(line, 30, 420);
     screen.drawString("(3=connected, 1=no network found, 4=connect failed/bad password, 6=disconnected)", 30, 440);
   }
+
+  screen.setTextSize(1);
+  screen.setTextColor(screen.color565(90, 100, 110), bg);
+  screen.setTextDatum(textdatum_t::top_right);
+  screen.drawString(FIRMWARE_VERSION, WIDTH - 6, HEIGHT - 14);
 }
 
 void setup() {
@@ -142,11 +148,13 @@ void loop() {
     screen.setTextSize(1);
     screen.setTextColor(dbgText, dbgBg);
     screen.setTextDatum(textdatum_t::top_left);
-    char touchDbg[48];
-    if (touched) {
+    char touchDbg[64];
+    if (!screen.touchAvailable()) {
+      snprintf(touchDbg, sizeof(touchDbg), "TOUCH: controller NOT initialized");
+    } else if (touched) {
       snprintf(touchDbg, sizeof(touchDbg), "TOUCH: x=%d y=%d", touchX, touchY);
     } else {
-      snprintf(touchDbg, sizeof(touchDbg), "TOUCH: (no touch detected)");
+      snprintf(touchDbg, sizeof(touchDbg), "TOUCH: ready, no touch detected");
     }
     screen.drawString(touchDbg, 6, HEIGHT - 18);
 

@@ -243,6 +243,10 @@ bool Canvas::readTouch(uint16_t *x, uint16_t *y) {
     return true;
 }
 
+bool Canvas::touchAvailable() const {
+    return touch != nullptr;
+}
+
 const uint16_t *Canvas::displayedFrameBuffer() const {
     if (_usingDriverFrameBuffers) {
         return _driverFb[_drawFbIndex ^ 1];
