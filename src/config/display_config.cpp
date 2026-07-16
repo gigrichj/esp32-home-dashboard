@@ -1,4 +1,5 @@
 #include "display_config.h"
+#include <Arduino.h>
 #include <lvgl.h>
 #include <esp_display_panel.hpp>
 #include <esp_heap_caps.h>
