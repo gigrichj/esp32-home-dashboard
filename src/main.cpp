@@ -151,10 +151,9 @@ void loop() {
     char touchDbg[64];
     if (!screen.touchAvailable()) {
       snprintf(touchDbg, sizeof(touchDbg), "TOUCH: controller NOT initialized");
-    } else if (touched) {
-      snprintf(touchDbg, sizeof(touchDbg), "TOUCH: x=%d y=%d", touchX, touchY);
     } else {
-      snprintf(touchDbg, sizeof(touchDbg), "TOUCH: ready, no touch detected");
+      snprintf(touchDbg, sizeof(touchDbg), "TOUCH: x=%d y=%d count=%d",
+               touchX, touchY, screen.lastTouchReadCount());
     }
     screen.drawString(touchDbg, 6, HEIGHT - 18);
 

@@ -25,6 +25,7 @@ public:
     bool present();
     bool readTouch(uint16_t *x, uint16_t *y);
     bool touchAvailable() const;
+    int lastTouchReadCount() const;
     const uint16_t *displayedFrameBuffer() const;
 
     uint16_t color565(uint8_t r, uint8_t g, uint8_t b) const;
@@ -62,6 +63,7 @@ private:
     uint16_t _textFg = TFT_WHITE;
     uint16_t _textBg = TFT_BLACK;
     textdatum_t _datum = textdatum_t::top_left;
+    int _lastTouchReadCount = -999;
 
     void drawChar(char ch, int x, int y);
 };

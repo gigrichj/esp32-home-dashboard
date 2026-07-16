@@ -235,6 +235,7 @@ bool Canvas::readTouch(uint16_t *x, uint16_t *y) {
     }
     TouchPoint points[1];
     int count = touch->readPoints(points, 1, 30);
+    _lastTouchReadCount = count;
     if (count <= 0) {
         return false;
     }
@@ -246,6 +247,11 @@ bool Canvas::readTouch(uint16_t *x, uint16_t *y) {
 bool Canvas::touchAvailable() const {
     return touch != nullptr;
 }
+
+int Canvas::lastTouchReadCount() const {
+    return _lastTouchReadCount;
+}
+
 
 const uint16_t *Canvas::displayedFrameBuffer() const {
     if (_usingDriverFrameBuffers) {
