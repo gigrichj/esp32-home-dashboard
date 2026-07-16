@@ -40,10 +40,6 @@ static constexpr int FONT_ADVANCE = 6;
 static constexpr int LINE_ADVANCE = 9;
 
 static const uint8_t *glyphFor(char c) {
-    if (c == 'v') {
-        static const uint8_t g[7] = {0x04, 0x04, 0x04, 0x04, 0x15, 0x0E, 0x04};
-        return g;
-    }
     c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
     switch (c) {
     case 'A': { static const uint8_t g[7] = {0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11}; return g; }
