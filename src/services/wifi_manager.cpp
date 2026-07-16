@@ -1,5 +1,5 @@
 #include "wifi_manager.h"
-#include "../secrets.h"
+#include "secrets.h"
 #include <WiFi.h>
 #include <WebServer.h>
 #include <DNSServer.h>
