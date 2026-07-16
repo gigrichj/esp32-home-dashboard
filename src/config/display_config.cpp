@@ -7,11 +7,6 @@
 using namespace esp_panel::board;
 using namespace esp_panel::drivers;
 
-// Init sequence confirmed against a working project for this exact board
-// (github.com/k4m454k/big_plane_radar): the key detail that's easy to
-// miss is calling configFrameBufferNumber(2) on the LCD *between*
-// board->init() and board->begin() — this fixes RGB screen tearing that
-// the ESP32-S3 is prone to on this kind of panel.
 static Board* board = nullptr;
 static LCD* lcd = nullptr;
 static Touch* touch = nullptr;
@@ -23,14 +18,9 @@ static lv_disp_drv_t disp_drv;
 static lv_indev_drv_t indev_drv;
 
 static void disp_flush_cb(lv_disp_drv_t* drv, const lv_area_t* area, lv_color_t* color_p) {
-  // TODO: this needs to write color_p into the LCD's actual frame buffer
-  // for the given area (via lcd->getFrameBufferByIndex() / switchFrameBufferTo(),
-  // matching the pattern in the reference project) rather than just
-  // telling LVGL "done" immediately. That reference project draws to its
-  // own raw framebuffer directly instead of going through LVGL's flush
-  // callback, so this bridge is the one part without a confirmed example
-  // to copy — expect to iterate on this specific function with the real
-  // hardware in front of you.
+  if (lcd != nullptr) {
+    lcd->drawBitmap(area->x1, area->y1, area->x2 + 1, area->y2 + 1, (const void*)color_p);
+  }
   lv_disp_flush_ready(drv);
 }
 
@@ -39,9 +29,6 @@ static void touch_read_cb(lv_indev_drv_t* drv, lv_indev_data_t* data) {
     data->state = LV_INDEV_STATE_REL;
     return;
   }
-  // TODO: call touch->readData() / touch->getPoint() (exact method name
-  // depends on the ESP32_Display_Panel version PlatformIO pulls in) and
-  // map the result into data->point.x/y and data->state.
   data->state = LV_INDEV_STATE_REL;
 }
 
@@ -57,7 +44,7 @@ void display_init() {
 
   lcd = board->getLCD();
   if (lcd != nullptr) {
-    lcd->configFrameBufferNumber(2); // avoid RGB tearing on this panel
+    lcd->configFrameBufferNumber(2);
   }
 
   if (!board->begin()) {
