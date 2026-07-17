@@ -1,26 +1,109 @@
 #include <Arduino.h>
-#include <WiFi.h>
-#include <WebServer.h>
-#include <Preferences.h>
-#include <ESPmDNS.h>
-#include <PubSubClient.h>
 #include "secrets.h"
 #include "panel_display.h"
 #include "version.h"
+#include "services/wifi_manager.h"
+#include "services/mqtt_service.h"
+#include "services/weather_service.h"
 #include "services/aviation_service.h"
+#include "services/iss_service.h"
+#include "services/smarthome_service.h"
+#include "screens/screen_manager.h"
 
 using namespace PanelDisplay;
 
-WebServer server(80);
-Preferences prefs;
-WiFiClient wifiClient;
-PubSubClient mqttClient(wifiClient);
+static const uint32_t WEATHER_POLL_MS    = 10UL * 60UL * 1000UL;
+static const uint32_t AVIATION_POLL_MS   = 15UL * 1000UL;
+static const uint32_t ISS_POLL_MS        = 60UL * 1000UL;
+static const uint32_t SMARTHOME_POLL_MS  = 5UL * 1000UL;
+static const uint32_t DRAW_INTERVAL_MS   = 200UL;
 
-static const uint32_t AVIATION_POLL_MS = 15UL * 1000UL;
-uint32_t lastAviation = 0;
+uint32_t lastWeather = 0, lastAviation = 0, lastIss = 0, lastSmartHome = 0;
+bool wasInSetupMode = false;
+bool setupModeActive = false;
 
-void handleRoot() {
-  server.send(200, "text/plain", "test");
+static void draw_setup_screen() {
+  uint16_t bg = screen.color565(10, 12, 16);
+  uint16_t text = screen.color565(235, 240, 245);
+  uint16_t accent = screen.color565(70, 130, 220);
+
+  screen.fillScreen(bg);
+  screen.setTextSize(3);
+  screen.setTextColor(accent, bg);
+  screen.setTextDatum(textdatum_t::top_left);
+  screen.drawString("WIFI SETUP NEEDED", 30, 60);
+
+  screen.setTextSize(2);
+  screen.setTextColor(text, bg);
+  screen.drawString("1. On your phone, connect to WiFi network:", 30, 140);
+  screen.setTextColor(accent, bg);
+  screen.drawString("   ESP32-Dashboard-Setup", 30, 175);
+
+  screen.setTextColor(text, bg);
+  screen.drawString("2. Open a browser and go to:", 30, 230);
+  screen.setTextColor(accent, bg);
+  screen.drawString("   http://192.168.4.1", 30, 265);
+
+  screen.setTextColor(text, bg);
+  screen.drawString("3. Enter your home WiFi name and password.", 30, 320);
+  screen.drawString("   The device will restart and connect.", 30, 350);
+
+  String lastSsid = wifi_manager_last_attempted_ssid();
+  if (lastSsid.length() > 0) {
+    screen.setTextSize(1);
+    screen.setTextColor(screen.color565(200, 90, 90), bg);
+    char line[96];
+    snprintf(line, sizeof(line), "Last attempt: '%s' -> status code %d",
+             lastSsid.c_str(), wifi_manager_last_status_code());
+    screen.drawString(line, 30, 420);
+    screen.drawString("(3=connected, 1=no network found, 4=connect failed/bad password, 6=disconnected)", 30, 440);
+  }
+
+  screen.setTextSize(1);
+  screen.setTextColor(screen.color565(90, 100, 110), bg);
+  screen.setTextDatum(textdatum_t::top_right);
+  screen.drawString(FIRMWARE_VERSION, WIDTH - 6, HEIGHT - 14);
+}
+
+void uiTask(void* param) {
+  for (;;) {
+    if (setupModeActive) {
+      draw_setup_screen();
+      screen.present();
+      vTaskDelay(pdMS_TO_TICKS(500));
+      continue;
+    }
+
+    uint16_t touchX = 0, touchY = 0;
+    bool touched = screen.readTouch(&touchX, &touchY);
+    screen_manager_handle_touch(touched, touchX, touchY);
+
+    screen_manager_draw();
+
+    uint16_t dbgBg = screen.color565(0, 0, 0);
+    uint16_t dbgText = touched ? screen.color565(80, 220, 100) : screen.color565(120, 120, 120);
+    screen.fillRect(0, HEIGHT - 24, 240, 24, dbgBg);
+    screen.setTextSize(1);
+    screen.setTextColor(dbgText, dbgBg);
+    screen.setTextDatum(textdatum_t::top_left);
+    char touchDbg[64];
+    if (!screen.touchAvailable()) {
+      snprintf(touchDbg, sizeof(touchDbg), "TOUCH: controller NOT initialized");
+    } else {
+      snprintf(touchDbg, sizeof(touchDbg), "TOUCH: x=%d y=%d count=%d",
+               touchX, touchY, screen.lastTouchReadCount());
+    }
+    screen.drawString(touchDbg, 6, HEIGHT - 18);
+
+    if (!screen.present()) {
+      Serial.println("[uiTask] present failed; restarting");
+      Serial.flush();
+      delay(100);
+      ESP.restart();
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(DRAW_INTERVAL_MS));
+  }
 }
 
 void setup() {
@@ -30,74 +113,67 @@ void setup() {
     delay(20);
   }
 
-  Serial.println("[boot] display begin (TEST BUILD 7 - aviation only)");
+  Serial.println("[boot] display begin");
   if (!screen.begin()) {
     Serial.println("[boot] display FAILED — halting");
     while (true) delay(1000);
   }
   Serial.println("[boot] display ready");
 
-  prefs.begin("dashboard", false);
+  screen_manager_init();
 
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  wifi_manager_begin();
+  setupModeActive = wifi_manager_in_setup_mode();
 
-  server.on("/", handleRoot);
-  server.begin();
+  xTaskCreatePinnedToCore(uiTask, "uiTask", 8192, nullptr, 1, nullptr, 0);
 
-  MDNS.begin("dashboard");
+  if (setupModeActive) {
+    wasInSetupMode = true;
+    return;
+  }
 
-  mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
+  mqtt_service_begin();
 
+  weather_service_update();
   aviation_service_update();
+  iss_service_update();
+  smarthome_service_update();
 }
 
 void loop() {
-  server.handleClient();
-  if (!mqttClient.connected()) {
-    mqttClient.connect("esp32-dashboard-test", MQTT_USER, MQTT_PASSWORD);
+  wifi_manager_loop();
+  setupModeActive = wifi_manager_in_setup_mode();
+
+  if (setupModeActive) {
+    delay(10);
+    return;
   }
-  mqttClient.loop();
+
+  if (wasInSetupMode) {
+    wasInSetupMode = false;
+    mqtt_service_begin();
+  }
+
+  mqtt_service_loop();
 
   uint32_t now = millis();
+
+  if (now - lastWeather > WEATHER_POLL_MS) {
+    lastWeather = now;
+    weather_service_update();
+  }
   if (now - lastAviation > AVIATION_POLL_MS) {
     lastAviation = now;
     aviation_service_update();
   }
-
-  uint16_t touchX = 0, touchY = 0;
-  bool touched = screen.readTouch(&touchX, &touchY);
-
-  uint16_t bg = screen.color565(10, 12, 16);
-  uint16_t text = screen.color565(235, 240, 245);
-  uint16_t accent = screen.color565(70, 130, 220);
-
-  screen.fillScreen(bg);
-  screen.setTextSize(3);
-  screen.setTextColor(accent, bg);
-  screen.setTextDatum(textdatum_t::top_left);
-  screen.drawString("TOUCH TEST 7 (aviation)", 30, 60);
-
-  screen.setTextSize(2);
-  screen.setTextColor(text, bg);
-  char touchDbg[64];
-  if (!screen.touchAvailable()) {
-    snprintf(touchDbg, sizeof(touchDbg), "TOUCH: controller NOT initialized");
-  } else {
-    snprintf(touchDbg, sizeof(touchDbg), "TOUCH: x=%d y=%d count=%d",
-             touchX, touchY, screen.lastTouchReadCount());
+  if (now - lastIss > ISS_POLL_MS) {
+    lastIss = now;
+    iss_service_update();
   }
-  screen.drawString(touchDbg, 30, 150);
+  if (now - lastSmartHome > SMARTHOME_POLL_MS) {
+    lastSmartHome = now;
+    smarthome_service_update();
+  }
 
-  char wifiDbg[64];
-  snprintf(wifiDbg, sizeof(wifiDbg), "WiFi status: %d", (int)WiFi.status());
-  screen.drawString(wifiDbg, 30, 200);
-
-  screen.setTextSize(1);
-  screen.setTextColor(screen.color565(90, 100, 110), bg);
-  screen.setTextDatum(textdatum_t::top_right);
-  screen.drawString(FIRMWARE_VERSION, WIDTH - 6, HEIGHT - 14);
-
-  screen.present();
-  delay(50);
+  delay(10);
 }

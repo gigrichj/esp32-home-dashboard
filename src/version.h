@@ -1,2 +1,2 @@
 #pragma once
-#define FIRMWARE_VERSION "TEST7-AVIATION"
+#define FIRMWARE_VERSION "v21"
