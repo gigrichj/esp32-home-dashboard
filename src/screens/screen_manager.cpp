@@ -5,6 +5,7 @@
 #include "../services/smarthome_service.h"
 #include "../services/iss_service.h"
 #include "../services/aviation_service.h"
+#include "secrets.h"
 #include <math.h>
 #include <time.h>
 #include <WiFi.h>
@@ -343,7 +344,7 @@ static void draw_weather() {
   screen.setTextColor(colorAccent, colorBg);
   screen.drawString(g_weather.condition.c_str(), 150, 130);
 
-  int y = 190;
+  int y = 170;
   screen.setTextSize(2);
   char row[48];
 
@@ -352,34 +353,43 @@ static void draw_weather() {
   screen.setTextColor(colorText, colorBg);
   snprintf(row, sizeof(row), "%.0fF", g_weather.feelsLikeF);
   screen.drawString(row, 260, y);
-  y += 36;
+  y += 30;
 
   screen.setTextColor(colorDim, colorBg);
   screen.drawString("Wind", 20, y);
   screen.setTextColor(colorText, colorBg);
   snprintf(row, sizeof(row), "%.0f mph", g_weather.windMph);
   screen.drawString(row, 260, y);
-  y += 36;
+  y += 30;
 
   screen.setTextColor(colorDim, colorBg);
   screen.drawString("Humidity", 20, y);
   screen.setTextColor(colorText, colorBg);
-  snprintf(row, sizeof(row), "%d%%", g_weather.humidity);
+  snprintf(row, sizeof(row), "%d", g_weather.humidity);
   screen.drawString(row, 260, y);
-  y += 36;
+  {
+    // Hand-drawn percent glyph: two dots + a diagonal stroke, since this
+    // font's charset doesn't render '%' correctly (shows as a placeholder).
+    int gx = 260 + 40;
+    int gy = y;
+    screen.fillCircle(gx, gy + 3, 2, colorText);
+    screen.fillCircle(gx + 10, gy + 11, 2, colorText);
+    screen.drawLine(gx - 1, gy + 13, gx + 11, gy + 1, colorText);
+  }
+  y += 30;
 
   screen.setTextColor(colorDim, colorBg);
   screen.drawString("Sunrise", 20, y);
   screen.setTextColor(colorText, colorBg);
   screen.drawString(formatHHMM(g_weather.sunriseUnix), 260, y);
-  y += 36;
+  y += 30;
 
   screen.setTextColor(colorDim, colorBg);
   screen.drawString("Sunset", 20, y);
   screen.setTextColor(colorText, colorBg);
   screen.drawString(formatHHMM(g_weather.sunsetUnix), 260, y);
 
-  int stripY = 340;
+  int stripY = 360;
   screen.drawLine(20, stripY - 10, WIDTH - 20, stripY - 10, colorDim);
 
   int colW = (WIDTH - 40) / 5;
@@ -445,6 +455,16 @@ static void draw_iss() {
   int primeMeridianX = MAP_X + MAP_W / 2;
   screen.drawLine(MAP_X, equatorY, MAP_X + MAP_W, equatorY, colorEquator);
   screen.drawLine(primeMeridianX, MAP_Y, primeMeridianX, MAP_Y + MAP_H, colorEquator);
+
+  int homeX = MAP_X + (int)((HOME_LON + 180) / 360.0f * MAP_W);
+  int homeY = MAP_Y + (int)((90 - HOME_LAT) / 180.0f * MAP_H);
+  uint16_t colorHome = screen.color565(80, 220, 120);
+  screen.fillTriangle(homeX - 7, homeY, homeX + 7, homeY, homeX, homeY - 9, colorHome);
+  screen.fillRect(homeX - 5, homeY, 10, 7, colorHome);
+  screen.setTextSize(1);
+  screen.setTextColor(colorHome, colorBg);
+  screen.setTextDatum(textdatum_t::top_left);
+  screen.drawString("Home", homeX + 10, homeY - 4);
 
   int issX = MAP_X + (int)((g_iss.lon + 180) / 360.0f * MAP_W);
   int issY = MAP_Y + (int)((90 - g_iss.lat) / 180.0f * MAP_H);
