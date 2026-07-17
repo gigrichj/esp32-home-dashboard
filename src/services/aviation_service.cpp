@@ -41,11 +41,13 @@ void aviation_service_update() {
 
   http.begin(url);
   http.addHeader("X-RapidAPI-Key", ADSBX_API_KEY);
+  http.addHeader("X-RapidAPI-Host", "adsbexchange-com1.p.rapidapi.com");
   int code = http.GET();
 
   if (code == 200) {
+    String payload = http.getString();
     JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, http.getStream());
+    DeserializationError err = deserializeJson(doc, payload);
     if (!err) {
       JsonArray ac = doc["ac"].as<JsonArray>();
       g_aircraftCount = 0;
@@ -65,6 +67,7 @@ void aviation_service_update() {
       }
     } else {
       Serial.printf("[Aviation] JSON parse error: %s\n", err.c_str());
+      Serial.printf("[Aviation] raw payload: %s\n", payload.c_str());
     }
   } else {
     Serial.printf("[Aviation] HTTP %d\n", code);
