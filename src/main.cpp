@@ -125,7 +125,7 @@ void setup() {
   wifi_manager_begin();
   setupModeActive = wifi_manager_in_setup_mode();
 
-  xTaskCreatePinnedToCore(uiTask, "uiTask", 8192, nullptr, 1, nullptr, 0);
+  xTaskCreatePinnedToCore(uiTask, "uiTask", 8192, nullptr, 1, nullptr, 1);
 
   if (setupModeActive) {
     wasInSetupMode = true;
