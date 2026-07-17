@@ -5,6 +5,7 @@
 #include <esp_display_panel.hpp>
 #include <esp_heap_caps.h>
 #include <math.h>
+#include <Preferences.h>
 #include "debug_log.h"
 
 using namespace esp_panel::board;
@@ -20,6 +21,26 @@ static StaticSemaphore_t refreshFinishedSemaphoreStorage;
 static SemaphoreHandle_t refreshFinishedSemaphore = nullptr;
 
 Canvas screen;
+
+static int g_bounceBufferLines = 10;
+
+int getBounceBufferLines() {
+    return g_bounceBufferLines;
+}
+
+void cycleBounceBufferAndRestart() {
+    Preferences prefs;
+    prefs.begin("display", false);
+    int current = prefs.getInt("bounceLines", 10);
+    int next = current + 5;
+    if (next > 60) next = 5; // wrap the test range back around
+    prefs.putInt("bounceLines", next);
+    prefs.end();
+    Serial.printf("[display] bounce buffer next test value: %d lines - restarting\n", next);
+    Serial.flush();
+    delay(200);
+    ESP.restart();
+}
 
 static bool IRAM_ATTR onRefreshFinished(void *) {
     if (refreshFinishedSemaphore == nullptr) {
@@ -114,6 +135,23 @@ bool Canvas::begin() {
         return false;
     }
     lcd->configFrameBufferNumber(2);
+
+    {
+        Preferences prefs;
+        prefs.begin("display", false);
+        g_bounceBufferLines = prefs.getInt("bounceLines", 10);
+        prefs.end();
+
+        auto lcdBus = lcd->getBus();
+        if (lcdBus != nullptr && lcdBus->getBasicAttributes().type == ESP_PANEL_BUS_TYPE_RGB) {
+            auto rgbBus = static_cast<BusRGB *>(lcdBus);
+            rgbBus->configRGB_BounceBufferSize(WIDTH * g_bounceBufferLines);
+            Serial.printf("[display] bounce buffer set to %d lines (%d px)\n",
+                          g_bounceBufferLines, WIDTH * g_bounceBufferLines);
+        } else {
+            Serial.println("[display] bus is not RGB type, skipping bounce buffer config");
+        }
+    }
 
     Serial.println("[display] board.begin begin");
     if (!board->begin()) {

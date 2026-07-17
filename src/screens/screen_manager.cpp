@@ -555,10 +555,27 @@ static void draw_iss() {
 }
 
 static void draw_debug() {
+  screen.setTextDatum(textdatum_t::top_left);
+
+  char bbLine[48];
+  snprintf(bbLine, sizeof(bbLine), "Bounce buffer: %d lines", PanelDisplay::getBounceBufferLines());
+  screen.setTextSize(2);
+  screen.setTextColor(colorAccent, colorBg);
+  screen.drawString(bbLine, 10, 50);
+  screen.setTextSize(1);
+  screen.setTextColor(colorDim, colorBg);
+  screen.drawString("Tap NEXT to save the next test value and reboot", 10, 78);
+
+  screen.fillRect(600, 400, 180, 60, colorAccent);
+  screen.setTextColor(colorBg, colorAccent);
+  screen.setTextSize(2);
+  screen.setTextDatum(textdatum_t::middle_center);
+  screen.drawString("NEXT >>", 690, 430);
+  screen.setTextDatum(textdatum_t::top_left);
+
   screen.setTextSize(1);
   screen.setTextColor(colorText, colorBg);
-  screen.setTextDatum(textdatum_t::top_left);
-  int y = 50;
+  int y = 105;
   for (int i = 0; i < DEBUG_LOG_LINES; i++) {
     if (g_debugLog[i].length() > 0) {
       screen.drawString(g_debugLog[i], 10, y);
@@ -603,6 +620,8 @@ void screen_manager_draw() {
   screen.drawString(FIRMWARE_VERSION, WIDTH - 6, HEIGHT - 14);
 }
 
+static const int DEBUG_TAB_INDEX = 6;
+
 void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
   uint32_t now = millis();
   if (touched && !touchWasDown) {
@@ -611,7 +630,13 @@ void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
   if (!touched && touchWasDown) {
     uint32_t held = now - touchDownMs;
     if (held >= TAP_MIN_MS && held <= TAP_MAX_MS) {
-      currentTab = (currentTab + 1) % TAB_COUNT;
+      bool hitNextButton = currentTab == DEBUG_TAB_INDEX &&
+                            x >= 600 && x <= 780 && y >= 400 && y <= 460;
+      if (hitNextButton) {
+        PanelDisplay::cycleBounceBufferAndRestart();
+      } else {
+        currentTab = (currentTab + 1) % TAB_COUNT;
+      }
     }
   }
   touchWasDown = touched;

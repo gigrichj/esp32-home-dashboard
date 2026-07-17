@@ -70,4 +70,10 @@ private:
 
 extern Canvas screen;
 
+// Runtime-configurable RGB bounce buffer size, stored in NVS, so we can
+// empirically find the value that avoids display flicker/tearing without
+// needing a new firmware build for every test. Takes effect on next boot.
+int getBounceBufferLines();
+void cycleBounceBufferAndRestart();
+
 } // namespace PanelDisplay
