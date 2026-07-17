@@ -145,12 +145,7 @@ void networkTask(void* param) {
       iss_service_update();
       debug_log("iss fetch done");
     }
-    if (now - lastSmartHome > SMARTHOME_POLL_MS) {
-      lastSmartHome = now;
-      debug_log("smarthome fetch start");
-      smarthome_service_update();
-      debug_log("smarthome fetch done");
-    }
+
 
     vTaskDelay(pdMS_TO_TICKS(10));
   }
@@ -183,7 +178,6 @@ void setup() {
     weather_service_update();
     aviation_service_update();
     iss_service_update();
-    smarthome_service_update();
   } else {
     wasInSetupMode = true;
   }
