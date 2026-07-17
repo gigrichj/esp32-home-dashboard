@@ -157,6 +157,15 @@ static void draw_aviation() {
   if (g_aircraftCount == 0) {
     screen.setTextColor(colorDim, colorBg);
     screen.drawString("No aircraft in range", listX, listY);
+    listY += 30;
+    screen.setTextSize(1);
+    char errLine[48];
+    snprintf(errLine, sizeof(errLine), "Last HTTP result: %d", g_aviationStatus.lastHttpCode);
+    screen.drawString(errLine, listX, listY);
+    listY += 20;
+    if (g_aviationStatus.lastError.length() > 0) {
+      screen.drawString(g_aviationStatus.lastError.c_str(), listX, listY);
+    }
   }
 }
 
