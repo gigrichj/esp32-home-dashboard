@@ -19,8 +19,13 @@ void iss_service_update() {
   int code = http.GET();
   g_iss.lastHttpCode = code;
   if (code == 200) {
+    String payload = http.getString();
     JsonDocument doc;
-    if (!deserializeJson(doc, http.getStream())) {
+    DeserializationError err = deserializeJson(doc, payload);
+    if (err) {
+      Serial.printf("[ISS] JSON parse error: %s\n", err.c_str());
+      Serial.printf("[ISS] raw payload: %s\n", payload.c_str());
+    } else {
       JsonObject pos = doc["positions"][0];
       g_iss.lat        = pos["satlatitude"]  | 0.0f;
       g_iss.lon        = pos["satlongitude"] | 0.0f;
