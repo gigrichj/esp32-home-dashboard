@@ -17,6 +17,7 @@ void iss_service_update() {
 
   http.begin(url);
   int code = http.GET();
+  g_iss.lastHttpCode = code;
   if (code == 200) {
     JsonDocument doc;
     if (!deserializeJson(doc, http.getStream())) {

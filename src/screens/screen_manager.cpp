@@ -7,6 +7,7 @@
 #include "../services/aviation_service.h"
 #include <math.h>
 #include <time.h>
+#include <WiFi.h>
 
 using namespace PanelDisplay;
 
@@ -47,6 +48,20 @@ static void draw_dashboard() {
   screen.setTextDatum(textdatum_t::top_left);
 
   int y = 60;
+  if (WiFi.status() == WL_CONNECTED) {
+    char line[64];
+    snprintf(line, sizeof(line), "WiFi: %s (%s)", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
+    screen.setTextColor(screen.color565(80, 200, 120), colorBg);
+    screen.drawString(line, 20, y);
+  } else {
+    screen.setTextColor(screen.color565(220, 80, 80), colorBg);
+    char line[32];
+    snprintf(line, sizeof(line), "WiFi: disconnected (%d)", (int)WiFi.status());
+    screen.drawString(line, 20, y);
+  }
+  screen.setTextColor(colorText, colorBg);
+  y += 40;
+
   if (g_weather.valid) {
     char line[64];
     snprintf(line, sizeof(line), "Weather: %.0fF  %s", g_weather.tempF, g_weather.condition.c_str());
@@ -268,6 +283,11 @@ static void draw_iss() {
     screen.setTextSize(2);
     screen.setTextColor(colorDim, colorBg);
     screen.drawString("No ISS data yet", 20, 100);
+    screen.setTextSize(1);
+    char errLine[48];
+    snprintf(errLine, sizeof(errLine), "Last HTTP result: %d", g_iss.lastHttpCode);
+    screen.drawString(errLine, 20, 140);
+    screen.drawString("(200=ok, 401/403=bad API key, negative=connection error)", 20, 165);
     return;
   }
 
