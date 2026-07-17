@@ -18,7 +18,6 @@ static const uint32_t ISS_POLL_MS        = 60UL * 1000UL;
 static const uint32_t SMARTHOME_POLL_MS  = 5UL * 1000UL;
 static const uint32_t DRAW_INTERVAL_MS   = 200UL;
 
-uint32_t lastWeather = 0, lastAviation = 0, lastIss = 0, lastSmartHome = 0;
 bool wasInSetupMode = false;
 bool setupModeActive = false;
 
@@ -106,6 +105,48 @@ void uiTask(void* param) {
   }
 }
 
+void networkTask(void* param) {
+  uint32_t lastWeather = 0, lastAviation = 0, lastIss = 0, lastSmartHome = 0;
+
+  for (;;) {
+    wifi_manager_loop();
+    setupModeActive = wifi_manager_in_setup_mode();
+
+    if (setupModeActive) {
+      vTaskDelay(pdMS_TO_TICKS(10));
+      continue;
+    }
+
+    if (wasInSetupMode) {
+      wasInSetupMode = false;
+      mqtt_service_begin();
+    }
+
+    mqtt_service_loop();
+
+    uint32_t now = millis();
+
+    if (now - lastWeather > WEATHER_POLL_MS) {
+      lastWeather = now;
+      weather_service_update();
+    }
+    if (now - lastAviation > AVIATION_POLL_MS) {
+      lastAviation = now;
+      aviation_service_update();
+    }
+    if (now - lastIss > ISS_POLL_MS) {
+      lastIss = now;
+      iss_service_update();
+    }
+    if (now - lastSmartHome > SMARTHOME_POLL_MS) {
+      lastSmartHome = now;
+      smarthome_service_update();
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   uint32_t serialStart = millis();
@@ -127,55 +168,20 @@ void setup() {
 
   xTaskCreatePinnedToCore(uiTask, "uiTask", 8192, nullptr, 1, nullptr, 1);
 
-  if (setupModeActive) {
+  if (!setupModeActive) {
+    mqtt_service_begin();
+    configTzTime("EST5EDT,M3.2.0,M11.1.0", "pool.ntp.org", "time.nist.gov");
+    weather_service_update();
+    aviation_service_update();
+    iss_service_update();
+    smarthome_service_update();
+  } else {
     wasInSetupMode = true;
-    return;
   }
 
-  mqtt_service_begin();
-
-  configTzTime("EST5EDT,M3.2.0,M11.1.0", "pool.ntp.org", "time.nist.gov");
-
-  weather_service_update();
-  aviation_service_update();
-  iss_service_update();
-  smarthome_service_update();
+  xTaskCreatePinnedToCore(networkTask, "networkTask", 8192, nullptr, 1, nullptr, 0);
 }
 
 void loop() {
-  wifi_manager_loop();
-  setupModeActive = wifi_manager_in_setup_mode();
-
-  if (setupModeActive) {
-    delay(10);
-    return;
-  }
-
-  if (wasInSetupMode) {
-    wasInSetupMode = false;
-    mqtt_service_begin();
-  }
-
-  mqtt_service_loop();
-
-  uint32_t now = millis();
-
-  if (now - lastWeather > WEATHER_POLL_MS) {
-    lastWeather = now;
-    weather_service_update();
-  }
-  if (now - lastAviation > AVIATION_POLL_MS) {
-    lastAviation = now;
-    aviation_service_update();
-  }
-  if (now - lastIss > ISS_POLL_MS) {
-    lastIss = now;
-    iss_service_update();
-  }
-  if (now - lastSmartHome > SMARTHOME_POLL_MS) {
-    lastSmartHome = now;
-    smarthome_service_update();
-  }
-
-  delay(10);
+  vTaskDelay(pdMS_TO_TICKS(1000));
 }
