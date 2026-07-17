@@ -28,12 +28,27 @@ int getBounceBufferLines() {
     return g_bounceBufferLines;
 }
 
+// Only these values satisfy the library's documented constraint
+// (480 / lines must be a whole, even number) - see
+// https://github.com/esp-arduino-libs/ESP32_Display_Panel/blob/master/docs/FAQ.md#how-to-fix-screen-drift-issue-when-driving-rgb-lcd-with-esp32-s3
+static const int kValidBounceLines[] = {5, 6, 8, 10, 12, 15, 16, 20, 24, 30};
+static const int kValidBounceLinesCount = sizeof(kValidBounceLines) / sizeof(kValidBounceLines[0]);
+
 void cycleBounceBufferAndRestart() {
     Preferences prefs;
     prefs.begin("display", false);
-    int current = prefs.getInt("bounceLines", 5);
-    int next = current + 2;
-    if (next > 15) next = 5; // wrap the test range back around
+    int current = prefs.getInt("bounceLines", kValidBounceLines[0]);
+
+    int idx = 0;
+    for (int i = 0; i < kValidBounceLinesCount; i++) {
+        if (kValidBounceLines[i] == current) {
+            idx = i;
+            break;
+        }
+    }
+    idx = (idx + 1) % kValidBounceLinesCount;
+    int next = kValidBounceLines[idx];
+
     prefs.putInt("bounceLines", next);
     prefs.end();
     Serial.printf("[display] bounce buffer next test value: %d lines - restarting\n", next);
@@ -139,7 +154,7 @@ bool Canvas::begin() {
     {
         Preferences prefs;
         prefs.begin("display", false);
-        g_bounceBufferLines = prefs.getInt("bounceLines", 5);
+        g_bounceBufferLines = prefs.getInt("bounceLines", kValidBounceLines[0]);
         prefs.end();
 
         auto lcdBus = lcd->getBus();
