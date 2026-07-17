@@ -383,19 +383,19 @@ static void draw_weather() {
   screen.drawLine(20, stripY - 10, WIDTH - 20, stripY - 10, colorDim);
 
   int colW = (WIDTH - 40) / 5;
-  screen.setTextDatum(textdatum_t::top_center);
+  screen.setTextDatum(textdatum_t::middle_center);
   for (int i = 0; i < g_forecastCount; i++) {
     int cx = 20 + colW * i + colW / 2;
 
     screen.setTextSize(1);
     screen.setTextColor(colorText, colorBg);
-    screen.drawString(g_forecast[i].dayLabel, cx, stripY);
+    screen.drawString(g_forecast[i].dayLabel, cx, stripY + 4);
 
     drawWeatherIcon(cx, stripY + 40, 20, g_forecast[i].weatherId, colorText);
 
     char hilo[24];
     snprintf(hilo, sizeof(hilo), "%.0f / %.0f", g_forecast[i].highF, g_forecast[i].lowF);
-    screen.drawString(hilo, cx, stripY + 70);
+    screen.drawString(hilo, cx, stripY + 74);
   }
   screen.setTextDatum(textdatum_t::top_left);
 }
@@ -429,7 +429,10 @@ static void draw_iss() {
   uint16_t colorEquator = screen.color565(70, 100, 130);
   uint16_t colorIss = screen.color565(255, 90, 90);
 
-  screen.drawRect(MAP_X, MAP_Y, MAP_W, MAP_H, colorGrid);
+  screen.drawLine(MAP_X, MAP_Y, MAP_X + MAP_W, MAP_Y, colorGrid);
+  screen.drawLine(MAP_X, MAP_Y + MAP_H, MAP_X + MAP_W, MAP_Y + MAP_H, colorGrid);
+  screen.drawLine(MAP_X, MAP_Y, MAP_X, MAP_Y + MAP_H, colorGrid);
+  screen.drawLine(MAP_X + MAP_W, MAP_Y, MAP_X + MAP_W, MAP_Y + MAP_H, colorGrid);
   for (int lon = -150; lon <= 150; lon += 30) {
     int x = MAP_X + (int)((lon + 180) / 360.0f * MAP_W);
     screen.drawLine(x, MAP_Y, x, MAP_Y + MAP_H, colorGrid);
