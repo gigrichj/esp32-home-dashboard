@@ -9,6 +9,7 @@
 #include "services/iss_service.h"
 #include "services/smarthome_service.h"
 #include "screens/screen_manager.h"
+#include "debug_log.h"
 
 using namespace PanelDisplay;
 
@@ -128,19 +129,27 @@ void networkTask(void* param) {
 
     if (now - lastWeather > WEATHER_POLL_MS) {
       lastWeather = now;
+      debug_log("weather fetch start");
       weather_service_update();
+      debug_log("weather fetch done");
     }
     if (now - lastAviation > AVIATION_POLL_MS) {
       lastAviation = now;
+      debug_log("aviation fetch start");
       aviation_service_update();
+      debug_log("aviation fetch done");
     }
     if (now - lastIss > ISS_POLL_MS) {
       lastIss = now;
+      debug_log("iss fetch start");
       iss_service_update();
+      debug_log("iss fetch done");
     }
     if (now - lastSmartHome > SMARTHOME_POLL_MS) {
       lastSmartHome = now;
+      debug_log("smarthome fetch start");
       smarthome_service_update();
+      debug_log("smarthome fetch done");
     }
 
     vTaskDelay(pdMS_TO_TICKS(10));

@@ -5,6 +5,7 @@
 #include <esp_display_panel.hpp>
 #include <esp_heap_caps.h>
 #include <math.h>
+#include "debug_log.h"
 
 using namespace esp_panel::board;
 using namespace esp_panel::drivers;
@@ -200,12 +201,14 @@ bool Canvas::present() {
             drainRefreshSemaphore();
             if (!lcd->switchFrameBufferTo(_fb)) {
                 Serial.printf("[display] framebuffer switch failed attempt=%u\n", attempt + 1);
+                debug_log("fb switch FAILED attempt=%u", attempt + 1);
                 continue;
             }
             drainRefreshSemaphore();
             synchronized = xSemaphoreTake(refreshFinishedSemaphore, pdMS_TO_TICKS(150)) == pdTRUE;
             if (!synchronized) {
                 Serial.printf("[display] refresh wait timeout attempt=%u\n", attempt + 1);
+                debug_log("refresh TIMEOUT attempt=%u", attempt + 1);
             }
         }
         if (!synchronized) {

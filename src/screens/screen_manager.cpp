@@ -6,6 +6,7 @@
 #include "../services/iss_service.h"
 #include "../services/aviation_service.h"
 #include "secrets.h"
+#include "../debug_log.h"
 #include <math.h>
 #include <time.h>
 #include <WiFi.h>
@@ -13,7 +14,7 @@
 using namespace PanelDisplay;
 
 static const char* TAB_NAMES[] = {
-  "DASHBOARD", "AVIATION", "PORSCHE", "SMART HOME", "ISS", "WEATHER"
+  "DASHBOARD", "AVIATION", "PORSCHE", "SMART HOME", "ISS", "WEATHER", "DEBUG"
 };
 static const int TAB_COUNT = sizeof(TAB_NAMES) / sizeof(TAB_NAMES[0]);
 static int currentTab = 0;
@@ -553,6 +554,19 @@ static void draw_iss() {
   }
 }
 
+static void draw_debug() {
+  screen.setTextSize(1);
+  screen.setTextColor(colorText, colorBg);
+  screen.setTextDatum(textdatum_t::top_left);
+  int y = 50;
+  for (int i = 0; i < DEBUG_LOG_LINES; i++) {
+    if (g_debugLog[i].length() > 0) {
+      screen.drawString(g_debugLog[i], 10, y);
+    }
+    y += 18;
+  }
+}
+
 static void draw_placeholder(const char* label) {
   screen.setTextSize(2);
   screen.setTextColor(colorDim, colorBg);
@@ -580,6 +594,7 @@ void screen_manager_draw() {
     case 3: draw_smarthome(); break;
     case 4: draw_iss(); break;
     case 5: draw_weather(); break;
+    case 6: draw_debug(); break;
   }
 
   screen.setTextSize(1);
