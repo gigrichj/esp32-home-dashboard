@@ -31,8 +31,28 @@ void iss_service_update() {
   }
   http.end();
 
-  // TODO: separate call to /visualpasses/25544/{lat}/{lon}/0/2/300/
-  // to populate nextPassUnix / nextPassDurationSec and trigger a
-  // visibility alert notification (push through mqtt_service) when
-  // a pass is imminent.
+  HTTPClient passHttp;
+  char passUrl[256];
+  snprintf(passUrl, sizeof(passUrl),
+    "https://api.n2yo.com/rest/v1/satellite/visualpasses/25544/%f/%f/0/2/300/&apiKey=%s",
+    (double)HOME_LAT, (double)HOME_LON, N2YO_API_KEY);
+
+  passHttp.begin(passUrl);
+  int passCode = passHttp.GET();
+  if (passCode == 200) {
+    JsonDocument passDoc;
+    if (!deserializeJson(passDoc, passHttp.getStream())) {
+      JsonArray passes = passDoc["passes"].as<JsonArray>();
+      if (passes.size() > 0) {
+        JsonObject firstPass = passes[0];
+        g_iss.nextPassUnix = firstPass["startUTC"] | 0;
+        int startSec = firstPass["startUTC"] | 0;
+        int endSec = firstPass["endUTC"] | 0;
+        g_iss.nextPassDurationSec = endSec - startSec;
+      }
+    }
+  } else {
+    Serial.printf("[ISS] visualpasses HTTP %d\n", passCode);
+  }
+  passHttp.end();
 }

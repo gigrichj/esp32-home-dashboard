@@ -6,6 +6,7 @@
 #include "../services/iss_service.h"
 #include "../services/aviation_service.h"
 #include <math.h>
+#include <time.h>
 
 using namespace PanelDisplay;
 
@@ -251,6 +252,83 @@ static void draw_weather() {
   screen.drawString("Hourly / 7-day forecast not wired up yet", 30, y + 20);
 }
 
+static String formatUnixTime(uint32_t unixTime) {
+  if (unixTime == 0) return "unknown";
+  time_t t = (time_t)unixTime;
+  struct tm* timeInfo = localtime(&t);
+  char buf[32];
+  strftime(buf, sizeof(buf), "%a %I:%M %p", timeInfo);
+  return String(buf);
+}
+
+static void draw_iss() {
+  screen.setTextDatum(textdatum_t::top_left);
+
+  if (!g_iss.valid) {
+    screen.setTextSize(2);
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString("No ISS data yet", 20, 100);
+    return;
+  }
+
+  screen.setTextSize(2);
+  screen.setTextColor(colorText, colorBg);
+  screen.drawString("Current Position", 30, 60);
+
+  int y = 100;
+  char row[64];
+  screen.setTextColor(colorDim, colorBg);
+  screen.drawString("Latitude", 30, y);
+  screen.setTextColor(colorText, colorBg);
+  snprintf(row, sizeof(row), "%.2f", g_iss.lat);
+  screen.drawString(row, 260, y);
+  y += 40;
+
+  screen.setTextColor(colorDim, colorBg);
+  screen.drawString("Longitude", 30, y);
+  screen.setTextColor(colorText, colorBg);
+  snprintf(row, sizeof(row), "%.2f", g_iss.lon);
+  screen.drawString(row, 260, y);
+  y += 40;
+
+  screen.setTextColor(colorDim, colorBg);
+  screen.drawString("Altitude", 30, y);
+  screen.setTextColor(colorText, colorBg);
+  snprintf(row, sizeof(row), "%.0f km", g_iss.altitudeKm);
+  screen.drawString(row, 260, y);
+  y += 60;
+
+  screen.setTextSize(2);
+  screen.setTextColor(colorAccent, colorBg);
+  screen.drawString("Next Visible Pass", 30, y);
+  y += 40;
+
+  if (g_iss.nextPassUnix > 0) {
+    screen.setTextColor(colorText, colorBg);
+    String passTime = formatUnixTime(g_iss.nextPassUnix);
+    screen.drawString(passTime, 30, y);
+    y += 40;
+
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString("Duration", 30, y);
+    screen.setTextColor(colorText, colorBg);
+    snprintf(row, sizeof(row), "%d min", g_iss.nextPassDurationSec / 60);
+    screen.drawString(row, 260, y);
+
+    uint32_t nowUnix = (uint32_t)time(nullptr);
+    if (nowUnix >= g_iss.nextPassUnix &&
+        nowUnix <= g_iss.nextPassUnix + (uint32_t)g_iss.nextPassDurationSec) {
+      y += 50;
+      screen.setTextSize(3);
+      screen.setTextColor(screen.color565(80, 220, 120), colorBg);
+      screen.drawString("VISIBLE NOW - LOOK UP!", 30, y);
+    }
+  } else {
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString("No upcoming pass found", 30, y);
+  }
+}
+
 static void draw_placeholder(const char* label) {
   screen.setTextSize(2);
   screen.setTextColor(colorDim, colorBg);
@@ -276,7 +354,7 @@ void screen_manager_draw() {
     case 1: draw_aviation(); break;
     case 2: draw_placeholder("Porsche"); break;
     case 3: draw_smarthome(); break;
-    case 4: draw_placeholder("ISS Tracker"); break;
+    case 4: draw_iss(); break;
     case 5: draw_weather(); break;
   }
 

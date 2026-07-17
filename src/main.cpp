@@ -134,6 +134,8 @@ void setup() {
 
   mqtt_service_begin();
 
+  configTzTime("EST5EDT,M3.2.0,M11.1.0", "pool.ntp.org", "time.nist.gov");
+
   weather_service_update();
   aviation_service_update();
   iss_service_update();
