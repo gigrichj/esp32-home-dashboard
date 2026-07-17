@@ -29,6 +29,8 @@ jobs:
           MQTT_PORT: ${{ secrets.MQTT_PORT }}
           MQTT_USER: ${{ secrets.MQTT_USER }}
           MQTT_PASSWORD: ${{ secrets.MQTT_PASSWORD }}
+          OPENSKY_CLIENT_ID: ${{ secrets.OPENSKY_CLIENT_ID }}
+          OPENSKY_CLIENT_SECRET: ${{ secrets.OPENSKY_CLIENT_SECRET }}
         run: |
           cat > include/secrets.h << EOF
           #pragma once
@@ -50,6 +52,8 @@ jobs:
           #define MQTT_PORT ${MQTT_PORT:-1883}
           #define MQTT_USER "${MQTT_USER}"
           #define MQTT_PASSWORD "${MQTT_PASSWORD}"
+          #define OPENSKY_CLIENT_ID "${OPENSKY_CLIENT_ID}"
+          #define OPENSKY_CLIENT_SECRET "${OPENSKY_CLIENT_SECRET}"
           EOF
 
       - uses: actions/setup-python@v5
