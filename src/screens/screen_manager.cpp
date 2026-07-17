@@ -27,6 +27,15 @@ static uint32_t touchDownMs = 0;
 static const uint32_t TAP_MIN_MS = 50;
 static const uint32_t TAP_MAX_MS = 600;
 
+static String formatCurrentDateTime() {
+  time_t now = time(nullptr);
+  if (now < 100000) return String("Time syncing...");
+  struct tm* t = localtime(&now);
+  char buf[40];
+  strftime(buf, sizeof(buf), "%a, %b %d  %I:%M %p", t);
+  return String(buf);
+}
+
 static void drawHeader() {
   screen.fillRect(0, 0, WIDTH, 40, colorAccent);
   screen.setTextSize(2);
@@ -44,10 +53,12 @@ static void drawHeader() {
 
 static void draw_dashboard() {
   screen.setTextSize(2);
-  screen.setTextColor(colorText, colorBg);
+  screen.setTextColor(colorAccent, colorBg);
   screen.setTextDatum(textdatum_t::top_left);
+  screen.drawString(formatCurrentDateTime(), 20, 55);
+  screen.setTextColor(colorText, colorBg);
 
-  int y = 60;
+  int y = 100;
   if (WiFi.status() == WL_CONNECTED) {
     char line[64];
     snprintf(line, sizeof(line), "WiFi: %s (%s)", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
@@ -226,6 +237,90 @@ static void draw_smarthome() {
   }
 }
 
+// ---- Weather icon drawing (plain vector shapes, no bitmap assets) ----
+
+static void drawCloudIcon(int cx, int cy, int r, uint16_t color) {
+  screen.fillCircle(cx - (int)(r * 0.6), cy, (int)(r * 0.7), color);
+  screen.fillCircle(cx + (int)(r * 0.5), cy, (int)(r * 0.8), color);
+  screen.fillCircle(cx, cy - (int)(r * 0.4), (int)(r * 0.9), color);
+  screen.fillRect(cx - r, cy, r * 2, (int)(r * 0.7), color);
+}
+
+static void drawSunIcon(int cx, int cy, int r, uint16_t color) {
+  screen.fillCircle(cx, cy, r, color);
+  for (int i = 0; i < 8; i++) {
+    float ang = i * (PI / 4.0f);
+    int x1 = cx + (int)(cos(ang) * (r + 4));
+    int y1 = cy + (int)(sin(ang) * (r + 4));
+    int x2 = cx + (int)(cos(ang) * (r + 12));
+    int y2 = cy + (int)(sin(ang) * (r + 12));
+    screen.drawLine(x1, y1, x2, y2, color);
+  }
+}
+
+static void drawRainIcon(int cx, int cy, int r, uint16_t color) {
+  drawCloudIcon(cx, cy - (int)(r * 0.3), (int)(r * 0.8), color);
+  uint16_t rainColor = screen.color565(90, 160, 230);
+  for (int i = -1; i <= 1; i++) {
+    int x = cx + i * (int)(r * 0.5);
+    screen.drawLine(x, cy + (int)(r * 0.5), x - 4, cy + (int)(r * 1.1), rainColor);
+  }
+}
+
+static void drawSnowIcon(int cx, int cy, int r, uint16_t color) {
+  drawCloudIcon(cx, cy - (int)(r * 0.3), (int)(r * 0.8), color);
+  uint16_t snowColor = screen.color565(220, 230, 245);
+  for (int i = -1; i <= 1; i++) {
+    int x = cx + i * (int)(r * 0.5);
+    int y = cy + (int)(r * 0.8);
+    screen.drawLine(x - 5, y, x + 5, y, snowColor);
+    screen.drawLine(x, y - 5, x, y + 5, snowColor);
+    screen.drawLine(x - 4, y - 4, x + 4, y + 4, snowColor);
+    screen.drawLine(x - 4, y + 4, x + 4, y - 4, snowColor);
+  }
+}
+
+static void drawStormIcon(int cx, int cy, int r, uint16_t color) {
+  drawCloudIcon(cx, cy - (int)(r * 0.3), (int)(r * 0.8), color);
+  uint16_t boltColor = screen.color565(240, 210, 60);
+  screen.fillTriangle(cx - 2, cy + (int)(r * 0.4), cx + 8, cy + (int)(r * 0.4), cx - 4, cy + (int)(r * 0.9), boltColor);
+  screen.fillTriangle(cx - 4, cy + (int)(r * 0.9), cx + 6, cy + (int)(r * 0.9), cx, cy + (int)(r * 1.3), boltColor);
+}
+
+static void drawFogIcon(int cx, int cy, int r, uint16_t color) {
+  for (int i = -1; i <= 1; i++) {
+    screen.drawLine(cx - r, cy + i * (int)(r * 0.4), cx + r, cy + i * (int)(r * 0.4), color);
+  }
+}
+
+static void drawWeatherIcon(int cx, int cy, int r, int weatherId, uint16_t color) {
+  if (weatherId >= 200 && weatherId < 300) {
+    drawStormIcon(cx, cy, r, color);
+  } else if (weatherId >= 300 && weatherId < 600) {
+    drawRainIcon(cx, cy, r, color);
+  } else if (weatherId >= 600 && weatherId < 700) {
+    drawSnowIcon(cx, cy, r, color);
+  } else if (weatherId >= 700 && weatherId < 800) {
+    drawFogIcon(cx, cy, r, color);
+  } else if (weatherId == 800) {
+    uint16_t sunColor = screen.color565(250, 200, 60);
+    drawSunIcon(cx, cy, r, sunColor);
+  } else if (weatherId > 800) {
+    drawCloudIcon(cx, cy, r, color);
+  } else {
+    screen.drawCircle(cx, cy, r, color);
+  }
+}
+
+static String formatHHMM(uint32_t unixTime) {
+  if (unixTime == 0) return String("--:--");
+  time_t t = (time_t)unixTime;
+  struct tm* timeInfo = localtime(&t);
+  char buf[16];
+  strftime(buf, sizeof(buf), "%I:%M %p", timeInfo);
+  return String(buf);
+}
+
 static void draw_weather() {
   screen.setTextDatum(textdatum_t::top_left);
 
@@ -236,44 +331,73 @@ static void draw_weather() {
     return;
   }
 
+  drawWeatherIcon(80, 100, 40, g_weather.weatherId, colorText);
+
   screen.setTextSize(4);
   screen.setTextColor(colorText, colorBg);
   char tempStr[16];
   snprintf(tempStr, sizeof(tempStr), "%.0fF", g_weather.tempF);
-  screen.drawString(tempStr, 30, 70);
+  screen.drawString(tempStr, 150, 70);
 
   screen.setTextSize(2);
   screen.setTextColor(colorAccent, colorBg);
-  screen.drawString(g_weather.condition.c_str(), 30, 130);
+  screen.drawString(g_weather.condition.c_str(), 150, 130);
 
   int y = 190;
   screen.setTextSize(2);
   char row[48];
 
   screen.setTextColor(colorDim, colorBg);
-  screen.drawString("Feels like", 30, y);
+  screen.drawString("Feels like", 20, y);
   screen.setTextColor(colorText, colorBg);
   snprintf(row, sizeof(row), "%.0fF", g_weather.feelsLikeF);
   screen.drawString(row, 260, y);
-  y += 44;
+  y += 36;
 
   screen.setTextColor(colorDim, colorBg);
-  screen.drawString("Wind", 30, y);
+  screen.drawString("Wind", 20, y);
   screen.setTextColor(colorText, colorBg);
   snprintf(row, sizeof(row), "%.0f mph", g_weather.windMph);
   screen.drawString(row, 260, y);
-  y += 44;
+  y += 36;
 
   screen.setTextColor(colorDim, colorBg);
-  screen.drawString("Humidity", 30, y);
+  screen.drawString("Humidity", 20, y);
   screen.setTextColor(colorText, colorBg);
   snprintf(row, sizeof(row), "%d%%", g_weather.humidity);
   screen.drawString(row, 260, y);
-  y += 44;
+  y += 36;
 
-  screen.setTextSize(1);
   screen.setTextColor(colorDim, colorBg);
-  screen.drawString("Hourly / 7-day forecast not wired up yet", 30, y + 20);
+  screen.drawString("Sunrise", 20, y);
+  screen.setTextColor(colorText, colorBg);
+  screen.drawString(formatHHMM(g_weather.sunriseUnix), 260, y);
+  y += 36;
+
+  screen.setTextColor(colorDim, colorBg);
+  screen.drawString("Sunset", 20, y);
+  screen.setTextColor(colorText, colorBg);
+  screen.drawString(formatHHMM(g_weather.sunsetUnix), 260, y);
+
+  int stripY = 340;
+  screen.drawLine(20, stripY - 10, WIDTH - 20, stripY - 10, colorDim);
+
+  int colW = (WIDTH - 40) / 5;
+  screen.setTextDatum(textdatum_t::top_center);
+  for (int i = 0; i < g_forecastCount; i++) {
+    int cx = 20 + colW * i + colW / 2;
+
+    screen.setTextSize(1);
+    screen.setTextColor(colorText, colorBg);
+    screen.drawString(g_forecast[i].dayLabel, cx, stripY);
+
+    drawWeatherIcon(cx, stripY + 40, 20, g_forecast[i].weatherId, colorText);
+
+    char hilo[24];
+    snprintf(hilo, sizeof(hilo), "%.0f / %.0f", g_forecast[i].highF, g_forecast[i].lowF);
+    screen.drawString(hilo, cx, stripY + 70);
+  }
+  screen.setTextDatum(textdatum_t::top_left);
 }
 
 static String formatUnixTime(uint32_t unixTime) {
@@ -300,61 +424,93 @@ static void draw_iss() {
     return;
   }
 
+  const int MAP_X = 20, MAP_Y = 65, MAP_W = 460, MAP_H = 230;
+  uint16_t colorGrid = screen.color565(40, 60, 80);
+  uint16_t colorEquator = screen.color565(70, 100, 130);
+  uint16_t colorIss = screen.color565(255, 90, 90);
+
+  screen.drawRect(MAP_X, MAP_Y, MAP_W, MAP_H, colorGrid);
+  for (int lon = -150; lon <= 150; lon += 30) {
+    int x = MAP_X + (int)((lon + 180) / 360.0f * MAP_W);
+    screen.drawLine(x, MAP_Y, x, MAP_Y + MAP_H, colorGrid);
+  }
+  for (int lat = -60; lat <= 60; lat += 30) {
+    int y = MAP_Y + (int)((90 - lat) / 180.0f * MAP_H);
+    screen.drawLine(MAP_X, y, MAP_X + MAP_W, y, colorGrid);
+  }
+  int equatorY = MAP_Y + MAP_H / 2;
+  int primeMeridianX = MAP_X + MAP_W / 2;
+  screen.drawLine(MAP_X, equatorY, MAP_X + MAP_W, equatorY, colorEquator);
+  screen.drawLine(primeMeridianX, MAP_Y, primeMeridianX, MAP_Y + MAP_H, colorEquator);
+
+  int issX = MAP_X + (int)((g_iss.lon + 180) / 360.0f * MAP_W);
+  int issY = MAP_Y + (int)((90 - g_iss.lat) / 180.0f * MAP_H);
+  screen.fillCircle(issX, issY, 6, colorIss);
+  screen.drawCircle(issX, issY, 10, colorIss);
+
+  screen.setTextSize(1);
+  screen.setTextColor(colorIss, colorBg);
+  char posLabel[32];
+  snprintf(posLabel, sizeof(posLabel), "%.2f, %.2f", g_iss.lat, g_iss.lon);
+  screen.drawString(posLabel, issX + 12, issY - 6);
+
+  int rightX = 500;
+  int y = 65;
   screen.setTextSize(2);
   screen.setTextColor(colorText, colorBg);
-  screen.drawString("Current Position", 30, 60);
+  screen.drawString("Current Position", rightX, y);
+  y += 40;
 
-  int y = 100;
   char row[64];
   screen.setTextColor(colorDim, colorBg);
-  screen.drawString("Latitude", 30, y);
+  screen.drawString("Latitude", rightX, y);
   screen.setTextColor(colorText, colorBg);
   snprintf(row, sizeof(row), "%.2f", g_iss.lat);
-  screen.drawString(row, 260, y);
-  y += 40;
+  screen.drawString(row, rightX + 150, y);
+  y += 36;
 
   screen.setTextColor(colorDim, colorBg);
-  screen.drawString("Longitude", 30, y);
+  screen.drawString("Longitude", rightX, y);
   screen.setTextColor(colorText, colorBg);
   snprintf(row, sizeof(row), "%.2f", g_iss.lon);
-  screen.drawString(row, 260, y);
-  y += 40;
+  screen.drawString(row, rightX + 150, y);
+  y += 36;
 
   screen.setTextColor(colorDim, colorBg);
-  screen.drawString("Altitude", 30, y);
+  screen.drawString("Altitude", rightX, y);
   screen.setTextColor(colorText, colorBg);
   snprintf(row, sizeof(row), "%.0f km", g_iss.altitudeKm);
-  screen.drawString(row, 260, y);
-  y += 60;
+  screen.drawString(row, rightX + 150, y);
+  y += 50;
 
   screen.setTextSize(2);
   screen.setTextColor(colorAccent, colorBg);
-  screen.drawString("Next Visible Pass", 30, y);
-  y += 40;
+  screen.drawString("Next Visible Pass", rightX, y);
+  y += 36;
 
   if (g_iss.nextPassUnix > 0) {
     screen.setTextColor(colorText, colorBg);
     String passTime = formatUnixTime(g_iss.nextPassUnix);
-    screen.drawString(passTime, 30, y);
-    y += 40;
+    screen.drawString(passTime, rightX, y);
+    y += 36;
 
     screen.setTextColor(colorDim, colorBg);
-    screen.drawString("Duration", 30, y);
+    screen.drawString("Duration", rightX, y);
     screen.setTextColor(colorText, colorBg);
     snprintf(row, sizeof(row), "%d min", g_iss.nextPassDurationSec / 60);
-    screen.drawString(row, 260, y);
+    screen.drawString(row, rightX + 150, y);
 
     uint32_t nowUnix = (uint32_t)time(nullptr);
     if (nowUnix >= g_iss.nextPassUnix &&
         nowUnix <= g_iss.nextPassUnix + (uint32_t)g_iss.nextPassDurationSec) {
-      y += 50;
-      screen.setTextSize(3);
+      y += 46;
+      screen.setTextSize(2);
       screen.setTextColor(screen.color565(80, 220, 120), colorBg);
-      screen.drawString("VISIBLE NOW - LOOK UP!", 30, y);
+      screen.drawString("VISIBLE NOW!", rightX, y);
     }
   } else {
     screen.setTextColor(colorDim, colorBg);
-    screen.drawString("No upcoming pass found", 30, y);
+    screen.drawString("No upcoming pass found", rightX, y);
   }
 }
 
