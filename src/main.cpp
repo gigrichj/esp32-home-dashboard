@@ -7,6 +7,10 @@
 #include "secrets.h"
 #include "panel_display.h"
 #include "version.h"
+#include "services/weather_service.h"
+#include "services/aviation_service.h"
+#include "services/iss_service.h"
+#include "services/smarthome_service.h"
 
 using namespace PanelDisplay;
 
@@ -14,6 +18,12 @@ WebServer server(80);
 Preferences prefs;
 WiFiClient wifiClient;
 PubSubClient mqttClient(wifiClient);
+
+static const uint32_t WEATHER_POLL_MS  = 10UL * 60UL * 1000UL;
+static const uint32_t AVIATION_POLL_MS = 15UL * 1000UL;
+static const uint32_t ISS_POLL_MS      = 60UL * 1000UL;
+static const uint32_t SMARTHOME_POLL_MS = 5UL * 1000UL;
+uint32_t lastWeather = 0, lastAviation = 0, lastIss = 0, lastSmartHome = 0;
 
 void handleRoot() {
   server.send(200, "text/plain", "test");
@@ -26,7 +36,7 @@ void setup() {
     delay(20);
   }
 
-  Serial.println("[boot] display begin (TEST BUILD 5)");
+  Serial.println("[boot] display begin (TEST BUILD 6)");
   if (!screen.begin()) {
     Serial.println("[boot] display FAILED — halting");
     while (true) delay(1000);
@@ -44,6 +54,11 @@ void setup() {
   MDNS.begin("dashboard");
 
   mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
+
+  weather_service_update();
+  aviation_service_update();
+  iss_service_update();
+  smarthome_service_update();
 }
 
 void loop() {
@@ -52,6 +67,24 @@ void loop() {
     mqttClient.connect("esp32-dashboard-test", MQTT_USER, MQTT_PASSWORD);
   }
   mqttClient.loop();
+
+  uint32_t now = millis();
+  if (now - lastWeather > WEATHER_POLL_MS) {
+    lastWeather = now;
+    weather_service_update();
+  }
+  if (now - lastAviation > AVIATION_POLL_MS) {
+    lastAviation = now;
+    aviation_service_update();
+  }
+  if (now - lastIss > ISS_POLL_MS) {
+    lastIss = now;
+    iss_service_update();
+  }
+  if (now - lastSmartHome > SMARTHOME_POLL_MS) {
+    lastSmartHome = now;
+    smarthome_service_update();
+  }
 
   uint16_t touchX = 0, touchY = 0;
   bool touched = screen.readTouch(&touchX, &touchY);
@@ -64,7 +97,7 @@ void loop() {
   screen.setTextSize(3);
   screen.setTextColor(accent, bg);
   screen.setTextDatum(textdatum_t::top_left);
-  screen.drawString("TOUCH TEST 5", 30, 60);
+  screen.drawString("TOUCH TEST 6", 30, 60);
 
   screen.setTextSize(2);
   screen.setTextColor(text, bg);
