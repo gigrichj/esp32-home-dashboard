@@ -466,6 +466,22 @@ static void draw_iss() {
   screen.setTextDatum(textdatum_t::top_left);
   screen.drawString("Home", homeX + 10, homeY - 4);
 
+  if (g_issTrackValid && g_issTrackCount > 1) {
+    uint16_t colorTrack = screen.color565(255, 170, 60);
+    int prevX = 0, prevY = 0;
+    bool havePrev = false;
+    for (int i = 0; i < g_issTrackCount; i++) {
+      int px = MAP_X + (int)((g_issTrack[i].lon + 180) / 360.0f * MAP_W);
+      int py = MAP_Y + (int)((90 - g_issTrack[i].lat) / 180.0f * MAP_H);
+      if (havePrev && abs(px - prevX) < MAP_W / 2) {
+        screen.drawLine(prevX, prevY, px, py, colorTrack);
+      }
+      prevX = px;
+      prevY = py;
+      havePrev = true;
+    }
+  }
+
   int issX = MAP_X + (int)((g_iss.lon + 180) / 360.0f * MAP_W);
   int issY = MAP_Y + (int)((90 - g_iss.lat) / 180.0f * MAP_H);
   screen.fillCircle(issX, issY, 6, colorIss);

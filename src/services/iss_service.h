@@ -11,4 +11,14 @@ struct IssData {
 
 extern IssData g_iss;
 
+struct TrackPoint {
+  float lat;
+  float lon;
+};
+
+static const int ISS_TRACK_POINTS = 60;
+extern TrackPoint g_issTrack[ISS_TRACK_POINTS];
+extern int g_issTrackCount;
+extern bool g_issTrackValid;
+
 void iss_service_update();
