@@ -46,9 +46,7 @@ void iss_service_update() {
       if (passes.size() > 0) {
         JsonObject firstPass = passes[0];
         g_iss.nextPassUnix = firstPass["startUTC"] | 0;
-        int startSec = firstPass["startUTC"] | 0;
-        int endSec = firstPass["endUTC"] | 0;
-        g_iss.nextPassDurationSec = endSec - startSec;
+        g_iss.nextPassDurationSec = firstPass["duration"] | 0;
       }
     }
   } else {
