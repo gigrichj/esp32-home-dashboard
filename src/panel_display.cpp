@@ -31,9 +31,9 @@ int getBounceBufferLines() {
 void cycleBounceBufferAndRestart() {
     Preferences prefs;
     prefs.begin("display", false);
-    int current = prefs.getInt("bounceLines", 10);
-    int next = current + 5;
-    if (next > 60) next = 5; // wrap the test range back around
+    int current = prefs.getInt("bounceLines", 5);
+    int next = current + 2;
+    if (next > 15) next = 5; // wrap the test range back around
     prefs.putInt("bounceLines", next);
     prefs.end();
     Serial.printf("[display] bounce buffer next test value: %d lines - restarting\n", next);
@@ -139,7 +139,7 @@ bool Canvas::begin() {
     {
         Preferences prefs;
         prefs.begin("display", false);
-        g_bounceBufferLines = prefs.getInt("bounceLines", 10);
+        g_bounceBufferLines = prefs.getInt("bounceLines", 5);
         prefs.end();
 
         auto lcdBus = lcd->getBus();
