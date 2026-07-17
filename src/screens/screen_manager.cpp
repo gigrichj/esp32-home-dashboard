@@ -621,17 +621,27 @@ void screen_manager_draw() {
 }
 
 static const int DEBUG_TAB_INDEX = 6;
+static uint16_t lastTouchX = 0;
+static uint16_t lastTouchY = 0;
 
 void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
   uint32_t now = millis();
-  if (touched && !touchWasDown) {
-    touchDownMs = now;
+  if (touched) {
+    // Remember the position while the finger is actually down - on
+    // release, readTouch() reports no point and x/y come in as 0,0,
+    // so we can't rely on the release-time coordinates directly.
+    lastTouchX = x;
+    lastTouchY = y;
+    if (!touchWasDown) {
+      touchDownMs = now;
+    }
   }
   if (!touched && touchWasDown) {
     uint32_t held = now - touchDownMs;
     if (held >= TAP_MIN_MS && held <= TAP_MAX_MS) {
       bool hitNextButton = currentTab == DEBUG_TAB_INDEX &&
-                            x >= 600 && x <= 780 && y >= 400 && y <= 460;
+                            lastTouchX >= 600 && lastTouchX <= 780 &&
+                            lastTouchY >= 400 && lastTouchY <= 460;
       if (hitNextButton) {
         PanelDisplay::cycleBounceBufferAndRestart();
       } else {
