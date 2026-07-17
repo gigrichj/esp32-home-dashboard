@@ -16,6 +16,12 @@ static const int MAX_TRACKED_AIRCRAFT = 20;
 extern Aircraft g_aircraft[MAX_TRACKED_AIRCRAFT];
 extern int g_aircraftCount;
 
+struct AviationStatus {
+  int lastHttpCode = 0;
+  String lastError = "";
+};
+extern AviationStatus g_aviationStatus;
+
 // Pulls nearby aircraft from ADS-B Exchange (default) within a bounding
 // box around HOME_LAT/HOME_LON, computes bearing/distance for each so
 // the radar screen can plot them on a plain LVGL canvas (no map tiles).

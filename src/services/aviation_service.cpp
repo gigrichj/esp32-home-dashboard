@@ -7,6 +7,7 @@
 
 Aircraft g_aircraft[MAX_TRACKED_AIRCRAFT];
 int g_aircraftCount = 0;
+AviationStatus g_aviationStatus;
 
 static float bearingDeg(float lat1, float lon1, float lat2, float lon2) {
   float dLon = radians(lon2 - lon1);
@@ -43,12 +44,14 @@ void aviation_service_update() {
   http.addHeader("X-RapidAPI-Key", ADSBX_API_KEY);
   http.addHeader("X-RapidAPI-Host", "adsbexchange-com1.p.rapidapi.com");
   int code = http.GET();
+  g_aviationStatus.lastHttpCode = code;
 
   if (code == 200) {
     String payload = http.getString();
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, payload);
     if (!err) {
+      g_aviationStatus.lastError = "";
       JsonArray ac = doc["ac"].as<JsonArray>();
       g_aircraftCount = 0;
       for (JsonObject a : ac) {
@@ -68,9 +71,11 @@ void aviation_service_update() {
     } else {
       Serial.printf("[Aviation] JSON parse error: %s\n", err.c_str());
       Serial.printf("[Aviation] raw payload: %s\n", payload.c_str());
+      g_aviationStatus.lastError = String("JSON parse: ") + err.c_str();
     }
   } else {
     Serial.printf("[Aviation] HTTP %d\n", code);
+    g_aviationStatus.lastError = "HTTP request failed";
   }
   http.end();
 }
