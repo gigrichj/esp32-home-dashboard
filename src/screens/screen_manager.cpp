@@ -54,6 +54,8 @@ static void drawHeader() {
   screen.drawString(tabIndicator, WIDTH - 10, 15);
 }
 
+static void drawCloudIcon(int cx, int cy, int r, uint16_t color); // defined further down, used here
+
 static void drawDashboardBackground() {
   uint32_t t = millis();
 
