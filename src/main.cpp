@@ -184,7 +184,7 @@ void setup() {
     wasInSetupMode = true;
   }
 
-  xTaskCreatePinnedToCore(networkTask, "networkTask", 8192, nullptr, 1, nullptr, 0);
+  xTaskCreatePinnedToCore(networkTask, "networkTask", 24576, nullptr, 1, nullptr, 0); // bumped for JPEG decode headroom
 }
 
 void loop() {

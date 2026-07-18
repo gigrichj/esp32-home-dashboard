@@ -516,13 +516,17 @@ static void drawWeatherBackground(int weatherId, bool isNight) {
       screen.fillCircle(cx, cy, 30, sunColor);
     }
   } else if (weatherId > 800) {
-    // Cloudy: a couple of large soft clouds slowly drifting by
+    // Cloudy: several large soft clouds slowly drifting by at different
+    // speeds and depths, for a fuller sky.
     uint16_t cloudColor = screen.color565(28, 32, 40);
-    for (int i = 0; i < 3; i++) {
+    static const int cloudCount = 6;
+    for (int i = 0; i < cloudCount; i++) {
       int driftSpan = WIDTH + 220;
-      int x = (int)((t / 40 + (uint32_t)i * 260) % (uint32_t)driftSpan) - 110;
-      int y = 70 + i * 60;
-      drawCloudIcon(x, y, 46 - i * 6, cloudColor);
+      uint32_t speed = 30 + (uint32_t)(i % 3) * 15; // vary speed by "depth"
+      int x = (int)((t / speed + (uint32_t)i * 170) % (uint32_t)driftSpan) - 110;
+      int y = 55 + (i % 4) * 45;
+      int size = 30 + (i % 3) * 10;
+      drawCloudIcon(x, y, size, cloudColor);
     }
   }
 }
