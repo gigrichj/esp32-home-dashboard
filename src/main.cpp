@@ -10,11 +10,12 @@
 #include "services/smarthome_service.h"
 #include "screens/screen_manager.h"
 #include "debug_log.h"
+#include "debug_controls.h"
 
 using namespace PanelDisplay;
 
 static const uint32_t WEATHER_POLL_MS    = 10UL * 60UL * 1000UL;
-static const uint32_t AVIATION_POLL_MS   = 15UL * 1000UL;
+
 static const uint32_t ISS_POLL_MS        = 60UL * 1000UL;
 static const uint32_t SMARTHOME_POLL_MS  = 5UL * 1000UL;
 static const uint32_t DRAW_INTERVAL_MS   = 200UL;
@@ -133,7 +134,7 @@ void networkTask(void* param) {
       weather_service_update();
       debug_log("weather fetch done");
     }
-    if (now - lastAviation > AVIATION_POLL_MS) {
+    if (now - lastAviation > g_aviationPollMs) {
       lastAviation = now;
       debug_log("aviation fetch start");
       aviation_service_update();

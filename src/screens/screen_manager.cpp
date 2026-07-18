@@ -7,6 +7,7 @@
 #include "../services/aviation_service.h"
 #include "secrets.h"
 #include "../debug_log.h"
+#include "../debug_controls.h"
 #include <math.h>
 #include <time.h>
 #include <WiFi.h>
@@ -686,6 +687,17 @@ static void draw_debug() {
   screen.drawString("NEXT >>", 690, 430);
   screen.setTextDatum(textdatum_t::top_left);
 
+  char pollLine[48];
+  snprintf(pollLine, sizeof(pollLine), "Aviation poll: %lus", (unsigned long)(g_aviationPollMs / 1000));
+  screen.setTextSize(2);
+  screen.setTextColor(colorAccent, colorBg);
+  screen.drawString(pollLine, 10, 320);
+  screen.fillRect(230, 310, 180, 60, colorAccent);
+  screen.setTextColor(colorBg, colorAccent);
+  screen.setTextDatum(textdatum_t::middle_center);
+  screen.drawString("NEXT >>", 320, 340);
+  screen.setTextDatum(textdatum_t::top_left);
+
   screen.setTextSize(1);
   screen.setTextColor(colorText, colorBg);
   int y = 105;
@@ -757,6 +769,9 @@ void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
       bool hitNextButton = currentTab == DEBUG_TAB_INDEX &&
                             lastTouchX >= 600 && lastTouchX <= 780 &&
                             lastTouchY >= 400 && lastTouchY <= 460;
+      bool hitPollButton = currentTab == DEBUG_TAB_INDEX &&
+                            lastTouchX >= 230 && lastTouchX <= 410 &&
+                            lastTouchY >= 310 && lastTouchY <= 370;
 
       bool handledAviation = false;
       if (currentTab == AVIATION_TAB_INDEX) {
@@ -785,6 +800,8 @@ void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
 
       if (hitNextButton) {
         PanelDisplay::cycleBounceBufferAndRestart();
+      } else if (hitPollButton) {
+        cycleAviationPollInterval();
       } else if (!handledAviation) {
         currentTab = (currentTab + 1) % TAB_COUNT;
       }
