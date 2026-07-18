@@ -54,7 +54,37 @@ static void drawHeader() {
   screen.drawString(tabIndicator, WIDTH - 10, 15);
 }
 
+static void drawDashboardBackground() {
+  uint32_t t = millis();
+
+  // Cloud drift low on the screen, echoing whatever the weather page is
+  // currently showing, so the dashboard feels alive without being busy.
+  if (g_weather.valid && g_weather.weatherId > 800) {
+    uint16_t cloudColor = screen.color565(22, 26, 32);
+    for (int i = 0; i < 4; i++) {
+      int driftSpan = WIDTH + 200;
+      uint32_t speed = 35 + (uint32_t)(i % 2) * 15;
+      int x = (int)((t / speed + (uint32_t)i * 220) % (uint32_t)driftSpan) - 100;
+      int y = 320 + (i % 2) * 50;
+      drawCloudIcon(x, y, 26 + (i % 2) * 8, cloudColor);
+    }
+  }
+
+  // A little airplane silhouette continuously crossing the lower part of
+  // the screen - a fun nod to the fact this thing tracks real aircraft.
+  {
+    uint16_t planeColor = screen.color565(45, 55, 70);
+    int span = WIDTH + 80;
+    int x = (int)((t / 18) % (uint32_t)span) - 40;
+    int y = 410;
+    screen.fillTriangle(x - 14, y, x + 14, y, x, y - 5, planeColor);
+    screen.fillTriangle(x - 4, y - 5, x + 4, y - 5, x, y - 16, planeColor);
+  }
+}
+
 static void draw_dashboard() {
+  drawDashboardBackground();
+
   screen.setTextSize(2);
   screen.setTextColor(colorAccent, colorBg);
   screen.setTextDatum(textdatum_t::top_left);
@@ -269,12 +299,17 @@ static void draw_aviation() {
     return;
   }
 
+  int visibleCount = 0;
+  for (int i = 0; i < g_aircraftCount; i++) {
+    if (g_aircraft[i].distanceNm <= RADAR_MAX_RANGE_NM) visibleCount++;
+  }
+
   int listY = 55;
   screen.setTextSize(2);
   screen.setTextColor(colorText, colorBg);
   screen.setTextDatum(textdatum_t::top_left);
   char header[32];
-  snprintf(header, sizeof(header), "NEARBY (%d)", g_aircraftCount);
+  snprintf(header, sizeof(header), "NEARBY (%d)", visibleCount);
   screen.drawString(header, listX, listY);
   listY += 36;
 
@@ -635,6 +670,12 @@ static String formatUnixTime(uint32_t unixTime) {
   return String(buf);
 }
 
+static void drawIssIcon(int cx, int cy, uint16_t color) {
+  screen.fillRect(cx - 3, cy - 3, 6, 6, color);
+  screen.fillRect(cx - 15, cy - 2, 9, 4, color);
+  screen.fillRect(cx + 6, cy - 2, 9, 4, color);
+}
+
 static void draw_iss() {
   screen.setTextDatum(textdatum_t::top_left);
 
@@ -650,7 +691,7 @@ static void draw_iss() {
     return;
   }
 
-  const int MAP_X = 20, MAP_Y = 65, MAP_W = 460, MAP_H = 230;
+  const int MAP_X = 20, MAP_Y = 55, MAP_W = 760, MAP_H = 270;
   uint16_t colorGrid = screen.color565(40, 60, 80);
   uint16_t colorEquator = screen.color565(70, 100, 130);
   uint16_t colorIss = screen.color565(255, 90, 90);
@@ -700,72 +741,76 @@ static void draw_iss() {
 
   int issX = MAP_X + (int)((g_iss.lon + 180) / 360.0f * MAP_W);
   int issY = MAP_Y + (int)((90 - g_iss.lat) / 180.0f * MAP_H);
-  screen.fillCircle(issX, issY, 6, colorIss);
-  screen.drawCircle(issX, issY, 10, colorIss);
+  drawIssIcon(issX, issY, colorIss);
 
   screen.setTextSize(1);
   screen.setTextColor(colorIss, colorBg);
   char posLabel[32];
   snprintf(posLabel, sizeof(posLabel), "%.2f, %.2f", g_iss.lat, g_iss.lon);
-  screen.drawString(posLabel, issX + 12, issY - 6);
+  screen.drawString(posLabel, issX + 16, issY - 6);
 
-  int rightX = 500;
-  int y = 65;
+  int belowY = MAP_Y + MAP_H + 15;
+  int leftX = 20;
+  int rightX = 420;
+
   screen.setTextSize(2);
   screen.setTextColor(colorText, colorBg);
-  screen.drawString("Current Position", rightX, y);
-  y += 40;
-
-  char row[64];
-  screen.setTextColor(colorDim, colorBg);
-  screen.drawString("Latitude", rightX, y);
-  screen.setTextColor(colorText, colorBg);
-  snprintf(row, sizeof(row), "%.2f", g_iss.lat);
-  screen.drawString(row, rightX + 150, y);
-  y += 36;
-
-  screen.setTextColor(colorDim, colorBg);
-  screen.drawString("Longitude", rightX, y);
-  screen.setTextColor(colorText, colorBg);
-  snprintf(row, sizeof(row), "%.2f", g_iss.lon);
-  screen.drawString(row, rightX + 150, y);
-  y += 36;
-
-  screen.setTextColor(colorDim, colorBg);
-  screen.drawString("Altitude", rightX, y);
-  screen.setTextColor(colorText, colorBg);
-  snprintf(row, sizeof(row), "%.0f km", g_iss.altitudeKm);
-  screen.drawString(row, rightX + 150, y);
-  y += 50;
+  screen.drawString("Current Position", leftX, belowY);
 
   screen.setTextSize(2);
   screen.setTextColor(colorAccent, colorBg);
-  screen.drawString("Next Visible Pass", rightX, y);
-  y += 36;
+  screen.drawString("Next Visible Pass", rightX, belowY);
+
+  int y = belowY + 34;
+  char row[64];
+
+  screen.setTextSize(1);
+  screen.setTextColor(colorDim, colorBg);
+  screen.drawString("Latitude", leftX, y);
+  screen.setTextColor(colorText, colorBg);
+  snprintf(row, sizeof(row), "%.2f", g_iss.lat);
+  screen.drawString(row, leftX + 100, y);
 
   if (g_iss.nextPassUnix > 0) {
     screen.setTextColor(colorText, colorBg);
     String passTime = formatUnixTime(g_iss.nextPassUnix);
     screen.drawString(passTime, rightX, y);
-    y += 36;
+  } else {
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString("No upcoming pass found", rightX, y);
+  }
+  y += 22;
 
+  screen.setTextColor(colorDim, colorBg);
+  screen.drawString("Longitude", leftX, y);
+  screen.setTextColor(colorText, colorBg);
+  snprintf(row, sizeof(row), "%.2f", g_iss.lon);
+  screen.drawString(row, leftX + 100, y);
+
+  if (g_iss.nextPassUnix > 0) {
     screen.setTextColor(colorDim, colorBg);
     screen.drawString("Duration", rightX, y);
     screen.setTextColor(colorText, colorBg);
     snprintf(row, sizeof(row), "%d min", g_iss.nextPassDurationSec / 60);
-    screen.drawString(row, rightX + 150, y);
+    screen.drawString(row, rightX + 100, y);
+  }
+  y += 22;
 
+  screen.setTextColor(colorDim, colorBg);
+  screen.drawString("Altitude", leftX, y);
+  screen.setTextColor(colorText, colorBg);
+  snprintf(row, sizeof(row), "%.0f km", g_iss.altitudeKm);
+  screen.drawString(row, leftX + 100, y);
+
+  if (g_iss.nextPassUnix > 0) {
     uint32_t nowUnix = (uint32_t)time(nullptr);
     if (nowUnix >= g_iss.nextPassUnix &&
         nowUnix <= g_iss.nextPassUnix + (uint32_t)g_iss.nextPassDurationSec) {
-      y += 46;
       screen.setTextSize(2);
       screen.setTextColor(screen.color565(80, 220, 120), colorBg);
-      screen.drawString("VISIBLE NOW!", rightX, y);
+      screen.drawString("VISIBLE NOW!", rightX, y + 4);
+      screen.setTextSize(1);
     }
-  } else {
-    screen.setTextColor(colorDim, colorBg);
-    screen.drawString("No upcoming pass found", rightX, y);
   }
 }
 
