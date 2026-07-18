@@ -6,6 +6,7 @@
 #include <math.h>
 #include <JPEGDEC.h>
 #include <esp_heap_caps.h>
+#include <WiFiClient.h>
 
 Aircraft g_aircraft[MAX_TRACKED_AIRCRAFT];
 int g_aircraftCount = 0;
