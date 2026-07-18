@@ -838,6 +838,28 @@ static String formatUnixTime(uint32_t unixTime) {
   return String(buf);
 }
 
+// Compact time like "9:43P" for the visible-passes list, where space is tight.
+static String formatPassTime(uint32_t unixTime) {
+  if (unixTime == 0) return "--";
+  time_t t = (time_t)unixTime;
+  struct tm* ti = localtime(&t);
+  int h12 = ti->tm_hour % 12;
+  if (h12 == 0) h12 = 12;
+  char buf[16];
+  snprintf(buf, sizeof(buf), "%d:%02d%s", h12, ti->tm_min, ti->tm_hour < 12 ? "A" : "P");
+  return String(buf);
+}
+
+// Compact date like "Jul18" for the visible-passes list.
+static String formatPassDate(uint32_t unixTime) {
+  if (unixTime == 0) return "--";
+  time_t t = (time_t)unixTime;
+  struct tm* ti = localtime(&t);
+  char buf[16];
+  strftime(buf, sizeof(buf), "%b%d", ti);
+  return String(buf);
+}
+
 static void drawIssIcon(int cx, int cy, uint16_t color) {
   screen.fillRect(cx - 3, cy - 3, 6, 6, color);
   screen.fillRect(cx - 15, cy - 2, 9, 4, color);
@@ -859,7 +881,7 @@ static void draw_iss() {
     return;
   }
 
-  const int MAP_X = 20, MAP_Y = 55, MAP_W = 760, MAP_H = 270;
+  const int MAP_X = 20, MAP_Y = 55, MAP_W = 760, MAP_H = 200;
   uint16_t colorGrid = screen.color565(40, 60, 80);
   uint16_t colorEquator = screen.color565(70, 100, 130);
   uint16_t colorIss = screen.color565(255, 90, 90);
@@ -952,28 +974,116 @@ static void draw_iss() {
   snprintf(row, sizeof(row), "%.0f km", g_iss.altitudeKm);
   screen.drawString(row, leftX + 100, y + 44);
 
-  // Right column: Next Visible Pass - bigger, its own text size
+  // Right column: Next Visible Pass - countdown boxes or a "visible now" banner
   screen.setTextSize(2);
-  if (g_iss.nextPassUnix > 0) {
-    screen.setTextColor(colorText, colorBg);
-    String passTime = formatUnixTime(g_iss.nextPassUnix);
-    screen.drawString(passTime, rightX, y);
+  uint32_t nowUnix = (uint32_t)time(nullptr);
+  bool isVisibleNow = g_iss.nextPassUnix > 0 &&
+      nowUnix >= g_iss.nextPassUnix &&
+      nowUnix <= g_iss.nextPassUnix + (uint32_t)g_iss.nextPassDurationSec;
 
+  if (isVisibleNow) {
+    screen.setTextSize(3);
+    screen.setTextColor(screen.color565(80, 220, 120), colorBg);
+    screen.drawString("VISIBLE NOW!", rightX, y);
+    screen.setTextSize(1);
     screen.setTextColor(colorDim, colorBg);
-    screen.drawString("Duration", rightX, y + 32);
+    screen.drawString("Duration", rightX, y + 40);
     screen.setTextColor(colorText, colorBg);
     snprintf(row, sizeof(row), "%d min", g_iss.nextPassDurationSec / 60);
-    screen.drawString(row, rightX + 140, y + 32);
+    screen.drawString(row, rightX + 70, y + 40);
+  } else if (g_iss.nextPassUnix > 0) {
+    uint32_t secsUntil = (g_iss.nextPassUnix > nowUnix) ? (g_iss.nextPassUnix - nowUnix) : 0;
+    int hh = secsUntil / 3600;
+    int mm = (secsUntil % 3600) / 60;
+    int ss = secsUntil % 60;
+    if (hh > 99) hh = 99;
 
-    uint32_t nowUnix = (uint32_t)time(nullptr);
-    if (nowUnix >= g_iss.nextPassUnix &&
-        nowUnix <= g_iss.nextPassUnix + (uint32_t)g_iss.nextPassDurationSec) {
-      screen.setTextColor(screen.color565(80, 220, 120), colorBg);
-      screen.drawString("VISIBLE NOW!", rightX, y + 64);
+    screen.setTextSize(1);
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString("Next pass in:", rightX, y);
+
+    int boxY = y + 18;
+    int boxW = 46, boxH = 46, gap = 8, colonW = 16;
+    uint16_t boxColor = screen.color565(30, 34, 45);
+    char digitBuf[3];
+    int cx = rightX;
+
+    screen.setTextDatum(textdatum_t::middle_center);
+
+    screen.fillRect(cx, boxY, boxW, boxH, boxColor);
+    snprintf(digitBuf, sizeof(digitBuf), "%02d", hh);
+    screen.setTextSize(3);
+    screen.setTextColor(colorText, boxColor);
+    screen.drawString(digitBuf, cx + boxW / 2, boxY + boxH / 2);
+    cx += boxW + gap;
+
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString(":", cx + colonW / 2, boxY + boxH / 2);
+    cx += colonW + gap;
+
+    screen.fillRect(cx, boxY, boxW, boxH, boxColor);
+    snprintf(digitBuf, sizeof(digitBuf), "%02d", mm);
+    screen.setTextColor(colorText, boxColor);
+    screen.drawString(digitBuf, cx + boxW / 2, boxY + boxH / 2);
+    cx += boxW + gap;
+
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString(":", cx + colonW / 2, boxY + boxH / 2);
+    cx += colonW + gap;
+
+    screen.fillRect(cx, boxY, boxW, boxH, boxColor);
+    snprintf(digitBuf, sizeof(digitBuf), "%02d", ss);
+    screen.setTextColor(colorText, boxColor);
+    screen.drawString(digitBuf, cx + boxW / 2, boxY + boxH / 2);
+
+    screen.setTextDatum(textdatum_t::top_left);
+
+    int detailY = boxY + boxH + 14;
+    screen.setTextSize(1);
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString("Duration", rightX, detailY);
+    screen.setTextColor(colorText, colorBg);
+    snprintf(row, sizeof(row), "%d min", g_iss.nextPassDurationSec / 60);
+    screen.drawString(row, rightX + 70, detailY);
+
+    if (g_issPassCount > 0) {
+      snprintf(row, sizeof(row), "Max El %d", g_issPasses[0].maxElevationDeg);
+      screen.drawString(row, rightX + 150, detailY);
     }
   } else {
     screen.setTextColor(colorDim, colorBg);
     screen.drawString("No upcoming pass found", rightX, y);
+  }
+
+  // Visible passes list -- up to 3 rows, sized to fit what's left on screen.
+  {
+    int listHeaderY = belowY + 130;
+    screen.setTextSize(2);
+    screen.setTextColor(colorAccent, colorBg);
+    screen.setTextDatum(textdatum_t::top_left);
+    screen.drawString("Visible Passes", rightX, listHeaderY);
+
+    screen.setTextSize(1);
+    int rowY = listHeaderY + 26;
+    int shownPasses = min(g_issPassCount, 3);
+    if (shownPasses == 0) {
+      screen.setTextColor(colorDim, colorBg);
+      screen.drawString("No passes in the next few days", rightX, rowY);
+    } else {
+      for (int i = 0; i < shownPasses; i++) {
+        IssPass& p = g_issPasses[i];
+        char line[64];
+        snprintf(line, sizeof(line), "%s %s-%s  El%d  Mag%.1f",
+                 formatPassDate(p.startUnix).c_str(),
+                 formatPassTime(p.startUnix).c_str(),
+                 formatPassTime(p.endUnix).c_str(),
+                 p.maxElevationDeg,
+                 p.magnitude);
+        screen.setTextColor(colorText, colorBg);
+        screen.drawString(line, rightX, rowY);
+        rowY += 18;
+      }
+    }
   }
 }
 

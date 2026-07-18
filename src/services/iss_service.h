@@ -11,6 +11,17 @@ struct IssData {
 
 extern IssData g_iss;
 
+struct IssPass {
+  uint32_t startUnix = 0;
+  uint32_t endUnix = 0;
+  int maxElevationDeg = 0;
+  float magnitude = 99.0f;
+};
+
+static const int ISS_MAX_PASSES = 5;
+extern IssPass g_issPasses[ISS_MAX_PASSES];
+extern int g_issPassCount;
+
 struct TrackPoint {
   float lat;
   float lon;

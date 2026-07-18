@@ -7,6 +7,8 @@
 #include <time.h>
 
 IssData g_iss;
+IssPass g_issPasses[ISS_MAX_PASSES];
+int g_issPassCount = 0;
 TrackPoint g_issTrack[ISS_TRACK_POINTS];
 int g_issTrackCount = 0;
 bool g_issTrackValid = false;
@@ -123,7 +125,7 @@ void iss_service_update() {
   HTTPClient passHttp;
   char passUrl[256];
   snprintf(passUrl, sizeof(passUrl),
-    "https://api.n2yo.com/rest/v1/satellite/visualpasses/25544/%f/%f/0/2/300/&apiKey=%s",
+    "https://api.n2yo.com/rest/v1/satellite/visualpasses/25544/%f/%f/0/7/300/&apiKey=%s",
     (double)HOME_LAT, (double)HOME_LON, N2YO_API_KEY);
 
   passHttp.begin(passUrl);
@@ -133,10 +135,18 @@ void iss_service_update() {
     JsonDocument passDoc;
     if (!deserializeJson(passDoc, passPayload)) {
       JsonArray passes = passDoc["passes"].as<JsonArray>();
-      if (passes.size() > 0) {
-        JsonObject firstPass = passes[0];
-        g_iss.nextPassUnix = firstPass["startUTC"] | 0;
-        g_iss.nextPassDurationSec = firstPass["duration"] | 0;
+      g_issPassCount = 0;
+      for (JsonObject p : passes) {
+        if (g_issPassCount >= ISS_MAX_PASSES) break;
+        g_issPasses[g_issPassCount].startUnix       = p["startUTC"] | 0;
+        g_issPasses[g_issPassCount].endUnix         = p["endUTC"]   | 0;
+        g_issPasses[g_issPassCount].maxElevationDeg = p["maxEl"]    | 0;
+        g_issPasses[g_issPassCount].magnitude       = p["mag"]      | 99.0f;
+        g_issPassCount++;
+      }
+      if (g_issPassCount > 0) {
+        g_iss.nextPassUnix = g_issPasses[0].startUnix;
+        g_iss.nextPassDurationSec = (int)(g_issPasses[0].endUnix - g_issPasses[0].startUnix);
       }
     }
   } else {
