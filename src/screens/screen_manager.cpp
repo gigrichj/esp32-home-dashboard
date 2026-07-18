@@ -376,11 +376,11 @@ static void draw_aviation() {
       { colorForAltitude(35000), ">30k ft" },
     };
     screen.setTextSize(1);
-    screen.setTextDatum(textdatum_t::middle_left);
+    screen.setTextDatum(textdatum_t::top_left);
     for (int i = 0; i < 4; i++) {
       screen.fillRect(legX, legY - 6, 14, 14, legend[i].color);
       screen.setTextColor(colorLabel, colorBg);
-      screen.drawString(legend[i].label, legX + 20, legY + 1);
+      screen.drawString(legend[i].label, legX + 20, legY - 3);
       legY += 34;
     }
     screen.setTextDatum(textdatum_t::top_left);
