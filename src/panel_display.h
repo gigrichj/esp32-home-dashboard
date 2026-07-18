@@ -38,6 +38,7 @@ public:
     void fillCircle(int x0, int y0, int r, uint16_t color);
     void fillSmoothCircle(int x0, int y0, int r, uint16_t color);
     void fillTriangle(int x0, int y0, int x1, int y1, int x2, int y2, uint16_t color);
+    void drawRGBBitmap(int x, int y, const uint16_t *bitmap, int w, int h);
 
     void setTextSize(uint8_t size);
     void setTextColor(uint16_t fg);

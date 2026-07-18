@@ -39,6 +39,13 @@ struct AircraftDetail {
 };
 extern AircraftDetail g_aircraftDetail;
 
+// Decoded aircraft photo, allocated in PSRAM. Valid only when
+// g_aircraftPhotoValid is true; owned entirely by aviation_service.cpp.
+extern uint16_t* g_aircraftPhotoPixels;
+extern int g_aircraftPhotoWidth;
+extern int g_aircraftPhotoHeight;
+extern bool g_aircraftPhotoValid;
+
 void aviation_service_update();
 bool aviation_lookup_flight(const String& flightNumber, Aircraft& out);
 

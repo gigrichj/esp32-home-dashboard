@@ -119,66 +119,82 @@ int g_selectedAircraftIndex = -1;
 static void draw_aircraft_detail_card(int listX) {
   Aircraft& a = g_aircraft[g_selectedAircraftIndex];
 
+  int photoBoxW = 300;
+  int photoBoxH = 110;
+  if (g_aircraftPhotoValid && g_aircraftPhotoPixels != nullptr) {
+    int drawW = g_aircraftPhotoWidth < photoBoxW ? g_aircraftPhotoWidth : photoBoxW;
+    int drawH = g_aircraftPhotoHeight < photoBoxH ? g_aircraftPhotoHeight : photoBoxH;
+    screen.drawRGBBitmap(listX, 55, g_aircraftPhotoPixels, drawW, drawH);
+  } else {
+    screen.fillRect(listX, 55, photoBoxW, photoBoxH, screen.color565(25, 28, 34));
+    screen.setTextSize(1);
+    screen.setTextColor(colorDim, screen.color565(25, 28, 34));
+    screen.setTextDatum(textdatum_t::middle_center);
+    screen.drawString(g_aircraftDetail.lookupInProgress ? "Loading photo..." : "No photo available",
+                       listX + photoBoxW / 2, 55 + photoBoxH / 2);
+    screen.setTextDatum(textdatum_t::top_left);
+  }
+
   screen.setTextSize(2);
   screen.setTextColor(colorText, colorBg);
   screen.setTextDatum(textdatum_t::top_left);
   char header[32];
   const char* callsign = a.callsign.length() > 0 ? a.callsign.c_str() : "????";
   snprintf(header, sizeof(header), "%s", callsign);
-  screen.drawString(header, listX, 55);
+  screen.drawString(header, listX, 172);
 
   screen.setTextSize(1);
   screen.setTextColor(colorAccent, colorBg);
   if (g_aircraftDetail.lookupInProgress) {
-    screen.drawString("Looking up...", listX, 82);
+    screen.drawString("Looking up...", listX, 199);
   } else if (g_aircraftDetail.valid && g_aircraftDetail.type.length() > 0) {
-    screen.drawString(g_aircraftDetail.type, listX, 82);
+    screen.drawString(g_aircraftDetail.type, listX, 199);
   } else {
-    screen.drawString("Type unknown", listX, 82);
+    screen.drawString("Type unknown", listX, 199);
   }
 
-  int y = 110;
+  int y = 222;
   char row[48];
   screen.setTextColor(colorDim, colorBg);
   screen.drawString("Altitude", listX, y);
   screen.setTextColor(colorText, colorBg);
   snprintf(row, sizeof(row), "%d ft", a.altitudeFt);
   screen.drawString(row, listX + 100, y);
-  y += 26;
+  y += 20;
 
   screen.setTextColor(colorDim, colorBg);
   screen.drawString("V/S", listX, y);
   screen.setTextColor(colorText, colorBg);
   snprintf(row, sizeof(row), "%+d fpm", a.verticalRateFpm);
   screen.drawString(row, listX + 100, y);
-  y += 26;
+  y += 20;
 
   screen.setTextColor(colorDim, colorBg);
   screen.drawString("Speed", listX, y);
   screen.setTextColor(colorText, colorBg);
   snprintf(row, sizeof(row), "%d kt", a.groundSpeedKt);
   screen.drawString(row, listX + 100, y);
-  y += 26;
+  y += 20;
 
   screen.setTextColor(colorDim, colorBg);
   screen.drawString("Distance", listX, y);
   screen.setTextColor(colorText, colorBg);
   snprintf(row, sizeof(row), "%.0f nm", a.distanceNm);
   screen.drawString(row, listX + 100, y);
-  y += 26;
+  y += 20;
 
   screen.setTextColor(colorDim, colorBg);
   screen.drawString("Bearing", listX, y);
   screen.setTextColor(colorText, colorBg);
   snprintf(row, sizeof(row), "%.0f deg", a.bearingFromHome);
   screen.drawString(row, listX + 100, y);
-  y += 26;
+  y += 20;
 
   screen.setTextColor(colorDim, colorBg);
   screen.drawString("Squawk", listX, y);
   screen.setTextColor(colorText, colorBg);
   screen.drawString(a.squawk.length() > 0 ? a.squawk : String("----"), listX + 100, y);
-  y += 36;
+  y += 26;
 
   screen.setTextColor(colorAccent, colorBg);
   if (g_aircraftDetail.valid && g_aircraftDetail.originIata.length() > 0) {

@@ -445,6 +445,21 @@ void Canvas::fillTriangle(int x0, int y0, int x1, int y1, int x2, int y2, uint16
     }
 }
 
+void Canvas::drawRGBBitmap(int x, int y, const uint16_t *bitmap, int w, int h) {
+    if (_fb == nullptr || bitmap == nullptr) return;
+    for (int row = 0; row < h; row++) {
+        int destY = y + row;
+        if (destY < 0 || destY >= HEIGHT) continue;
+        const uint16_t *srcRow = bitmap + (size_t)row * w;
+        uint16_t *destRow = _fb + (size_t)destY * WIDTH;
+        for (int col = 0; col < w; col++) {
+            int destX = x + col;
+            if (destX < 0 || destX >= WIDTH) continue;
+            destRow[destX] = srcRow[col];
+        }
+    }
+}
+
 void Canvas::setTextSize(uint8_t size) {
     _textSize = std::max<uint8_t>(1, size);
 }

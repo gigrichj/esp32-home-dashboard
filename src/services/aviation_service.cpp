@@ -4,11 +4,112 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <math.h>
+#include <JPEGDEC.h>
+#include <esp_heap_caps.h>
 
 Aircraft g_aircraft[MAX_TRACKED_AIRCRAFT];
 int g_aircraftCount = 0;
 AviationStatus g_aviationStatus;
 AircraftDetail g_aircraftDetail;
+
+uint16_t* g_aircraftPhotoPixels = nullptr;
+int g_aircraftPhotoWidth = 0;
+int g_aircraftPhotoHeight = 0;
+bool g_aircraftPhotoValid = false;
+
+static uint16_t* s_decodeTarget = nullptr;
+static int s_decodeTargetW = 0;
+static int s_decodeTargetH = 0;
+
+static int jpegDrawCallback(JPEGDRAW *pDraw) {
+  if (s_decodeTarget == nullptr) return 0;
+  for (int row = 0; row < pDraw->iHeight; row++) {
+    int destY = pDraw->y + row;
+    if (destY < 0 || destY >= s_decodeTargetH) continue;
+    uint16_t *destRow = s_decodeTarget + (size_t)destY * s_decodeTargetW;
+    const uint16_t *srcRow = pDraw->pPixels + (size_t)row * pDraw->iWidth;
+    for (int col = 0; col < pDraw->iWidth; col++) {
+      int destX = pDraw->x + col;
+      if (destX < 0 || destX >= s_decodeTargetW) continue;
+      destRow[destX] = srcRow[col];
+    }
+  }
+  return 1;
+}
+
+static void fetchAndDecodePhoto(const String& url) {
+  if (url.length() == 0) return;
+
+  HTTPClient http;
+  http.begin(url);
+  int code = http.GET();
+  if (code != 200) {
+    Serial.printf("[Aviation] photo fetch HTTP %d\n", code);
+    http.end();
+    return;
+  }
+
+  int len = http.getSize();
+  if (len <= 0 || len > 250000) {
+    Serial.printf("[Aviation] photo size invalid: %d\n", len);
+    http.end();
+    return;
+  }
+
+  uint8_t *jpegBuf = (uint8_t *)heap_caps_malloc(len, MALLOC_CAP_SPIRAM);
+  if (jpegBuf == nullptr) {
+    Serial.println("[Aviation] photo buffer alloc failed");
+    http.end();
+    return;
+  }
+
+  WiFiClient *stream = http.getStreamPtr();
+  size_t readTotal = 0;
+  uint32_t startMs = millis();
+  while (http.connected() && readTotal < (size_t)len && millis() - startMs < 8000) {
+    size_t avail = stream->available();
+    if (avail > 0) {
+      int toRead = (int)min((size_t)avail, (size_t)len - readTotal);
+      int r = stream->readBytes(jpegBuf + readTotal, toRead);
+      readTotal += r;
+    } else {
+      delay(1);
+    }
+  }
+  http.end();
+
+  JPEGDEC jpeg;
+  if (jpeg.openRAM(jpegBuf, (int)readTotal, jpegDrawCallback)) {
+    int w = jpeg.getWidth();
+    int h = jpeg.getHeight();
+
+    if (g_aircraftPhotoPixels != nullptr) {
+      free(g_aircraftPhotoPixels);
+      g_aircraftPhotoPixels = nullptr;
+      g_aircraftPhotoValid = false;
+    }
+
+    uint16_t *photoBuf = (uint16_t *)heap_caps_malloc((size_t)w * h * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+    if (photoBuf != nullptr) {
+      s_decodeTarget = photoBuf;
+      s_decodeTargetW = w;
+      s_decodeTargetH = h;
+      jpeg.decode(0, 0, 0);
+      g_aircraftPhotoPixels = photoBuf;
+      g_aircraftPhotoWidth = w;
+      g_aircraftPhotoHeight = h;
+      g_aircraftPhotoValid = true;
+      Serial.printf("[Aviation] photo decoded %dx%d\n", w, h);
+    } else {
+      Serial.println("[Aviation] photo pixel buffer alloc failed");
+    }
+    jpeg.close();
+  } else {
+    Serial.println("[Aviation] JPEG openRAM failed");
+  }
+
+  free(jpegBuf);
+}
 
 static const char* OPENSKY_TOKEN_URL =
   "https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token";
@@ -256,9 +357,14 @@ void aviation_service_detail_loop() {
 
   g_aircraftDetail = AircraftDetail();
   g_aircraftDetail.lookupInProgress = true;
+  g_aircraftPhotoValid = false;
 
   fetchAircraftType(icaoHex);
   fetchRoute(callsign);
+
+  if (g_aircraftDetail.photoThumbUrl.length() > 0) {
+    fetchAndDecodePhoto(g_aircraftDetail.photoThumbUrl);
+  }
 
   g_aircraftDetail.lookedUpIcao = icaoHex;
   g_aircraftDetail.lookupInProgress = false;
