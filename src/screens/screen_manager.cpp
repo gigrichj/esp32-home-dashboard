@@ -453,6 +453,80 @@ static String formatHHMM(uint32_t unixTime) {
   return String(buf);
 }
 
+// A fun animated background scene that reacts to current conditions -
+// drawn first so all the real weather info renders on top of it.
+// Everything is time-driven off millis(), so it animates for free just
+// by being redrawn every frame - no state needs to be stored.
+static void drawWeatherBackground(int weatherId, bool isNight) {
+  uint32_t t = millis();
+
+  if (weatherId >= 200 && weatherId < 300) {
+    // Thunderstorm: rain + an occasional flash
+    if ((t % 4000) < 120) {
+      screen.fillRect(0, 0, WIDTH, HEIGHT, screen.color565(60, 60, 70));
+    }
+  }
+
+  if (weatherId >= 200 && weatherId < 600) {
+    // Rain (also covers the drizzle/rain range and storms above)
+    uint16_t rainColor = screen.color565(50, 80, 110);
+    for (int i = 0; i < 18; i++) {
+      int baseX = (i * 47) % WIDTH;
+      int y = (int)((t / 6 + (uint32_t)i * 61) % (uint32_t)(HEIGHT + 40)) - 20;
+      screen.drawLine(baseX, y, baseX - 6, y + 16, rainColor);
+    }
+  } else if (weatherId >= 600 && weatherId < 700) {
+    // Snow: gently swaying flakes
+    uint16_t snowColor = screen.color565(60, 65, 75);
+    for (int i = 0; i < 14; i++) {
+      int baseX = (i * 59) % WIDTH;
+      int y = (int)((t / 12 + (uint32_t)i * 83) % (uint32_t)(HEIGHT + 20)) - 10;
+      int sway = (int)(sinf((float)t / 700.0f + (float)i) * 8.0f);
+      screen.fillCircle(baseX + sway, y, 2, snowColor);
+    }
+  }
+
+  if (weatherId == 800) {
+    if (isNight) {
+      // Clear night: moon + twinkling stars
+      uint16_t moonColor = screen.color565(45, 50, 65);
+      screen.fillCircle(WIDTH - 90, 80, 34, moonColor);
+      screen.fillCircle(WIDTH - 78, 70, 30, colorBg);
+      for (int i = 0; i < 20; i++) {
+        int sx = (i * 131) % WIDTH;
+        int sy = (i * 71) % 220;
+        bool twinkle = ((t / 400 + (uint32_t)i) % 5) != 0;
+        if (twinkle) {
+          screen.drawPixel(sx, sy, screen.color565(50, 55, 65));
+        }
+      }
+    } else {
+      // Clear day: gently pulsing sun with rays, tucked in the corner
+      uint16_t sunColor = screen.color565(50, 45, 25);
+      int cx = WIDTH - 90, cy = 80;
+      float pulse = 10.0f + sinf((float)t / 900.0f) * 3.0f;
+      for (int i = 0; i < 8; i++) {
+        float ang = i * (PI / 4.0f) + (float)t / 4000.0f;
+        int x1 = cx + (int)(cosf(ang) * (34.0f + pulse));
+        int y1 = cy + (int)(sinf(ang) * (34.0f + pulse));
+        int x2 = cx + (int)(cosf(ang) * (48.0f + pulse));
+        int y2 = cy + (int)(sinf(ang) * (48.0f + pulse));
+        screen.drawLine(x1, y1, x2, y2, sunColor);
+      }
+      screen.fillCircle(cx, cy, 30, sunColor);
+    }
+  } else if (weatherId > 800) {
+    // Cloudy: a couple of large soft clouds slowly drifting by
+    uint16_t cloudColor = screen.color565(28, 32, 40);
+    for (int i = 0; i < 3; i++) {
+      int driftSpan = WIDTH + 220;
+      int x = (int)((t / 40 + (uint32_t)i * 260) % (uint32_t)driftSpan) - 110;
+      int y = 70 + i * 60;
+      drawCloudIcon(x, y, 46 - i * 6, cloudColor);
+    }
+  }
+}
+
 static void draw_weather() {
   screen.setTextDatum(textdatum_t::top_left);
 
@@ -462,6 +536,13 @@ static void draw_weather() {
     screen.drawString("No weather data yet", 20, 100);
     return;
   }
+
+  bool isNight = false;
+  time_t now = time(nullptr);
+  if (now > 100000 && g_weather.sunriseUnix > 0 && g_weather.sunsetUnix > 0) {
+    isNight = (uint32_t)now < g_weather.sunriseUnix || (uint32_t)now > g_weather.sunsetUnix;
+  }
+  drawWeatherBackground(g_weather.weatherId, isNight);
 
   drawWeatherIcon(80, 100, 40, g_weather.weatherId, colorText);
 
