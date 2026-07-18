@@ -5,6 +5,7 @@
 #include "../services/smarthome_service.h"
 #include "../services/iss_service.h"
 #include "../services/aviation_service.h"
+#include "../services/air_quality_service.h"
 #include "secrets.h"
 #include "../debug_log.h"
 #include "../debug_controls.h"
@@ -18,6 +19,27 @@ static const char* TAB_NAMES[] = {
   "DASHBOARD", "AVIATION", "PORSCHE", "SMART HOME", "ISS", "WEATHER", "DEBUG"
 };
 static const int TAB_COUNT = sizeof(TAB_NAMES) / sizeof(TAB_NAMES[0]);
+
+// Colors aircraft by altitude band, the way flight-tracking apps shade
+// low/GA traffic differently from high-altitude airliners.
+static uint16_t colorForAltitude(int altFt) {
+  if (altFt < 5000)  return screen.color565(255, 210, 60);   // low / GA - yellow
+  if (altFt < 15000) return screen.color565(90, 200, 255);   // climbing - cyan
+  if (altFt < 30000) return screen.color565(120, 220, 120);  // cruise - green
+  return screen.color565(255, 140, 60);                      // high altitude - orange
+}
+
+// Colors an OpenWeatherMap AQI index (1=Good .. 5=Very Poor) green-to-red.
+static uint16_t airQualityColor(int aqi) {
+  switch (aqi) {
+    case 1: return screen.color565(80, 200, 120);
+    case 2: return screen.color565(160, 200, 60);
+    case 3: return screen.color565(230, 200, 40);
+    case 4: return screen.color565(230, 130, 40);
+    case 5: return screen.color565(220, 60, 60);
+    default: return screen.color565(120, 130, 140);
+  }
+}
 static int currentTab = 0;
 
 static uint16_t colorBg;
@@ -84,6 +106,8 @@ static void drawDashboardBackground() {
   }
 }
 
+static int countVisibleAircraft(); // defined further down, used in draw_dashboard()
+
 static void draw_dashboard() {
   drawDashboardBackground();
 
@@ -138,6 +162,17 @@ static void draw_dashboard() {
 
   snprintf(line, sizeof(line), "Aircraft nearby: %d", countVisibleAircraft());
   screen.drawString(line, 20, y);
+  y += 40;
+
+  if (g_airQuality.valid) {
+    char aqLine[64];
+    snprintf(aqLine, sizeof(aqLine), "Air quality: %s (AQI %d)", air_quality_label(g_airQuality.aqi), g_airQuality.aqi);
+    screen.setTextColor(airQualityColor(g_airQuality.aqi), colorBg);
+    screen.drawString(aqLine, 20, y);
+    screen.setTextColor(colorText, colorBg);
+  } else {
+    screen.drawString("Air quality: --", 20, y);
+  }
 }
 
 static const int RADAR_CX = 240;
@@ -154,7 +189,7 @@ static int countVisibleAircraft() {
 }
 static const int RADAR_RINGS = 4;
 
-static const int MAX_LIST_ROWS = 8;
+static const int MAX_LIST_ROWS = 20;
 int g_listRowAircraftIdx[MAX_LIST_ROWS];
 int g_listRowY0[MAX_LIST_ROWS];
 int g_listRowY1[MAX_LIST_ROWS];
@@ -298,12 +333,27 @@ static void draw_aviation() {
     int px = RADAR_CX + (int)(sinf(bearingRad) * rangeFrac * RADAR_RADIUS);
     int py = RADAR_CY - (int)(cosf(bearingRad) * rangeFrac * RADAR_RADIUS);
 
-    screen.fillCircle(px, py, 4, colorPlane);
+    uint16_t planeColor = colorForAltitude(a.altitudeFt);
+    screen.fillCircle(px, py, 4, planeColor);
+    int tickLen = constrain(a.altitudeFt / 1000, 2, 14);
+    screen.drawLine(px, py + 5, px, py + 5 + tickLen, planeColor);
 
     screen.setTextColor(colorLabel, colorBg);
     screen.setTextDatum(textdatum_t::top_left);
     const char* label = a.callsign.length() > 0 ? a.callsign.c_str() : "????";
     screen.drawString(label, px + 8, py - 6);
+  }
+
+  {
+    float rad45 = 45.0f * PI / 180.0f;
+    int rangeLabelX = RADAR_CX + (int)(sinf(rad45) * RADAR_RADIUS);
+    int rangeLabelY = RADAR_CY - (int)(cosf(rad45) * RADAR_RADIUS);
+    screen.setTextSize(1);
+    screen.setTextColor(colorLabel, colorBg);
+    screen.setTextDatum(textdatum_t::middle_center);
+    char rangeLabel[16];
+    snprintf(rangeLabel, sizeof(rangeLabel), "%.0fnm", RADAR_MAX_RANGE_NM);
+    screen.drawString(rangeLabel, rangeLabelX, rangeLabelY);
   }
 
   int listX = 470;
@@ -328,11 +378,33 @@ static void draw_aviation() {
   screen.setTextSize(1);
   int shown = 0;
   g_listRowCount = 0;
-  for (int i = 0; i < g_aircraftCount && shown < MAX_LIST_ROWS; i++) {
+
+  int sortedIdx[MAX_TRACKED_AIRCRAFT];
+  int sortedCount = 0;
+  for (int i = 0; i < g_aircraftCount; i++) {
+    if (g_aircraft[i].distanceNm <= RADAR_MAX_RANGE_NM) {
+      sortedIdx[sortedCount++] = i;
+    }
+  }
+  for (int a = 1; a < sortedCount; a++) {
+    int key = sortedIdx[a];
+    float keyDist = g_aircraft[key].distanceNm;
+    int b = a - 1;
+    while (b >= 0 && g_aircraft[sortedIdx[b]].distanceNm > keyDist) {
+      sortedIdx[b + 1] = sortedIdx[b];
+      b--;
+    }
+    sortedIdx[b + 1] = key;
+  }
+
+  int rowCap = min(MAX_LIST_ROWS, (HEIGHT - listY - 10) / 22);
+  for (int s = 0; s < sortedCount && shown < rowCap; s++) {
+    int i = sortedIdx[s];
     Aircraft& a = g_aircraft[i];
     char row[64];
     const char* callsign = a.callsign.length() > 0 ? a.callsign.c_str() : "????";
     snprintf(row, sizeof(row), "%-8s %5dft  %.0fnm", callsign, a.altitudeFt, a.distanceNm);
+    screen.fillCircle(listX - 8, listY + 8, 3, colorForAltitude(a.altitudeFt));
     screen.setTextColor(colorText, colorBg);
     screen.drawString(row, listX, listY);
 
@@ -344,7 +416,14 @@ static void draw_aviation() {
     listY += 22;
     shown++;
   }
-  if (g_aircraftCount == 0) {
+  if (visibleCount > shown) {
+    screen.setTextColor(colorDim, colorBg);
+    char more[24];
+    snprintf(more, sizeof(more), "+%d more", visibleCount - shown);
+    screen.drawString(more, listX, listY);
+    listY += 20;
+  }
+  if (visibleCount == 0) {
     screen.setTextColor(colorDim, colorBg);
     screen.drawString("No aircraft in range", listX, listY);
     listY += 30;
@@ -651,6 +730,53 @@ static void draw_weather() {
   screen.drawString("Sunset", 20, y);
   screen.setTextColor(colorText, colorBg);
   screen.drawString(formatHHMM(g_weather.sunsetUnix), 260, y);
+
+  {
+    int aqX = 520;
+    int aqY = 60;
+    screen.setTextSize(2);
+    screen.setTextColor(colorText, colorBg);
+    screen.setTextDatum(textdatum_t::top_left);
+    screen.drawString("AIR QUALITY", aqX, aqY);
+    aqY += 44;
+
+    if (g_airQuality.valid) {
+      uint16_t aqiColor = airQualityColor(g_airQuality.aqi);
+      screen.setTextSize(4);
+      screen.setTextColor(aqiColor, colorBg);
+      char aqiNum[8];
+      snprintf(aqiNum, sizeof(aqiNum), "%d", g_airQuality.aqi);
+      screen.drawString(aqiNum, aqX, aqY);
+
+      screen.setTextSize(2);
+      screen.setTextColor(colorText, colorBg);
+      screen.drawString(air_quality_label(g_airQuality.aqi), aqX + 60, aqY + 16);
+      aqY += 60;
+
+      int barW = 200, barH = 14, segGap = 4;
+      int segW = barW / 5;
+      for (int s = 0; s < 5; s++) {
+        uint16_t drawColor = (s < g_airQuality.aqi) ? airQualityColor(s + 1) : colorDim;
+        screen.fillRect(aqX + s * segW, aqY, segW - segGap, barH, drawColor);
+      }
+      aqY += barH + 24;
+
+      screen.setTextSize(1);
+      screen.setTextColor(colorDim, colorBg);
+      char pmLine[32];
+      snprintf(pmLine, sizeof(pmLine), "PM2.5: %.1f ug/m3", g_airQuality.pm2_5);
+      screen.drawString(pmLine, aqX, aqY);
+      aqY += 20;
+      snprintf(pmLine, sizeof(pmLine), "PM10: %.1f ug/m3", g_airQuality.pm10);
+      screen.drawString(pmLine, aqX, aqY);
+    } else {
+      screen.setTextSize(2);
+      screen.setTextColor(colorDim, colorBg);
+      screen.drawString("--", aqX, aqY);
+    }
+    screen.setTextSize(2);
+    screen.setTextColor(colorText, colorBg);
+  }
 
   int stripY = 360;
   screen.drawLine(20, stripY - 10, WIDTH - 20, stripY - 10, colorDim);
