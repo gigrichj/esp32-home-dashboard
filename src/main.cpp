@@ -15,7 +15,12 @@
 
 using namespace PanelDisplay;
 
-static const uint32_t WEATHER_POLL_MS    = 10UL * 60UL * 1000UL;
+static const uint32_t WEATHER_POLL_MS      = 10UL * 60UL * 1000UL;
+static const uint32_t AIR_QUALITY_POLL_MS  = 25UL * 60UL * 1000UL; // deliberately not a clean
+                                                                     // multiple of WEATHER_POLL_MS,
+                                                                     // so the two heavy HTTPS fetches
+                                                                     // rarely land in the same
+                                                                     // networkTask iteration.
 
 static const uint32_t ISS_POLL_MS        = 60UL * 1000UL;
 static const uint32_t SMARTHOME_POLL_MS  = 5UL * 1000UL;
@@ -109,7 +114,7 @@ void uiTask(void* param) {
 }
 
 void networkTask(void* param) {
-  uint32_t lastWeather = 0, lastAviation = 0, lastIss = 0, lastSmartHome = 0;
+  uint32_t lastWeather = 0, lastAviation = 0, lastIss = 0, lastSmartHome = 0, lastAirQuality = 0;
 
   for (;;) {
     wifi_manager_loop();
@@ -133,8 +138,18 @@ void networkTask(void* param) {
       lastWeather = now;
       debug_log("weather fetch start");
       weather_service_update();
-      // TEMP DISABLED for flicker isolation test: air_quality_service_update();
       debug_log("weather fetch done");
+    }
+    // Air quality gets its own, longer, deliberately-offset poll interval
+    // rather than piggybacking on the weather fetch -- doing all 3 HTTPS
+    // calls back-to-back was heavy enough on PSRAM/TLS to disrupt the RGB
+    // panel's DMA timing and cause flicker (confirmed by isolation test).
+    if (now - lastAirQuality > AIR_QUALITY_POLL_MS) {
+      lastAirQuality = now;
+      debug_log("air quality fetch start");
+      air_quality_service_update();
+      debug_log("air quality fetch done");
+      vTaskDelay(pdMS_TO_TICKS(200)); // let the display catch its breath
     }
     if (now - lastAviation > g_aviationPollMs) {
       lastAviation = now;
@@ -180,8 +195,11 @@ void setup() {
     mqtt_service_begin();
     configTzTime("EST5EDT,M3.2.0,M11.1.0", "pool.ntp.org", "time.nist.gov");
     weather_service_update();
-    // TEMP DISABLED for flicker isolation test: air_quality_service_update();
+    delay(150);
+    air_quality_service_update();
+    delay(150);
     aviation_service_update();
+    delay(150);
     iss_service_update();
   } else {
     wasInSetupMode = true;
