@@ -31,7 +31,7 @@ int getBounceBufferLines() {
 // Only these values satisfy the library's documented constraint
 // (480 / lines must be a whole, even number) - see
 // https://github.com/esp-arduino-libs/ESP32_Display_Panel/blob/master/docs/FAQ.md#how-to-fix-screen-drift-issue-when-driving-rgb-lcd-with-esp32-s3
-static const int kValidBounceLines[] = {5, 6, 8, 10, 12, 15, 16, 20, 24, 30};
+static const int kValidBounceLines[] = {15, 5, 6, 8, 10, 12, 16, 20, 24, 30};
 static const int kValidBounceLinesCount = sizeof(kValidBounceLines) / sizeof(kValidBounceLines[0]);
 
 void cycleBounceBufferAndRestart() {
