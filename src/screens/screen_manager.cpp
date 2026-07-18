@@ -93,21 +93,26 @@ static void draw_dashboard() {
   screen.drawString(formatCurrentDateTime(), 20, 55);
   screen.setTextColor(colorText, colorBg);
 
-  int y = 100;
+  // WiFi status - small, tucked in the top-right corner instead of the
+  // main list, so it doesn't compete for attention with the real data.
+  screen.setTextSize(1);
+  screen.setTextDatum(textdatum_t::top_right);
   if (WiFi.status() == WL_CONNECTED) {
     char line[64];
     snprintf(line, sizeof(line), "WiFi: %s (%s)", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
     screen.setTextColor(screen.color565(80, 200, 120), colorBg);
-    screen.drawString(line, 20, y);
+    screen.drawString(line, WIDTH - 10, 50);
   } else {
-    screen.setTextColor(screen.color565(220, 80, 80), colorBg);
     char line[32];
     snprintf(line, sizeof(line), "WiFi: disconnected (%d)", (int)WiFi.status());
-    screen.drawString(line, 20, y);
+    screen.setTextColor(screen.color565(220, 80, 80), colorBg);
+    screen.drawString(line, WIDTH - 10, 50);
   }
+  screen.setTextDatum(textdatum_t::top_left);
+  screen.setTextSize(2);
   screen.setTextColor(colorText, colorBg);
-  y += 40;
 
+  int y = 100;
   if (g_weather.valid) {
     char line[64];
     snprintf(line, sizeof(line), "Weather: %.0fF  %s", g_weather.tempF, g_weather.condition.c_str());
@@ -766,6 +771,7 @@ static void draw_iss() {
   int y = belowY + 34;
   char row[64];
 
+  // Left column: Current Position - compact
   screen.setTextSize(1);
   screen.setTextColor(colorDim, colorBg);
   screen.drawString("Latitude", leftX, y);
@@ -773,46 +779,40 @@ static void draw_iss() {
   snprintf(row, sizeof(row), "%.2f", g_iss.lat);
   screen.drawString(row, leftX + 100, y);
 
+  screen.setTextColor(colorDim, colorBg);
+  screen.drawString("Longitude", leftX, y + 22);
+  screen.setTextColor(colorText, colorBg);
+  snprintf(row, sizeof(row), "%.2f", g_iss.lon);
+  screen.drawString(row, leftX + 100, y + 22);
+
+  screen.setTextColor(colorDim, colorBg);
+  screen.drawString("Altitude", leftX, y + 44);
+  screen.setTextColor(colorText, colorBg);
+  snprintf(row, sizeof(row), "%.0f km", g_iss.altitudeKm);
+  screen.drawString(row, leftX + 100, y + 44);
+
+  // Right column: Next Visible Pass - bigger, its own text size
+  screen.setTextSize(2);
   if (g_iss.nextPassUnix > 0) {
     screen.setTextColor(colorText, colorBg);
     String passTime = formatUnixTime(g_iss.nextPassUnix);
     screen.drawString(passTime, rightX, y);
-  } else {
-    screen.setTextColor(colorDim, colorBg);
-    screen.drawString("No upcoming pass found", rightX, y);
-  }
-  y += 22;
 
-  screen.setTextColor(colorDim, colorBg);
-  screen.drawString("Longitude", leftX, y);
-  screen.setTextColor(colorText, colorBg);
-  snprintf(row, sizeof(row), "%.2f", g_iss.lon);
-  screen.drawString(row, leftX + 100, y);
-
-  if (g_iss.nextPassUnix > 0) {
     screen.setTextColor(colorDim, colorBg);
-    screen.drawString("Duration", rightX, y);
+    screen.drawString("Duration", rightX, y + 32);
     screen.setTextColor(colorText, colorBg);
     snprintf(row, sizeof(row), "%d min", g_iss.nextPassDurationSec / 60);
-    screen.drawString(row, rightX + 100, y);
-  }
-  y += 22;
+    screen.drawString(row, rightX + 140, y + 32);
 
-  screen.setTextColor(colorDim, colorBg);
-  screen.drawString("Altitude", leftX, y);
-  screen.setTextColor(colorText, colorBg);
-  snprintf(row, sizeof(row), "%.0f km", g_iss.altitudeKm);
-  screen.drawString(row, leftX + 100, y);
-
-  if (g_iss.nextPassUnix > 0) {
     uint32_t nowUnix = (uint32_t)time(nullptr);
     if (nowUnix >= g_iss.nextPassUnix &&
         nowUnix <= g_iss.nextPassUnix + (uint32_t)g_iss.nextPassDurationSec) {
-      screen.setTextSize(2);
       screen.setTextColor(screen.color565(80, 220, 120), colorBg);
-      screen.drawString("VISIBLE NOW!", rightX, y + 4);
-      screen.setTextSize(1);
+      screen.drawString("VISIBLE NOW!", rightX, y + 64);
     }
+  } else {
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString("No upcoming pass found", rightX, y);
   }
 }
 
