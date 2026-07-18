@@ -175,7 +175,7 @@ static void draw_dashboard() {
   }
 }
 
-static const int RADAR_CX = 240;
+static const int RADAR_CX = 320;
 static const int RADAR_CY = 260;
 static const int RADAR_RADIUS = 190;
 static const float RADAR_MAX_RANGE_NM = 40.0f;
@@ -356,7 +356,37 @@ static void draw_aviation() {
     screen.drawString(rangeLabel, rangeLabelX, rangeLabelY);
   }
 
-  int listX = 470;
+  {
+    // Altitude-color legend, in its own titled column to the left of the
+    // radar (radar was shifted right to make room, mirroring the way the
+    // aircraft list gets its own column to the right).
+    int legX = 20;
+    int legY = 130;
+    screen.setTextSize(2);
+    screen.setTextColor(colorText, colorBg);
+    screen.setTextDatum(textdatum_t::top_left);
+    screen.drawString("ALTITUDE", legX, legY);
+    legY += 40;
+
+    struct LegendEntry { uint16_t color; const char* label; };
+    LegendEntry legend[] = {
+      { colorForAltitude(2000),  "<5k ft" },
+      { colorForAltitude(10000), "5-15k ft" },
+      { colorForAltitude(20000), "15-30k ft" },
+      { colorForAltitude(35000), ">30k ft" },
+    };
+    screen.setTextSize(1);
+    screen.setTextDatum(textdatum_t::middle_left);
+    for (int i = 0; i < 4; i++) {
+      screen.fillRect(legX, legY - 6, 14, 14, legend[i].color);
+      screen.setTextColor(colorLabel, colorBg);
+      screen.drawString(legend[i].label, legX + 20, legY + 1);
+      legY += 34;
+    }
+    screen.setTextDatum(textdatum_t::top_left);
+  }
+
+  int listX = 530;
 
   if (g_selectedAircraftIndex >= 0 && g_selectedAircraftIndex < g_aircraftCount) {
     g_listRowCount = 0; // no list rows while the card is showing
