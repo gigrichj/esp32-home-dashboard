@@ -139,6 +139,7 @@ void networkTask(void* param) {
       aviation_service_update();
       debug_log("aviation fetch done");
     }
+    aviation_service_detail_loop();
     if (now - lastIss > ISS_POLL_MS) {
       lastIss = now;
       debug_log("iss fetch start");

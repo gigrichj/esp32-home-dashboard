@@ -8,6 +8,7 @@
 Aircraft g_aircraft[MAX_TRACKED_AIRCRAFT];
 int g_aircraftCount = 0;
 AviationStatus g_aviationStatus;
+AircraftDetail g_aircraftDetail;
 
 static const char* OPENSKY_TOKEN_URL =
   "https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token";
@@ -15,6 +16,10 @@ static const char* OPENSKY_STATES_URL = "https://opensky-network.org/api/states/
 
 static String oauthToken;
 static uint32_t tokenExpiryMillis = 0;
+
+static bool pendingDetailRequested = false;
+static String pendingIcao;
+static String pendingCallsign;
 
 static float bearingDeg(float lat1, float lon1, float lat2, float lon2) {
   float dLon = radians(lon2 - lon1);
@@ -129,6 +134,21 @@ void aviation_service_update() {
         float velocityMs = s[9] | 0.0f;
         out.groundSpeedKt = (int)(velocityMs * 1.94384f);
         out.trackDeg = s[10] | 0.0f;
+
+        // vertical_rate (index 11, m/s) and squawk (index 14) - fields
+        // OpenSky already gives us, just not parsed until now.
+        if (s.size() > 11 && !s[11].isNull()) {
+          float vRateMs = s[11] | 0.0f;
+          out.verticalRateFpm = (int)(vRateMs * 196.850f);
+        } else {
+          out.verticalRateFpm = 0;
+        }
+        if (s.size() > 14 && !s[14].isNull()) {
+          out.squawk = s[14].as<String>();
+        } else {
+          out.squawk = "";
+        }
+
         out.bearingFromHome = bearingDeg(HOME_LAT, HOME_LON, out.lat, out.lon);
         out.distanceNm = distanceNm(HOME_LAT, HOME_LON, out.lat, out.lon);
         g_aircraftCount++;
@@ -157,4 +177,90 @@ bool aviation_lookup_flight(const String& flightNumber, Aircraft& out) {
     }
   }
   return false;
+}
+
+void aviation_request_detail(const String& icaoHex, const String& callsign) {
+  if (g_aircraftDetail.valid && g_aircraftDetail.lookedUpIcao == icaoHex) {
+    return; // cache hit, already have this one
+  }
+  if (pendingDetailRequested && pendingIcao == icaoHex) {
+    return; // already in flight
+  }
+  pendingIcao = icaoHex;
+  pendingCallsign = callsign;
+  pendingDetailRequested = true;
+  g_aircraftDetail.valid = false;
+  g_aircraftDetail.lookupInProgress = true;
+  g_aircraftDetail.lookupError = "";
+}
+
+static void fetchAircraftType(const String& icaoHex) {
+  HTTPClient http;
+  String url = "https://api.adsbdb.com/v0/aircraft/" + icaoHex;
+  http.begin(url);
+  int code = http.GET();
+  if (code == 200) {
+    String payload = http.getString();
+    JsonDocument doc;
+    if (!deserializeJson(doc, payload)) {
+      JsonObject aircraft = doc["response"]["aircraft"];
+      if (!aircraft.isNull()) {
+        g_aircraftDetail.type = aircraft["type"].as<String>();
+        const char* thumb = aircraft["url_photo_thumbnail"];
+        g_aircraftDetail.photoThumbUrl = thumb ? String(thumb) : String("");
+      }
+    }
+  } else {
+    Serial.printf("[Aviation] adsbdb aircraft lookup HTTP %d\n", code);
+  }
+  http.end();
+}
+
+static void fetchRoute(const String& callsign) {
+  if (callsign.length() == 0) return;
+  HTTPClient http;
+  String url = "https://api.adsbdb.com/v0/callsign/" + callsign;
+  http.begin(url);
+  int code = http.GET();
+  if (code == 200) {
+    String payload = http.getString();
+    JsonDocument doc;
+    if (!deserializeJson(doc, payload)) {
+      JsonObject route = doc["response"]["flightroute"];
+      if (!route.isNull()) {
+        JsonObject origin = route["origin"];
+        JsonObject dest = route["destination"];
+        if (!origin.isNull()) {
+          g_aircraftDetail.originName = origin["municipality"].as<String>();
+          g_aircraftDetail.originIata = origin["iata_code"].as<String>();
+        }
+        if (!dest.isNull()) {
+          g_aircraftDetail.destName = dest["municipality"].as<String>();
+          g_aircraftDetail.destIata = dest["iata_code"].as<String>();
+        }
+      }
+    }
+  } else {
+    Serial.printf("[Aviation] adsbdb route lookup HTTP %d\n", code);
+  }
+  http.end();
+}
+
+void aviation_service_detail_loop() {
+  if (!pendingDetailRequested) return;
+  if (!wifi_manager_is_connected()) return;
+
+  String icaoHex = pendingIcao;
+  String callsign = pendingCallsign;
+  pendingDetailRequested = false;
+
+  g_aircraftDetail = AircraftDetail();
+  g_aircraftDetail.lookupInProgress = true;
+
+  fetchAircraftType(icaoHex);
+  fetchRoute(callsign);
+
+  g_aircraftDetail.lookedUpIcao = icaoHex;
+  g_aircraftDetail.lookupInProgress = false;
+  g_aircraftDetail.valid = true;
 }

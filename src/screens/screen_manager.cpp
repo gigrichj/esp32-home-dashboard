@@ -108,6 +108,105 @@ static const int RADAR_RADIUS = 190;
 static const float RADAR_MAX_RANGE_NM = 40.0f;
 static const int RADAR_RINGS = 4;
 
+static const int MAX_LIST_ROWS = 8;
+int g_listRowAircraftIdx[MAX_LIST_ROWS];
+int g_listRowY0[MAX_LIST_ROWS];
+int g_listRowY1[MAX_LIST_ROWS];
+int g_listRowCount = 0;
+int g_selectedAircraftIndex = -1;
+
+static void draw_aircraft_detail_card(int listX) {
+  Aircraft& a = g_aircraft[g_selectedAircraftIndex];
+
+  screen.setTextSize(2);
+  screen.setTextColor(colorText, colorBg);
+  screen.setTextDatum(textdatum_t::top_left);
+  char header[32];
+  const char* callsign = a.callsign.length() > 0 ? a.callsign.c_str() : "????";
+  snprintf(header, sizeof(header), "%s", callsign);
+  screen.drawString(header, listX, 55);
+
+  screen.setTextSize(1);
+  screen.setTextColor(colorAccent, colorBg);
+  if (g_aircraftDetail.lookupInProgress) {
+    screen.drawString("Looking up...", listX, 82);
+  } else if (g_aircraftDetail.valid && g_aircraftDetail.type.length() > 0) {
+    screen.drawString(g_aircraftDetail.type, listX, 82);
+  } else {
+    screen.drawString("Type unknown", listX, 82);
+  }
+
+  int y = 110;
+  char row[48];
+  screen.setTextColor(colorDim, colorBg);
+  screen.drawString("Altitude", listX, y);
+  screen.setTextColor(colorText, colorBg);
+  snprintf(row, sizeof(row), "%d ft", a.altitudeFt);
+  screen.drawString(row, listX + 100, y);
+  y += 26;
+
+  screen.setTextColor(colorDim, colorBg);
+  screen.drawString("V/S", listX, y);
+  screen.setTextColor(colorText, colorBg);
+  snprintf(row, sizeof(row), "%+d fpm", a.verticalRateFpm);
+  screen.drawString(row, listX + 100, y);
+  y += 26;
+
+  screen.setTextColor(colorDim, colorBg);
+  screen.drawString("Speed", listX, y);
+  screen.setTextColor(colorText, colorBg);
+  snprintf(row, sizeof(row), "%d kt", a.groundSpeedKt);
+  screen.drawString(row, listX + 100, y);
+  y += 26;
+
+  screen.setTextColor(colorDim, colorBg);
+  screen.drawString("Distance", listX, y);
+  screen.setTextColor(colorText, colorBg);
+  snprintf(row, sizeof(row), "%.0f nm", a.distanceNm);
+  screen.drawString(row, listX + 100, y);
+  y += 26;
+
+  screen.setTextColor(colorDim, colorBg);
+  screen.drawString("Bearing", listX, y);
+  screen.setTextColor(colorText, colorBg);
+  snprintf(row, sizeof(row), "%.0f deg", a.bearingFromHome);
+  screen.drawString(row, listX + 100, y);
+  y += 26;
+
+  screen.setTextColor(colorDim, colorBg);
+  screen.drawString("Squawk", listX, y);
+  screen.setTextColor(colorText, colorBg);
+  screen.drawString(a.squawk.length() > 0 ? a.squawk : String("----"), listX + 100, y);
+  y += 36;
+
+  screen.setTextColor(colorAccent, colorBg);
+  if (g_aircraftDetail.valid && g_aircraftDetail.originIata.length() > 0) {
+    char route[64];
+    snprintf(route, sizeof(route), "%s -> %s",
+             g_aircraftDetail.originIata.c_str(),
+             g_aircraftDetail.destIata.length() > 0 ? g_aircraftDetail.destIata.c_str() : "?");
+    screen.drawString(route, listX, y);
+    y += 20;
+    if (g_aircraftDetail.originName.length() > 0) {
+      char names[64];
+      snprintf(names, sizeof(names), "%s -> %s",
+               g_aircraftDetail.originName.c_str(),
+               g_aircraftDetail.destName.length() > 0 ? g_aircraftDetail.destName.c_str() : "?");
+      screen.drawString(names, listX, y);
+    }
+  } else if (!g_aircraftDetail.lookupInProgress) {
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString("Route unknown", listX, y);
+  }
+
+  screen.fillRect(listX, 420, 100, 40, colorAccent);
+  screen.setTextColor(colorBg, colorAccent);
+  screen.setTextSize(2);
+  screen.setTextDatum(textdatum_t::middle_center);
+  screen.drawString("< BACK", listX + 50, 440);
+  screen.setTextDatum(textdatum_t::top_left);
+}
+
 static void draw_aviation() {
   uint16_t colorGrid = screen.color565(40, 60, 55);
   uint16_t colorPlane = screen.color565(255, 70, 90);
@@ -146,6 +245,13 @@ static void draw_aviation() {
   }
 
   int listX = 470;
+
+  if (g_selectedAircraftIndex >= 0 && g_selectedAircraftIndex < g_aircraftCount) {
+    g_listRowCount = 0; // no list rows while the card is showing
+    draw_aircraft_detail_card(listX);
+    return;
+  }
+
   int listY = 55;
   screen.setTextSize(2);
   screen.setTextColor(colorText, colorBg);
@@ -157,13 +263,20 @@ static void draw_aviation() {
 
   screen.setTextSize(1);
   int shown = 0;
-  for (int i = 0; i < g_aircraftCount && shown < 8; i++) {
+  g_listRowCount = 0;
+  for (int i = 0; i < g_aircraftCount && shown < MAX_LIST_ROWS; i++) {
     Aircraft& a = g_aircraft[i];
     char row[64];
     const char* callsign = a.callsign.length() > 0 ? a.callsign.c_str() : "????";
     snprintf(row, sizeof(row), "%-8s %5dft  %.0fnm", callsign, a.altitudeFt, a.distanceNm);
     screen.setTextColor(colorText, colorBg);
     screen.drawString(row, listX, listY);
+
+    g_listRowAircraftIdx[g_listRowCount] = i;
+    g_listRowY0[g_listRowCount] = listY - 2;
+    g_listRowY1[g_listRowCount] = listY + 20;
+    g_listRowCount++;
+
     listY += 22;
     shown++;
   }
@@ -624,6 +737,8 @@ static const int DEBUG_TAB_INDEX = 6;
 static uint16_t lastTouchX = 0;
 static uint16_t lastTouchY = 0;
 
+static const int AVIATION_TAB_INDEX = 1;
+
 void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
   uint32_t now = millis();
   if (touched) {
@@ -642,9 +757,35 @@ void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
       bool hitNextButton = currentTab == DEBUG_TAB_INDEX &&
                             lastTouchX >= 600 && lastTouchX <= 780 &&
                             lastTouchY >= 400 && lastTouchY <= 460;
+
+      bool handledAviation = false;
+      if (currentTab == AVIATION_TAB_INDEX) {
+        if (g_selectedAircraftIndex >= 0) {
+          // Card is showing - only the BACK button does anything here.
+          bool hitBack = lastTouchX >= 470 && lastTouchX <= 570 &&
+                         lastTouchY >= 420 && lastTouchY <= 460;
+          if (hitBack) {
+            g_selectedAircraftIndex = -1;
+          }
+          handledAviation = true;
+        } else {
+          // List is showing - check each row's recorded hit box.
+          for (int i = 0; i < g_listRowCount; i++) {
+            if (lastTouchY >= g_listRowY0[i] && lastTouchY <= g_listRowY1[i] &&
+                lastTouchX >= 470 && lastTouchX <= 780) {
+              int aircraftIdx = g_listRowAircraftIdx[i];
+              g_selectedAircraftIndex = aircraftIdx;
+              aviation_request_detail(g_aircraft[aircraftIdx].icao, g_aircraft[aircraftIdx].callsign);
+              handledAviation = true;
+              break;
+            }
+          }
+        }
+      }
+
       if (hitNextButton) {
         PanelDisplay::cycleBounceBufferAndRestart();
-      } else {
+      } else if (!handledAviation) {
         currentTab = (currentTab + 1) % TAB_COUNT;
       }
     }
