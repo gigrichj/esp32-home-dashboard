@@ -136,7 +136,7 @@ static void draw_dashboard() {
   screen.drawString(line, 20, y);
   y += 40;
 
-  snprintf(line, sizeof(line), "Aircraft nearby: %d", g_aircraftCount);
+  snprintf(line, sizeof(line), "Aircraft nearby: %d", countVisibleAircraft());
   screen.drawString(line, 20, y);
 }
 
@@ -144,6 +144,14 @@ static const int RADAR_CX = 240;
 static const int RADAR_CY = 260;
 static const int RADAR_RADIUS = 190;
 static const float RADAR_MAX_RANGE_NM = 40.0f;
+
+static int countVisibleAircraft() {
+  int visible = 0;
+  for (int i = 0; i < g_aircraftCount; i++) {
+    if (g_aircraft[i].distanceNm <= RADAR_MAX_RANGE_NM) visible++;
+  }
+  return visible;
+}
 static const int RADAR_RINGS = 4;
 
 static const int MAX_LIST_ROWS = 8;
@@ -306,10 +314,7 @@ static void draw_aviation() {
     return;
   }
 
-  int visibleCount = 0;
-  for (int i = 0; i < g_aircraftCount; i++) {
-    if (g_aircraft[i].distanceNm <= RADAR_MAX_RANGE_NM) visibleCount++;
-  }
+  int visibleCount = countVisibleAircraft();
 
   int listY = 55;
   screen.setTextSize(2);
