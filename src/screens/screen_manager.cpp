@@ -1508,7 +1508,7 @@ static void draw_astro() {
     screen.drawString("--", col3X, row2Y + 34);
   }
 
-  int lineY = 230;
+  int lineY = 246;
   int stripY = 310;
   screen.drawLine(20, lineY, WIDTH - 20, lineY, colorDim);
 
