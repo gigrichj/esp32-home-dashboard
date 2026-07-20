@@ -27,6 +27,10 @@ extern int g_issPassCount;
 // astros.json lists everyone in space across all craft; we filter to ISS).
 extern int g_issCrewCount;
 
+// Last HTTP result from the crew-count fetch (-999 = never attempted),
+// so a stuck-at-zero count can be diagnosed on-screen.
+extern int g_issCrewLastHttpCode;
+
 struct TrackPoint {
   float lat;
   float lon;

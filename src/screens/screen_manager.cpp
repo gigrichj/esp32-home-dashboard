@@ -1292,7 +1292,11 @@ static void draw_iss() {
       screen.drawString(row, col2X, detailY + 24);
     }
 
-    snprintf(row, sizeof(row), "Crew Aboard %d", g_issCrewCount);
+    if (g_issCrewCount == 0) {
+      snprintf(row, sizeof(row), "Crew Aboard 0 (HTTP %d)", g_issCrewLastHttpCode);
+    } else {
+      snprintf(row, sizeof(row), "Crew Aboard %d", g_issCrewCount);
+    }
     screen.drawString(row, col2X, detailY + 48);
   } else {
     screen.setTextSize(2);

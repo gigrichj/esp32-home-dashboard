@@ -10,6 +10,7 @@ IssData g_iss;
 IssPass g_issPasses[ISS_MAX_PASSES];
 int g_issPassCount = 0;
 int g_issCrewCount = 0;
+int g_issCrewLastHttpCode = -999;
 TrackPoint g_issTrack[ISS_TRACK_POINTS];
 int g_issTrackCount = 0;
 bool g_issTrackValid = false;
@@ -27,7 +28,14 @@ static const int TRACK_STEP_SECONDS = 100; // 60 pts * 100s = 6000s (~100min), >
 static void fetchCrewCount() {
   HTTPClient http;
   http.begin("http://api.open-notify.org/astros.json");
+  http.setTimeout(15000);
+  http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS); // same class of fix
+                          // as the 7Timer 302 issue -- Open Notify may
+                          // also redirect, and HTTPClient doesn't follow
+                          // redirects by default.
+  http.addHeader("User-Agent", "ESP32-Home-Dashboard/1.0");
   int code = http.GET();
+  g_issCrewLastHttpCode = code;
   if (code == 200) {
     String payload = http.getString();
     JsonDocument doc;
