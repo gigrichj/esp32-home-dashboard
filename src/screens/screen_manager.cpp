@@ -1207,9 +1207,13 @@ static void draw_iss() {
     screen.drawString(row, col2X + 70, detailY);
 
     if (g_issPassCount > 0) {
-      snprintf(row, sizeof(row), "Max El %d", g_issPasses[0].maxElevationDeg);
+      snprintf(row, sizeof(row), "Max El %d  Look %s", g_issPasses[0].maxElevationDeg,
+               g_issPasses[0].maxAzCompass.c_str());
       screen.drawString(row, col2X, detailY + 16);
     }
+
+    snprintf(row, sizeof(row), "Crew Aboard %d", g_issCrewCount);
+    screen.drawString(row, col2X, detailY + 32);
   } else {
     screen.setTextSize(2);
     screen.setTextColor(colorDim, colorBg);

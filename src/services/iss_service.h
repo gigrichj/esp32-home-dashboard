@@ -16,11 +16,16 @@ struct IssPass {
   uint32_t endUnix = 0;
   int maxElevationDeg = 0;
   float magnitude = 99.0f;
+  String maxAzCompass = "";  // e.g. "NW" -- where to look at the pass's peak
 };
 
 static const int ISS_MAX_PASSES = 5;
 extern IssPass g_issPasses[ISS_MAX_PASSES];
 extern int g_issPassCount;
+
+// Number of people currently aboard the ISS specifically (Open Notify's
+// astros.json lists everyone in space across all craft; we filter to ISS).
+extern int g_issCrewCount;
 
 struct TrackPoint {
   float lat;

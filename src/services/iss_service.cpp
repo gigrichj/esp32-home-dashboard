@@ -9,6 +9,7 @@
 IssData g_iss;
 IssPass g_issPasses[ISS_MAX_PASSES];
 int g_issPassCount = 0;
+int g_issCrewCount = 0;
 TrackPoint g_issTrack[ISS_TRACK_POINTS];
 int g_issTrackCount = 0;
 bool g_issTrackValid = false;
@@ -23,6 +24,28 @@ static const int TRACK_STEP_SECONDS = 100; // 60 pts * 100s = 6000s (~100min), >
 // into the SGP4 propagator. TLEs don't change fast, so this only needs to
 // run every few hours; the ground-track math itself is pure local
 // computation with zero network cost once a TLE is loaded.
+static void fetchCrewCount() {
+  HTTPClient http;
+  http.begin("http://api.open-notify.org/astros.json");
+  int code = http.GET();
+  if (code == 200) {
+    String payload = http.getString();
+    JsonDocument doc;
+    if (!deserializeJson(doc, payload)) {
+      JsonArray people = doc["people"].as<JsonArray>();
+      int count = 0;
+      for (JsonObject p : people) {
+        const char* craft = p["craft"] | "";
+        if (String(craft) == "ISS") count++;
+      }
+      g_issCrewCount = count;
+    }
+  } else {
+    Serial.printf("[ISS] astros.json HTTP %d\n", code);
+  }
+  http.end();
+}
+
 static bool fetchAndInitTLE() {
   HTTPClient http;
   http.begin("https://celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=TLE");
@@ -142,6 +165,10 @@ void iss_service_update() {
         g_issPasses[g_issPassCount].endUnix         = p["endUTC"]   | 0;
         g_issPasses[g_issPassCount].maxElevationDeg = p["maxEl"]    | 0;
         g_issPasses[g_issPassCount].magnitude       = p["mag"]      | 99.0f;
+        {
+          const char* az = p["maxAzCompass"] | "";
+          g_issPasses[g_issPassCount].maxAzCompass = String(az);
+        }
         g_issPassCount++;
       }
       if (g_issPassCount > 0) {
@@ -159,6 +186,7 @@ void iss_service_update() {
       tleLoaded = true;
       lastTleFetchMs = millis();
     }
+    fetchCrewCount();
   }
   computeGroundTrack();
 }
