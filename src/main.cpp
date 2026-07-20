@@ -6,6 +6,7 @@
 #include "services/mqtt_service.h"
 #include "services/weather_service.h"
 #include "services/air_quality_service.h"
+#include "services/astro_seeing_service.h"
 #include "services/aviation_service.h"
 #include "services/iss_service.h"
 #include "screens/screen_manager.h"
@@ -20,6 +21,9 @@ static const uint32_t AIR_QUALITY_POLL_MS  = 25UL * 60UL * 1000UL; // deliberate
                                                                      // so the two heavy HTTPS fetches
                                                                      // rarely land in the same
                                                                      // networkTask iteration.
+static const uint32_t ASTRO_POLL_MS        = 40UL * 60UL * 1000UL; // seeing forecasts change slowly;
+                                                                     // also deliberately offset from
+                                                                     // the other poll intervals.
 
 static const uint32_t ISS_POLL_MS        = 60UL * 1000UL;
 static const uint32_t DRAW_INTERVAL_MS   = 200UL;
@@ -112,7 +116,7 @@ void uiTask(void* param) {
 }
 
 void networkTask(void* param) {
-  uint32_t lastWeather = 0, lastAviation = 0, lastIss = 0, lastAirQuality = 0;
+  uint32_t lastWeather = 0, lastAviation = 0, lastIss = 0, lastAirQuality = 0, lastAstro = 0;
 
   for (;;) {
     wifi_manager_loop();
@@ -147,6 +151,13 @@ void networkTask(void* param) {
       debug_log("air quality fetch start");
       air_quality_service_update();
       debug_log("air quality fetch done");
+      vTaskDelay(pdMS_TO_TICKS(200)); // let the display catch its breath
+    }
+    if (now - lastAstro > ASTRO_POLL_MS) {
+      lastAstro = now;
+      debug_log("astro fetch start");
+      astro_seeing_service_update();
+      debug_log("astro fetch done");
       vTaskDelay(pdMS_TO_TICKS(200)); // let the display catch its breath
     }
     if (now - lastAviation > g_aviationPollMs) {
@@ -195,6 +206,8 @@ void setup() {
     weather_service_update();
     delay(150);
     air_quality_service_update();
+    delay(150);
+    astro_seeing_service_update();
     delay(150);
     aviation_service_update();
     delay(150);

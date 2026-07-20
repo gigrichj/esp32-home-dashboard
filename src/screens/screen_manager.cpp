@@ -5,6 +5,7 @@
 #include "../services/iss_service.h"
 #include "../services/aviation_service.h"
 #include "../services/air_quality_service.h"
+#include "../services/astro_seeing_service.h"
 #include "secrets.h"
 #include "../debug_log.h"
 #include "../debug_controls.h"
@@ -15,7 +16,7 @@
 using namespace PanelDisplay;
 
 static const char* TAB_NAMES[] = {
-  "DASHBOARD", "AVIATION", "PORSCHE", "ISS", "WEATHER", "DEBUG"
+  "DASHBOARD", "AVIATION", "ASTRO", "ISS", "WEATHER", "DEBUG"
 };
 static const int TAB_COUNT = sizeof(TAB_NAMES) / sizeof(TAB_NAMES[0]);
 
@@ -149,6 +150,7 @@ static void drawDashboardBackground() {
 }
 
 static int countVisibleAircraft(); // defined further down, used in draw_dashboard()
+static int findTonightAstroIndex(); // defined further down, used in draw_dashboard()
 
 static void draw_dashboard() {
   drawDashboardBackground();
@@ -226,6 +228,22 @@ static void draw_dashboard() {
       screen.setTextSize(1);
       screen.setTextColor(colorDim, colorBg);
       screen.drawString(teaser, leftX, y);
+    }
+  }
+  y += 20;
+
+  {
+    int tonightIdx = findTonightAstroIndex();
+    screen.setTextSize(1);
+    if (tonightIdx >= 0) {
+      int seeingVal = g_astroForecast[tonightIdx].seeing;
+      char seeingLine[40];
+      snprintf(seeingLine, sizeof(seeingLine), "Seeing tonight: %s", astro_seeing_label(seeingVal));
+      screen.setTextColor(astroSeverityColor(seeingVal, 8), colorBg);
+      screen.drawString(seeingLine, leftX, y);
+    } else {
+      screen.setTextColor(colorDim, colorBg);
+      screen.drawString("Seeing tonight: --", leftX, y);
     }
   }
 
@@ -1338,6 +1356,161 @@ static void draw_debug() {
   }
 }
 
+// Finds the first astro forecast point at or after tonight's sunset --
+// a reasonable stand-in for "tonight's conditions" without needing exact
+// astronomical twilight calculations.
+static int findTonightAstroIndex() {
+  if (g_astroForecastCount == 0) return -1;
+  if (g_weather.sunsetUnix == 0) return 0;
+  for (int i = 0; i < g_astroForecastCount; i++) {
+    if (g_astroForecast[i].unixTime >= g_weather.sunsetUnix) return i;
+  }
+  return g_astroForecastCount - 1;
+}
+
+// Colors a 1-8 or 1-9 severity index green-to-red, reused across seeing,
+// transparency, and cloud cover regardless of each scale's exact size.
+static uint16_t astroSeverityColor(int idx, int maxIdx) {
+  float frac = (float)(idx - 1) / (float)(maxIdx - 1);
+  if (frac < 0.25f) return colorSuccess;
+  if (frac < 0.5f)  return screen.color565(160, 200, 60);
+  if (frac < 0.75f) return screen.color565(230, 130, 40);
+  return colorDanger;
+}
+
+static void draw_astro() {
+  screen.setTextDatum(textdatum_t::top_left);
+
+  int tonightIdx = findTonightAstroIndex();
+
+  int panelY = 55;
+  int col1X = 20, col2X = 290, col3X = 560;
+
+  struct AstroPanel {
+    int x;
+    const char* title;
+    int value;
+    int maxValue;
+    const char* label;
+  };
+
+  int seeingVal = tonightIdx >= 0 ? g_astroForecast[tonightIdx].seeing : 0;
+  int transVal  = tonightIdx >= 0 ? g_astroForecast[tonightIdx].transparency : 0;
+  int cloudVal  = tonightIdx >= 0 ? g_astroForecast[tonightIdx].cloudcover : 0;
+
+  AstroPanel panels[3] = {
+    { col1X, "SEEING",       seeingVal, 8, astro_seeing_label(seeingVal) },
+    { col2X, "TRANSPARENCY", transVal,  8, astro_transparency_label(transVal) },
+    { col3X, "CLOUD COVER",  cloudVal,  9, astro_cloudcover_label(cloudVal) },
+  };
+
+  for (int i = 0; i < 3; i++) {
+    AstroPanel& p = panels[i];
+    screen.setTextSize(2);
+    screen.setTextColor(colorAccent, colorBg);
+    screen.drawString(p.title, p.x, panelY);
+    int titleWidth = (int)strlen(p.title) * 12;
+    screen.drawLine(p.x, panelY + 20, p.x + titleWidth, panelY + 20, colorAccent);
+
+    if (tonightIdx >= 0) {
+      screen.setTextSize(3);
+      screen.setTextColor(astroSeverityColor(p.value, p.maxValue), colorBg);
+      screen.drawString(p.label, p.x, panelY + 34);
+
+      char idxLine[16];
+      snprintf(idxLine, sizeof(idxLine), "(%d/%d)", p.value, p.maxValue);
+      screen.setTextSize(1);
+      screen.setTextColor(colorDim, colorBg);
+      screen.drawString(idxLine, p.x, panelY + 70);
+    } else {
+      screen.setTextSize(2);
+      screen.setTextColor(colorDim, colorBg);
+      screen.drawString("--", p.x, panelY + 34);
+    }
+  }
+
+  int row2Y = 160;
+
+  screen.setTextSize(2);
+  screen.setTextColor(colorAccent, colorBg);
+  screen.drawString("MOON", col1X, row2Y);
+  screen.drawLine(col1X, row2Y + 20, col1X + 48, row2Y + 20, colorAccent);
+
+  screen.setTextSize(2);
+  screen.setTextColor(colorText, colorBg);
+  screen.drawString(g_moonPhaseLabel, col1X, row2Y + 34);
+  char moonPct[24];
+  snprintf(moonPct, sizeof(moonPct), "%.0f%% illuminated", g_moonIllumPercent);
+  screen.setTextSize(1);
+  screen.setTextColor(colorDim, colorBg);
+  screen.drawString(moonPct, col1X, row2Y + 62);
+
+  {
+    int moonCx = col1X + 220, moonCy = row2Y + 40, moonR = 32;
+    screen.fillCircle(moonCx, moonCy, moonR, screen.color565(230, 230, 210));
+    float shadowFrac = g_moonPhaseFraction;
+    bool waxing = shadowFrac < 0.5f;
+    float distFrac = fabsf(shadowFrac - 0.5f) * 2.0f;
+    int shadowOffset = (int)(moonR * 2 * distFrac) - moonR;
+    int shadowCx = waxing ? moonCx - moonR - shadowOffset : moonCx + moonR + shadowOffset;
+    screen.fillCircle(shadowCx, moonCy, moonR, colorBg);
+  }
+
+  screen.setTextSize(2);
+  screen.setTextColor(colorAccent, colorBg);
+  screen.drawString("STORM RISK", col3X, row2Y);
+  screen.drawLine(col3X, row2Y + 20, col3X + 132, row2Y + 20, colorAccent);
+  if (tonightIdx >= 0) {
+    int li = g_astroForecast[tonightIdx].liftedindex;
+    screen.setTextSize(2);
+    screen.setTextColor(li > 0 ? colorSuccess : colorDanger, colorBg);
+    screen.drawString(astro_instability_label(li), col3X, row2Y + 34);
+    if (g_astroForecast[tonightIdx].prectype != "none") {
+      char precipLine[32];
+      snprintf(precipLine, sizeof(precipLine), "Precip: %s", g_astroForecast[tonightIdx].prectype.c_str());
+      screen.setTextSize(1);
+      screen.setTextColor(colorDim, colorBg);
+      screen.drawString(precipLine, col3X, row2Y + 62);
+    }
+  } else {
+    screen.setTextSize(2);
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString("--", col3X, row2Y + 34);
+  }
+
+  int stripY = 280;
+  screen.drawLine(20, stripY - 10, WIDTH - 20, stripY - 10, colorDim);
+
+  screen.setTextSize(1);
+  screen.setTextColor(colorDim, colorBg);
+  screen.drawString("SEE", 20, stripY + 10);
+  screen.drawString("TRN", 20, stripY + 28);
+  screen.drawString("CLD", 20, stripY + 46);
+
+  int stripStartX = 70;
+  int colW = (WIDTH - 40 - stripStartX) / 6;
+  int startIdx = tonightIdx >= 0 ? tonightIdx : 0;
+  for (int i = 0; i < 6 && (startIdx + i) < g_astroForecastCount; i++) {
+    AstroForecastPoint& pt = g_astroForecast[startIdx + i];
+    int cx = stripStartX + colW * i + colW / 2;
+
+    time_t t = (time_t)pt.unixTime;
+    struct tm* ti = localtime(&t);
+    char timeLabel[8];
+    int h12 = ti->tm_hour % 12;
+    if (h12 == 0) h12 = 12;
+    snprintf(timeLabel, sizeof(timeLabel), "%d%s", h12, ti->tm_hour < 12 ? "A" : "P");
+    screen.setTextDatum(textdatum_t::middle_center);
+    screen.setTextColor(colorText, colorBg);
+    screen.drawString(timeLabel, cx, stripY - 4);
+
+    screen.fillRect(cx - 20, stripY + 4, 40, 12, astroSeverityColor(pt.seeing, 8));
+    screen.fillRect(cx - 20, stripY + 22, 40, 12, astroSeverityColor(pt.transparency, 8));
+    screen.fillRect(cx - 20, stripY + 40, 40, 12, astroSeverityColor(pt.cloudcover, 9));
+  }
+  screen.setTextDatum(textdatum_t::top_left);
+}
+
 static void draw_placeholder(const char* label) {
   screen.setTextSize(2);
   screen.setTextColor(colorDim, colorBg);
@@ -1363,7 +1536,7 @@ void screen_manager_draw() {
   switch (currentTab) {
     case 0: draw_dashboard(); break;
     case 1: draw_aviation(); break;
-    case 2: draw_placeholder("Porsche"); break;
+    case 2: draw_astro(); break;
     case 3: draw_iss(); break;
     case 4: draw_weather(); break;
     case 5: draw_debug(); break;
