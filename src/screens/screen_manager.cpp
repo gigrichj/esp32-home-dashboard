@@ -256,9 +256,7 @@ static void draw_dashboard() {
       screen.drawString(teaser, leftX, y);
     }
   }
-  y += 14;
-  screen.drawLine(leftX, y, leftX + 300, y, colorDim);
-  y += 10;
+  y += 40;
 
   {
     int tonightIdx = findTonightAstroIndex();
@@ -913,7 +911,7 @@ static void draw_weather() {
     // Precipitation gauge: a 270-degree arc (gap at the bottom), approximated
     // with short line segments since this display library doesn't expose a
     // drawArc primitive. A blue segment fills in up to the current percent.
-    int gaugeCx = 575, gaugeCy = 268, gaugeR = 22;
+    int gaugeCx = 575, gaugeCy = 228, gaugeR = 22;
     float startDeg = -135.0f, sweepDeg = 270.0f;
     uint16_t trackColor = colorDim;
     uint16_t fillColor = screen.color565(70, 150, 220);
@@ -964,7 +962,7 @@ static void draw_weather() {
 
   {
     // Wind compass: direction needle plus sustained | gust speeds below.
-    int windCx = 695, windCy = 268, windR = 22;
+    int windCx = 695, windCy = 228, windR = 22;
     screen.drawCircle(windCx, windCy, windR, colorDim);
 
     for (int deg = 0; deg < 360; deg += 30) {
@@ -1041,15 +1039,6 @@ static void draw_weather() {
         screen.fillRect(aqX + s * segW, aqY, segW - segGap, barH, drawColor);
       }
       aqY += barH + 24;
-
-      screen.setTextSize(2);
-      screen.setTextColor(colorDim, colorBg);
-      char pmLine[32];
-      snprintf(pmLine, sizeof(pmLine), "PM2.5: %.1f ug/m3", g_airQuality.pm2_5);
-      screen.drawString(pmLine, aqX, aqY);
-      aqY += 26;
-      snprintf(pmLine, sizeof(pmLine), "PM10: %.1f ug/m3", g_airQuality.pm10);
-      screen.drawString(pmLine, aqX, aqY);
     } else {
       screen.setTextSize(2);
       screen.setTextColor(colorDim, colorBg);
@@ -1519,8 +1508,9 @@ static void draw_astro() {
     screen.drawString("--", col3X, row2Y + 34);
   }
 
-  int stripY = 280;
-  screen.drawLine(20, stripY - 10, WIDTH - 20, stripY - 10, colorDim);
+  int lineY = 230;
+  int stripY = 310;
+  screen.drawLine(20, lineY, WIDTH - 20, lineY, colorDim);
 
   screen.setTextSize(2);
   screen.setTextColor(colorDim, colorBg);
@@ -1544,7 +1534,7 @@ static void draw_astro() {
     screen.setTextSize(2);
     screen.setTextDatum(textdatum_t::middle_center);
     screen.setTextColor(colorText, colorBg);
-    screen.drawString(timeLabel, cx, stripY - 4);
+    screen.drawString(timeLabel, cx, stripY - 16);
 
     screen.fillRect(cx - 20, stripY, 40, 16, astroSeverityColor(pt.seeing, 8));
     screen.fillRect(cx - 20, stripY + 22, 40, 16, astroSeverityColor(pt.transparency, 8));
