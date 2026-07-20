@@ -1414,11 +1414,11 @@ static void draw_astro() {
   if (tonightIdx < 0) {
     screen.setTextSize(2);
     screen.setTextColor(colorDim, colorBg);
-    screen.drawString("No astro data yet", 20, 55);
+    screen.drawString("No astro data yet", 460, 390);
     char httpLine[48];
     snprintf(httpLine, sizeof(httpLine), "Last HTTP result: %d", g_astroLastHttpCode);
-    screen.drawString(httpLine, 20, 90);
-    screen.drawString("(-999=never tried, neg=connection error)", 20, 122);
+    screen.drawString(httpLine, 460, 418);
+    screen.drawString("(-999=never tried, neg=connection error)", 460, 446);
   }
 
   int panelY = 55;

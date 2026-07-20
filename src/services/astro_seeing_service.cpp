@@ -104,6 +104,9 @@ void astro_seeing_service_update() {
   http.setTimeout(15000); // 7Timer is a small community-run service and
                           // can be slow to respond -- the default timeout
                           // was likely cutting it off before it replied.
+  http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS); // 7Timer returns a
+                          // 302 redirect (likely to a mirror server) --
+                          // HTTPClient doesn't follow redirects by default.
   http.addHeader("User-Agent", "ESP32-Home-Dashboard/1.0");
   int code = http.GET();
   g_astroLastHttpCode = code;
