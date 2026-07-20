@@ -179,10 +179,11 @@ static void draw_dashboard() {
 
   // WEATHER + AIR QUALITY column
   int y = 240;
-  screen.setTextSize(1);
+  screen.setTextSize(2);
   screen.setTextColor(colorAccent, colorBg);
   screen.drawString("WEATHER", leftX, y);
-  y += 22;
+  screen.drawLine(leftX, y + 20, leftX + 84, y + 20, colorAccent);
+  y += 30;
 
   screen.setTextSize(2);
   screen.setTextColor(colorText, colorBg);
@@ -207,10 +208,11 @@ static void draw_dashboard() {
   // AIRCRAFT + ISS column, pushed to the right so this reads as a second
   // column rather than continuing the same vertical list.
   int y2 = 240;
-  screen.setTextSize(1);
+  screen.setTextSize(2);
   screen.setTextColor(colorAccent, colorBg);
   screen.drawString("OVERHEAD", rightX, y2);
-  y2 += 22;
+  screen.drawLine(rightX, y2 + 20, rightX + 96, y2 + 20, colorAccent);
+  y2 += 30;
 
   screen.setTextSize(2);
   screen.setTextColor(colorText, colorBg);
