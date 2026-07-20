@@ -157,22 +157,24 @@ static void draw_dashboard() {
   screen.setTextSize(2);
   screen.setTextColor(colorText, colorBg);
 
-  int y = 100;
+  int leftX = 20;
+  int rightX = 420;
   char line[64];
 
-  // WEATHER + AIR QUALITY group
+  // WEATHER + AIR QUALITY column
+  int y = 100;
   screen.setTextSize(1);
   screen.setTextColor(colorAccent, colorBg);
-  screen.drawString("WEATHER", 20, y);
+  screen.drawString("WEATHER", leftX, y);
   y += 22;
 
   screen.setTextSize(2);
   screen.setTextColor(colorText, colorBg);
   if (g_weather.valid) {
     snprintf(line, sizeof(line), "%.0fF  %s", g_weather.tempF, g_weather.condition.c_str());
-    screen.drawString(line, 20, y);
+    screen.drawString(line, leftX, y);
   } else {
-    screen.drawString("--", 20, y);
+    screen.drawString("--", leftX, y);
   }
   y += 34;
 
@@ -180,30 +182,31 @@ static void draw_dashboard() {
     char aqLine[64];
     snprintf(aqLine, sizeof(aqLine), "Air quality: %s (AQI %d)", air_quality_label(g_airQuality.aqi), g_airQuality.aqi);
     screen.setTextColor(airQualityColor(g_airQuality.aqi), colorBg);
-    screen.drawString(aqLine, 20, y);
+    screen.drawString(aqLine, leftX, y);
     screen.setTextColor(colorText, colorBg);
   } else {
-    screen.drawString("Air quality: --", 20, y);
+    screen.drawString("Air quality: --", leftX, y);
   }
-  y += 50;
 
-  // AIRCRAFT + ISS group
+  // AIRCRAFT + ISS column, pushed to the right so this reads as a second
+  // column rather than continuing the same vertical list.
+  int y2 = 100;
   screen.setTextSize(1);
   screen.setTextColor(colorAccent, colorBg);
-  screen.drawString("OVERHEAD", 20, y);
-  y += 22;
+  screen.drawString("OVERHEAD", rightX, y2);
+  y2 += 22;
 
   screen.setTextSize(2);
   screen.setTextColor(colorText, colorBg);
   snprintf(line, sizeof(line), "Aircraft nearby: %d", countVisibleAircraft());
-  screen.drawString(line, 20, y);
-  y += 34;
+  screen.drawString(line, rightX, y2);
+  y2 += 34;
 
   if (g_iss.valid) {
     snprintf(line, sizeof(line), "ISS altitude: %.0f km", g_iss.altitudeKm);
-    screen.drawString(line, 20, y);
+    screen.drawString(line, rightX, y2);
   } else {
-    screen.drawString("ISS: --", 20, y);
+    screen.drawString("ISS: --", rightX, y2);
   }
 }
 
