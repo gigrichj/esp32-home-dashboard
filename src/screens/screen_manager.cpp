@@ -251,7 +251,7 @@ static void draw_dashboard() {
       int mm = (secsUntil % 3600) / 60;
       char teaser[48];
       snprintf(teaser, sizeof(teaser), "%s in %dh %dm", isDay ? "Sunset" : "Sunrise", hh, mm);
-      screen.setTextSize(1);
+      screen.setTextSize(2);
       screen.setTextColor(colorDim, colorBg);
       screen.drawString(teaser, leftX, y);
     }
@@ -260,7 +260,7 @@ static void draw_dashboard() {
 
   {
     int tonightIdx = findTonightAstroIndex();
-    screen.setTextSize(1);
+    screen.setTextSize(2);
     if (tonightIdx >= 0) {
       int seeingVal = g_astroForecast[tonightIdx].seeing;
       char seeingLine[40];
@@ -303,7 +303,7 @@ static void draw_dashboard() {
       uint32_t nowUnix = (uint32_t)time(nullptr);
       bool visibleNow = nowUnix >= g_iss.nextPassUnix &&
           nowUnix <= g_iss.nextPassUnix + (uint32_t)g_iss.nextPassDurationSec;
-      screen.setTextSize(1);
+      screen.setTextSize(2);
       if (visibleNow) {
         screen.setTextColor(colorSuccess, colorBg);
         screen.drawString("ISS visible now!", rightX, y2);
