@@ -1049,7 +1049,7 @@ static void draw_weather() {
   }
 
   int stripY = 360;
-  screen.drawLine(20, stripY - 10, WIDTH - 20, stripY - 10, colorDim);
+  screen.drawLine(20, stripY - 11, WIDTH - 20, stripY - 11, colorDim);
 
   int colW = (WIDTH - 40) / 5;
   screen.setTextDatum(textdatum_t::middle_center);
