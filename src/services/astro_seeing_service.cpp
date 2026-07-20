@@ -100,6 +100,10 @@ void astro_seeing_service_update() {
     (double)HOME_LON, (double)HOME_LAT);
 
   http.begin(url);
+  http.setTimeout(15000); // 7Timer is a small community-run service and
+                          // can be slow to respond -- the default timeout
+                          // was likely cutting it off before it replied.
+  http.addHeader("User-Agent", "ESP32-Home-Dashboard/1.0");
   int code = http.GET();
   if (code == 200) {
     String payload = http.getString();
@@ -138,9 +142,10 @@ void astro_seeing_service_update() {
       }
     } else {
       Serial.printf("[Astro] JSON parse error: %s\n", err.c_str());
+      Serial.printf("[Astro] raw payload: %s\n", payload.c_str());
     }
   } else {
-    Serial.printf("[Astro] HTTP %d\n", code);
+    Serial.printf("[Astro] HTTP %d (negative = connection/timeout error)\n", code);
   }
   http.end();
 }
