@@ -1417,7 +1417,39 @@ static void draw_astro() {
     screen.drawString("(-999=never tried, neg=connection error)", 460, 446);
   }
 
-  int panelY = 55;
+  {
+    // Tonight's Verdict -- a single composite score combining cloud cover,
+    // seeing, transparency, and moon brightness, so you don't have to
+    // mentally combine four separate readouts every time.
+    screen.setTextSize(2);
+    screen.setTextColor(colorAccent, colorBg);
+    screen.drawString("TONIGHT'S VERDICT", 20, 55);
+    screen.drawLine(20, 75, 20 + 18 * 12, 75, colorAccent);
+
+    if (tonightIdx >= 0) {
+      float badness = 0;
+      const char* verdict = astro_tonight_verdict(
+          g_astroForecast[tonightIdx].cloudcover,
+          g_astroForecast[tonightIdx].seeing,
+          g_astroForecast[tonightIdx].transparency,
+          g_moonIllumPercent, &badness);
+      uint16_t verdictColor;
+      if (badness < 0.25f) verdictColor = colorSuccess;
+      else if (badness < 0.5f) verdictColor = screen.color565(160, 200, 60);
+      else if (badness < 0.75f) verdictColor = screen.color565(230, 130, 40);
+      else verdictColor = colorDanger;
+
+      screen.setTextSize(3);
+      screen.setTextColor(verdictColor, colorBg);
+      screen.drawString(verdict, 20, 89);
+    } else {
+      screen.setTextSize(2);
+      screen.setTextColor(colorDim, colorBg);
+      screen.drawString("--", 20, 89);
+    }
+  }
+
+  int panelY = 125;
   int col1X = 20, col2X = 290, col3X = 560;
 
   struct AstroPanel {
@@ -1463,7 +1495,7 @@ static void draw_astro() {
     }
   }
 
-  int row2Y = 160;
+  int row2Y = 225;
 
   screen.setTextSize(2);
   screen.setTextColor(colorAccent, colorBg);
@@ -1512,8 +1544,8 @@ static void draw_astro() {
     screen.drawString("--", col3X, row2Y + 34);
   }
 
-  int lineY = 266;
-  int stripY = 310;
+  int lineY = 315;
+  int stripY = 350;
   screen.drawLine(20, lineY, WIDTH - 20, lineY, colorDim);
 
   screen.setTextSize(2);

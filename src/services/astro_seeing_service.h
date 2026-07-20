@@ -44,3 +44,12 @@ const char* astro_seeing_label(int idx);
 const char* astro_transparency_label(int idx);
 const char* astro_cloudcover_label(int idx);
 const char* astro_instability_label(int liftedIndex);
+
+// Composite go/no-go verdict combining cloud cover, seeing, transparency,
+// and moon brightness -- cloud weighted heaviest, then seeing, then
+// transparency and moon equally, matching how amateur-astronomy tools
+// like AstroWeather typically combine these factors. Writes the
+// aggregate badness (0=best, 1=worst) to outBadness if non-null, for
+// color-coding the verdict on-screen.
+const char* astro_tonight_verdict(int cloudcover, int seeing, int transparency,
+                                   float moonIllumPercent, float* outBadness);

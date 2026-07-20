@@ -46,6 +46,23 @@ const char* astro_instability_label(int liftedIndex) {
   return "High Risk";
 }
 
+const char* astro_tonight_verdict(int cloudcover, int seeing, int transparency,
+                                   float moonIllumPercent, float* outBadness) {
+  float cloudFrac = (float)(cloudcover - 1) / 8.0f;    // cloudcover is 1-9
+  float seeingFrac = (float)(seeing - 1) / 7.0f;       // seeing is 1-8
+  float transFrac = (float)(transparency - 1) / 7.0f;  // transparency is 1-8
+  float moonFrac = moonIllumPercent / 100.0f;
+
+  float badness = (cloudFrac * 3.0f + seeingFrac * 2.0f + transFrac * 1.0f + moonFrac * 1.0f) / 7.0f;
+  if (outBadness) *outBadness = badness;
+
+  if (badness < 0.2f) return "Excellent Night";
+  if (badness < 0.4f) return "Good Night";
+  if (badness < 0.6f) return "Fair Night";
+  if (badness < 0.8f) return "Poor Night";
+  return "Skip Tonight";
+}
+
 // ESP32's toolchain doesn't provide timegm(), and mktime() assumes local
 // time (this device runs on EST5EDT, not UTC) -- so 7Timer's UTC "init"
 // timestamp needs a timezone-independent manual conversion instead.
