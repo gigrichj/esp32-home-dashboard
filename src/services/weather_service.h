@@ -6,6 +6,9 @@ struct WeatherData {
   float feelsLikeF = 0;
   String condition = "--";
   float windMph = 0;
+  float windGustMph = 0;
+  float windDeg = 0;         // meteorological direction, 0=N, clockwise
+  int precipChance = 0;      // 0-100, from the nearest forecast entry's "pop"
   int humidity = 0;
   int weatherId = 0;         // OWM condition code, drives icon selection
   uint32_t sunriseUnix = 0;

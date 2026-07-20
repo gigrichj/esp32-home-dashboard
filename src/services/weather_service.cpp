@@ -27,6 +27,8 @@ static void fetchCurrentConditions() {
       g_weather.feelsLikeF  = doc["main"]["feels_like"] | 0.0f;
       g_weather.humidity    = doc["main"]["humidity"]   | 0;
       g_weather.windMph     = doc["wind"]["speed"]      | 0.0f;
+      g_weather.windGustMph = doc["wind"]["gust"]        | g_weather.windMph;
+      g_weather.windDeg     = doc["wind"]["deg"]         | 0.0f;
       g_weather.condition   = doc["weather"][0]["main"].as<String>();
       g_weather.weatherId   = doc["weather"][0]["id"]   | 0;
       g_weather.sunriseUnix = doc["sys"]["sunrise"]      | 0;
@@ -72,6 +74,13 @@ static void fetchForecast() {
   if (g_weather.sunsetUnix == 0)  g_weather.sunsetUnix  = doc["city"]["sunset"]  | 0;
 
   JsonArray list = doc["list"].as<JsonArray>();
+
+  // Precipitation chance isn't in the current-conditions call; pull it from
+  // the nearest upcoming forecast entry instead.
+  if (list.size() > 0) {
+    float pop = list[0]["pop"] | 0.0f;
+    g_weather.precipChance = (int)(pop * 100.0f + 0.5f);
+  }
 
   struct DayAccum {
     int dayOfYear = -1;

@@ -762,6 +762,104 @@ static void draw_weather() {
   screen.drawString(formatHHMM(g_weather.sunsetUnix), 260, y);
 
   {
+    // Precipitation gauge: a 270-degree arc (gap at the bottom), approximated
+    // with short line segments since this display library doesn't expose a
+    // drawArc primitive. A blue segment fills in up to the current percent.
+    int gaugeCx = 390, gaugeCy = 115, gaugeR = 42;
+    float startDeg = -135.0f, sweepDeg = 270.0f;
+    uint16_t trackColor = colorDim;
+    uint16_t fillColor = screen.color565(70, 150, 220);
+
+    float prevX = 0, prevY = 0;
+    bool havePrev = false;
+    for (int i = 0; i <= 90; i++) {
+      float deg = startDeg + sweepDeg * (i / 90.0f);
+      float rad = deg * PI / 180.0f;
+      float px = gaugeCx + sinf(rad) * gaugeR;
+      float py = gaugeCy - cosf(rad) * gaugeR;
+      if (havePrev) screen.drawLine((int)prevX, (int)prevY, (int)px, (int)py, trackColor);
+      prevX = px; prevY = py; havePrev = true;
+    }
+
+    float valueFrac = constrain(g_weather.precipChance / 100.0f, 0.0f, 1.0f);
+    int valueSteps = (int)(90 * valueFrac);
+    havePrev = false;
+    for (int i = 0; i <= valueSteps; i++) {
+      float deg = startDeg + sweepDeg * (i / 90.0f);
+      float rad = deg * PI / 180.0f;
+      float px = gaugeCx + sinf(rad) * gaugeR;
+      float py = gaugeCy - cosf(rad) * gaugeR;
+      if (havePrev) screen.drawLine((int)prevX, (int)prevY, (int)px, (int)py, fillColor);
+      prevX = px; prevY = py; havePrev = true;
+    }
+
+    screen.setTextSize(1);
+    screen.setTextColor(colorDim, colorBg);
+    screen.setTextDatum(textdatum_t::top_center);
+    screen.drawString("PRECIP", gaugeCx, gaugeCy + gaugeR + 12);
+
+    screen.setTextSize(2);
+    screen.setTextColor(colorText, colorBg);
+    char precipStr[8];
+    snprintf(precipStr, sizeof(precipStr), "%d", g_weather.precipChance);
+    screen.drawString(precipStr, gaugeCx - 8, gaugeCy + gaugeR + 30);
+    {
+      // Hand-drawn percent glyph, same trick used for humidity above.
+      int gx = gaugeCx + 8;
+      int gy = gaugeCy + gaugeR + 36;
+      screen.fillCircle(gx, gy - 5, 2, colorText);
+      screen.fillCircle(gx + 8, gy + 3, 2, colorText);
+      screen.drawLine(gx - 1, gy + 5, gx + 9, gy - 7, colorText);
+    }
+    screen.setTextDatum(textdatum_t::top_left);
+  }
+
+  {
+    // Wind compass: direction needle plus sustained | gust speeds below.
+    int windCx = 390, windCy = 255, windR = 38;
+    screen.drawCircle(windCx, windCy, windR, colorDim);
+
+    for (int deg = 0; deg < 360; deg += 30) {
+      float rad = deg * PI / 180.0f;
+      bool isCardinal = (deg % 90 == 0);
+      int tickLen = isCardinal ? 8 : 4;
+      int x0 = windCx + (int)(sinf(rad) * windR);
+      int y0 = windCy - (int)(cosf(rad) * windR);
+      int x1 = windCx + (int)(sinf(rad) * (windR - tickLen));
+      int y1 = windCy - (int)(cosf(rad) * (windR - tickLen));
+      screen.drawLine(x0, y0, x1, y1, isCardinal ? colorText : colorDim);
+    }
+
+    screen.drawLine(windCx - 6, windCy, windCx + 6, windCy, colorDim);
+    screen.drawLine(windCx, windCy - 6, windCx, windCy + 6, colorDim);
+
+    float windRad = g_weather.windDeg * PI / 180.0f;
+    int tipX = windCx + (int)(sinf(windRad) * (windR - 10));
+    int tipY = windCy - (int)(cosf(windRad) * (windR - 10));
+    uint16_t needleColor = colorText;
+    screen.drawLine(windCx, windCy, tipX, tipY, needleColor);
+    float leftRad = windRad + 2.7f;
+    float rightRad = windRad - 2.7f;
+    int lx = tipX - (int)(sinf(leftRad) * 8);
+    int ly = tipY + (int)(cosf(leftRad) * 8);
+    int rx = tipX - (int)(sinf(rightRad) * 8);
+    int ry = tipY + (int)(cosf(rightRad) * 8);
+    screen.fillTriangle(tipX, tipY, lx, ly, rx, ry, needleColor);
+
+    screen.setTextSize(1);
+    screen.setTextColor(colorDim, colorBg);
+    screen.setTextDatum(textdatum_t::top_center);
+    screen.drawString("WINDS", windCx, windCy + windR + 12);
+
+    screen.setTextSize(2);
+    screen.setTextColor(colorText, colorBg);
+    char windStr[24];
+    snprintf(windStr, sizeof(windStr), "%.0f | %.0f", g_weather.windMph, g_weather.windGustMph);
+    screen.drawString(windStr, windCx, windCy + windR + 30);
+    screen.setTextDatum(textdatum_t::top_left);
+  }
+
+  {
     int aqX = 520;
     int aqY = 60;
     screen.setTextSize(2);
@@ -954,25 +1052,25 @@ static void draw_iss() {
   int y = belowY + 34;
   char row[64];
 
-  // Left column: Current Position - compact
-  screen.setTextSize(1);
+  // Left column: Current Position - larger for readability
+  screen.setTextSize(2);
   screen.setTextColor(colorDim, colorBg);
   screen.drawString("Latitude", leftX, y);
   screen.setTextColor(colorText, colorBg);
   snprintf(row, sizeof(row), "%.2f", g_iss.lat);
-  screen.drawString(row, leftX + 100, y);
+  screen.drawString(row, leftX + 150, y);
 
   screen.setTextColor(colorDim, colorBg);
-  screen.drawString("Longitude", leftX, y + 22);
+  screen.drawString("Longitude", leftX, y + 32);
   screen.setTextColor(colorText, colorBg);
   snprintf(row, sizeof(row), "%.2f", g_iss.lon);
-  screen.drawString(row, leftX + 100, y + 22);
+  screen.drawString(row, leftX + 150, y + 32);
 
   screen.setTextColor(colorDim, colorBg);
-  screen.drawString("Altitude", leftX, y + 44);
+  screen.drawString("Altitude", leftX, y + 64);
   screen.setTextColor(colorText, colorBg);
   snprintf(row, sizeof(row), "%.0f km", g_iss.altitudeKm);
-  screen.drawString(row, leftX + 100, y + 44);
+  screen.drawString(row, leftX + 150, y + 64);
 
   // Right column: Next Visible Pass - countdown boxes or a "visible now" banner
   screen.setTextSize(2);
