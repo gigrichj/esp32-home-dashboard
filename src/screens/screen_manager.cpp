@@ -803,6 +803,13 @@ static void draw_weather() {
   y += 30;
 
   screen.setTextColor(colorDim, colorBg);
+  screen.drawString("Dew Point", 20, y);
+  screen.setTextColor(colorText, colorBg);
+  snprintf(row, sizeof(row), "%.0fF", g_weather.dewPointF);
+  screen.drawString(row, 260, y);
+  y += 30;
+
+  screen.setTextColor(colorDim, colorBg);
   screen.drawString("Sunrise", 20, y);
   screen.setTextColor(colorText, colorBg);
   screen.drawString(formatHHMM(g_weather.sunriseUnix), 260, y);

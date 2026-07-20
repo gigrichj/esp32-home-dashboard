@@ -4,6 +4,7 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <time.h>
+#include <math.h>
 
 WeatherData g_weather;
 ForecastDay g_forecast[FORECAST_DAYS];
@@ -33,6 +34,20 @@ static void fetchCurrentConditions() {
       g_weather.weatherId   = doc["weather"][0]["id"]   | 0;
       g_weather.sunriseUnix = doc["sys"]["sunrise"]      | 0;
       g_weather.sunsetUnix  = doc["sys"]["sunset"]       | 0;
+
+      // Dew point via the Magnus formula -- not present in the free
+      // current-conditions endpoint, but derivable from temp + humidity,
+      // which we already have. Accurate to within about +/-0.4C.
+      {
+        float tempC = (g_weather.tempF - 32.0f) * 5.0f / 9.0f;
+        float rh = (float)g_weather.humidity;
+        if (rh < 1.0f) rh = 1.0f; // avoid log(0)
+        float a = 17.27f, b = 237.7f;
+        float alpha = logf(rh / 100.0f) + (a * tempC) / (b + tempC);
+        float dewC = (b * alpha) / (a - alpha);
+        g_weather.dewPointF = dewC * 9.0f / 5.0f + 32.0f;
+      }
+
       g_weather.valid = true;
     } else {
       Serial.printf("[Weather] JSON parse error: %s\n", err.c_str());
