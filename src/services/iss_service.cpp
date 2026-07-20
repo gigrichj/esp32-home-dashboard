@@ -27,7 +27,7 @@ static const int TRACK_STEP_SECONDS = 100; // 60 pts * 100s = 6000s (~100min), >
 // computation with zero network cost once a TLE is loaded.
 static void fetchCrewCount() {
   HTTPClient http;
-  http.begin("http://api.open-notify.org/astros.json");
+  http.begin("https://api.open-notify.org/astros.json");
   http.setTimeout(15000);
   http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS); // same class of fix
                           // as the 7Timer 302 issue -- Open Notify may
