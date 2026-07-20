@@ -45,6 +45,23 @@ const char* astro_instability_label(int liftedIndex) {
   return "High Risk";
 }
 
+// ESP32's toolchain doesn't provide timegm(), and mktime() assumes local
+// time (this device runs on EST5EDT, not UTC) -- so 7Timer's UTC "init"
+// timestamp needs a timezone-independent manual conversion instead.
+// This is the standard "days from civil" algorithm (Howard Hinnant),
+// correct for the Gregorian calendar.
+static uint32_t utcTmToUnix(int year, int month, int day, int hour) {
+  int y = year;
+  int m = month;
+  y -= m <= 2;
+  long era = (y >= 0 ? y : y - 399) / 400;
+  int yoe = (int)(y - era * 400);
+  int doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + day - 1;
+  int doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+  long daysSinceEpoch = era * 146097L + doe - 719468L;
+  return (uint32_t)(daysSinceEpoch * 86400L + (long)hour * 3600L);
+}
+
 static void computeMoonPhase(uint32_t nowUnix) {
   const double synodicDays = 29.530588;
   // Known new moon reference: 2000-01-06 18:14 UTC
@@ -97,12 +114,11 @@ void astro_seeing_service_update() {
         memcpy(monBuf, initStr + 4, 2);
         memcpy(dayBuf, initStr + 6, 2);
         memcpy(hourBuf, initStr + 8, 2);
-        struct tm tmInfo = {};
-        tmInfo.tm_year = atoi(yearBuf) - 1900;
-        tmInfo.tm_mon  = atoi(monBuf) - 1;
-        tmInfo.tm_mday = atoi(dayBuf);
-        tmInfo.tm_hour = atoi(hourBuf);
-        initUnix = (uint32_t)timegm(&tmInfo);
+        int year  = atoi(yearBuf);
+        int month = atoi(monBuf);
+        int day   = atoi(dayBuf);
+        int hour  = atoi(hourBuf);
+        initUnix = utcTmToUnix(year, month, day, hour);
       }
 
       JsonArray series = doc["dataseries"].as<JsonArray>();

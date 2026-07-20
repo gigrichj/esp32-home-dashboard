@@ -176,6 +176,7 @@ static void drawDashboardBackground() {
 
 static int countVisibleAircraft(); // defined further down, used in draw_dashboard()
 static int findTonightAstroIndex(); // defined further down, used in draw_dashboard()
+static uint16_t astroSeverityColor(int idx, int maxIdx); // defined further down, used in draw_dashboard()
 
 static void draw_dashboard() {
   drawDashboardBackground();
