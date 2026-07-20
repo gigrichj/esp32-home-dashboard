@@ -803,7 +803,7 @@ static void draw_weather() {
     // Precipitation gauge: a 270-degree arc (gap at the bottom), approximated
     // with short line segments since this display library doesn't expose a
     // drawArc primitive. A blue segment fills in up to the current percent.
-    int gaugeCx = 575, gaugeCy = 285, gaugeR = 22;
+    int gaugeCx = 575, gaugeCy = 268, gaugeR = 22;
     float startDeg = -135.0f, sweepDeg = 270.0f;
     uint16_t trackColor = colorDim;
     uint16_t fillColor = screen.color565(70, 150, 220);
@@ -854,7 +854,7 @@ static void draw_weather() {
 
   {
     // Wind compass: direction needle plus sustained | gust speeds below.
-    int windCx = 695, windCy = 285, windR = 22;
+    int windCx = 695, windCy = 268, windR = 22;
     screen.drawCircle(windCx, windCy, windR, colorDim);
 
     for (int deg = 0; deg < 360; deg += 30) {
