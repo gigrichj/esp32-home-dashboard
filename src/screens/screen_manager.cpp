@@ -142,7 +142,7 @@ static void drawDashboardBackground() {
     uint16_t issColor = screen.color565(120, 100, 160);
     int span = WIDTH + 80;
     int x = span - 40 - (int)((t / 26) % (uint32_t)span);
-    int y = 190;
+    int y = 160;
     screen.fillRect(x - 3, y - 3, 6, 6, issColor);
     screen.fillRect(x - 15, y - 2, 9, 4, issColor);
     screen.fillRect(x + 6, y - 2, 9, 4, issColor);
@@ -156,7 +156,7 @@ static void drawDashboardBackground() {
     uint16_t galaxyArm = screen.color565(120, 100, 170);
     int span = WIDTH + 100;
     int gx = (int)((t / 55) % (uint32_t)span) - 50;
-    int gy = 90;
+    int gy = 120;
 
     screen.fillCircle(gx, gy, 4, galaxyCore);
 
