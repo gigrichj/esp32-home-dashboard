@@ -761,14 +761,14 @@ static void draw_weather() {
 
     screen.setTextSize(1);
     screen.setTextColor(colorDim, colorBg);
-    screen.setTextDatum(textdatum_t::top_center);
-    screen.drawString("PRECIP", gaugeCx, gaugeCy + gaugeR + 12);
+    screen.setTextDatum(textdatum_t::top_left);
+    screen.drawString("PRECIP", gaugeCx - 18, gaugeCy + gaugeR + 12);
 
     screen.setTextSize(2);
     screen.setTextColor(colorText, colorBg);
     char precipStr[8];
     snprintf(precipStr, sizeof(precipStr), "%d", g_weather.precipChance);
-    screen.drawString(precipStr, gaugeCx - 8, gaugeCy + gaugeR + 30);
+    screen.drawString(precipStr, gaugeCx - 12, gaugeCy + gaugeR + 30);
     {
       // Hand-drawn percent glyph, same trick used for humidity above.
       int gx = gaugeCx + 8;
@@ -814,14 +814,14 @@ static void draw_weather() {
 
     screen.setTextSize(1);
     screen.setTextColor(colorDim, colorBg);
-    screen.setTextDatum(textdatum_t::top_center);
-    screen.drawString("WINDS", windCx, windCy + windR + 12);
+    screen.setTextDatum(textdatum_t::top_left);
+    screen.drawString("WINDS", windCx - 15, windCy + windR + 12);
 
     screen.setTextSize(2);
     screen.setTextColor(colorText, colorBg);
     char windStr[24];
     snprintf(windStr, sizeof(windStr), "%.0f | %.0f", g_weather.windMph, g_weather.windGustMph);
-    screen.drawString(windStr, windCx, windCy + windR + 30);
+    screen.drawString(windStr, windCx - 40, windCy + windR + 30);
     screen.setTextDatum(textdatum_t::top_left);
   }
 
