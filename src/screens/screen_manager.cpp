@@ -1037,57 +1037,56 @@ static void draw_iss() {
   screen.drawString(posLabel, issX + 16, issY - 6);
 
   int belowY = MAP_Y + MAP_H + 15;
-  int leftX = 20;
-  int rightX = 420;
+  int col1X = 20;
+  int col2X = 300;
+  int col3X = 550;
 
-  screen.setTextSize(2);
-  screen.setTextColor(colorText, colorBg);
-  screen.drawString("Current Position", leftX, belowY);
-
-  screen.setTextSize(2);
+  screen.setTextSize(1);
   screen.setTextColor(colorAccent, colorBg);
-  screen.drawString("Next Visible Pass", rightX, belowY);
+  screen.setTextDatum(textdatum_t::top_left);
+  screen.drawString("POSITION", col1X, belowY);
+  screen.drawString("NEXT PASS", col2X, belowY);
+  screen.drawString("PASSES", col3X, belowY);
 
-  int y = belowY + 34;
+  int contentY = belowY + 22;
   char row[64];
 
-  // Left column: Current Position - larger for readability
+  // Column 1: Current Position
   screen.setTextSize(2);
   screen.setTextColor(colorDim, colorBg);
-  screen.drawString("Latitude", leftX, y);
+  screen.drawString("Latitude", col1X, contentY);
   screen.setTextColor(colorText, colorBg);
   snprintf(row, sizeof(row), "%.2f", g_iss.lat);
-  screen.drawString(row, leftX + 150, y);
+  screen.drawString(row, col1X + 110, contentY);
 
   screen.setTextColor(colorDim, colorBg);
-  screen.drawString("Longitude", leftX, y + 32);
+  screen.drawString("Longitude", col1X, contentY + 32);
   screen.setTextColor(colorText, colorBg);
   snprintf(row, sizeof(row), "%.2f", g_iss.lon);
-  screen.drawString(row, leftX + 150, y + 32);
+  screen.drawString(row, col1X + 110, contentY + 32);
 
   screen.setTextColor(colorDim, colorBg);
-  screen.drawString("Altitude", leftX, y + 64);
+  screen.drawString("Altitude", col1X, contentY + 64);
   screen.setTextColor(colorText, colorBg);
   snprintf(row, sizeof(row), "%.0f km", g_iss.altitudeKm);
-  screen.drawString(row, leftX + 150, y + 64);
+  screen.drawString(row, col1X + 110, contentY + 64);
 
-  // Right column: Next Visible Pass - countdown boxes or a "visible now" banner
-  screen.setTextSize(2);
+  // Column 2: Next Visible Pass -- countdown boxes or a "visible now" banner
   uint32_t nowUnix = (uint32_t)time(nullptr);
   bool isVisibleNow = g_iss.nextPassUnix > 0 &&
       nowUnix >= g_iss.nextPassUnix &&
       nowUnix <= g_iss.nextPassUnix + (uint32_t)g_iss.nextPassDurationSec;
 
   if (isVisibleNow) {
-    screen.setTextSize(3);
+    screen.setTextSize(2);
     screen.setTextColor(colorSuccess, colorBg);
-    screen.drawString("VISIBLE NOW!", rightX, y);
+    screen.drawString("VISIBLE NOW!", col2X, contentY);
     screen.setTextSize(1);
     screen.setTextColor(colorDim, colorBg);
-    screen.drawString("Duration", rightX, y + 40);
+    screen.drawString("Duration", col2X, contentY + 32);
     screen.setTextColor(colorText, colorBg);
     snprintf(row, sizeof(row), "%d min", g_iss.nextPassDurationSec / 60);
-    screen.drawString(row, rightX + 70, y + 40);
+    screen.drawString(row, col2X + 70, contentY + 32);
   } else if (g_iss.nextPassUnix > 0) {
     uint32_t secsUntil = (g_iss.nextPassUnix > nowUnix) ? (g_iss.nextPassUnix - nowUnix) : 0;
     int hh = secsUntil / 3600;
@@ -1095,15 +1094,11 @@ static void draw_iss() {
     int ss = secsUntil % 60;
     if (hh > 99) hh = 99;
 
-    screen.setTextSize(1);
-    screen.setTextColor(colorDim, colorBg);
-    screen.drawString("Next pass in:", rightX, y);
-
-    int boxY = y + 18;
+    int boxY = contentY;
     int boxW = 46, boxH = 46, gap = 8, colonW = 16;
     uint16_t boxColor = screen.color565(30, 34, 45);
     char digitBuf[3];
-    int cx = rightX;
+    int cx = col2X;
 
     screen.setTextDatum(textdatum_t::middle_center);
 
@@ -1135,37 +1130,33 @@ static void draw_iss() {
 
     screen.setTextDatum(textdatum_t::top_left);
 
-    int detailY = boxY + boxH + 14;
+    int detailY = boxY + boxH + 10;
     screen.setTextSize(1);
     screen.setTextColor(colorDim, colorBg);
-    screen.drawString("Duration", rightX, detailY);
+    screen.drawString("Duration", col2X, detailY);
     screen.setTextColor(colorText, colorBg);
     snprintf(row, sizeof(row), "%d min", g_iss.nextPassDurationSec / 60);
-    screen.drawString(row, rightX + 70, detailY);
+    screen.drawString(row, col2X + 70, detailY);
 
     if (g_issPassCount > 0) {
       snprintf(row, sizeof(row), "Max El %d", g_issPasses[0].maxElevationDeg);
-      screen.drawString(row, rightX + 150, detailY);
+      screen.drawString(row, col2X, detailY + 16);
     }
   } else {
+    screen.setTextSize(2);
     screen.setTextColor(colorDim, colorBg);
-    screen.drawString("No upcoming pass found", rightX, y);
+    screen.drawString("No upcoming pass found", col2X, contentY);
   }
 
-  // Visible passes list -- up to 3 rows, sized to fit what's left on screen.
+  // Column 3: Visible Passes list -- up to 3 rows
   {
-    int listHeaderY = belowY + 130;
-    screen.setTextSize(2);
-    screen.setTextColor(colorAccent, colorBg);
-    screen.setTextDatum(textdatum_t::top_left);
-    screen.drawString("Visible Passes", rightX, listHeaderY);
-
     screen.setTextSize(1);
-    int rowY = listHeaderY + 26;
+    int rowY = contentY;
     int shownPasses = min(g_issPassCount, 3);
     if (shownPasses == 0) {
       screen.setTextColor(colorDim, colorBg);
-      screen.drawString("No passes in the next few days", rightX, rowY);
+      screen.drawString("No passes in the", col3X, rowY);
+      screen.drawString("next few days", col3X, rowY + 16);
     } else {
       for (int i = 0; i < shownPasses; i++) {
         IssPass& p = g_issPasses[i];
@@ -1177,7 +1168,7 @@ static void draw_iss() {
                  p.maxElevationDeg,
                  p.magnitude);
         screen.setTextColor(colorText, colorBg);
-        screen.drawString(line, rightX, rowY);
+        screen.drawString(line, col3X, rowY);
         rowY += 18;
       }
     }
