@@ -417,10 +417,11 @@ static void draw_aviation() {
     int legX = 20;
     int legY = 130;
     screen.setTextSize(2);
-    screen.setTextColor(colorText, colorBg);
+    screen.setTextColor(colorAccent, colorBg);
     screen.setTextDatum(textdatum_t::top_left);
     screen.drawString("ALTITUDE", legX, legY);
-    legY += 40;
+    screen.drawLine(legX, legY + 20, legX + 96, legY + 20, colorAccent);
+    legY += 44;
 
     struct LegendEntry { uint16_t color; const char* label; };
     LegendEntry legend[] = {
@@ -864,10 +865,11 @@ static void draw_weather() {
     int aqX = 520;
     int aqY = 60;
     screen.setTextSize(2);
-    screen.setTextColor(colorText, colorBg);
+    screen.setTextColor(colorAccent, colorBg);
     screen.setTextDatum(textdatum_t::top_left);
     screen.drawString("AIR QUALITY", aqX, aqY);
-    aqY += 44;
+    screen.drawLine(aqX, aqY + 20, aqX + 132, aqY + 20, colorAccent);
+    aqY += 48;
 
     if (g_airQuality.valid) {
       uint16_t aqiColor = airQualityColor(g_airQuality.aqi);
@@ -1043,14 +1045,17 @@ static void draw_iss() {
   int col2X = 300;
   int col3X = 550;
 
-  screen.setTextSize(1);
+  screen.setTextSize(2);
   screen.setTextColor(colorAccent, colorBg);
   screen.setTextDatum(textdatum_t::top_left);
   screen.drawString("POSITION", col1X, belowY);
+  screen.drawLine(col1X, belowY + 20, col1X + 96, belowY + 20, colorAccent);
   screen.drawString("NEXT PASS", col2X, belowY);
+  screen.drawLine(col2X, belowY + 20, col2X + 108, belowY + 20, colorAccent);
   screen.drawString("PASSES", col3X, belowY);
+  screen.drawLine(col3X, belowY + 20, col3X + 72, belowY + 20, colorAccent);
 
-  int contentY = belowY + 22;
+  int contentY = belowY + 30;
   char row[64];
 
   // Column 1: Current Position
