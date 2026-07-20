@@ -256,7 +256,9 @@ static void draw_dashboard() {
       screen.drawString(teaser, leftX, y);
     }
   }
-  y += 20;
+  y += 14;
+  screen.drawLine(leftX, y, leftX + 300, y, colorDim);
+  y += 10;
 
   {
     int tonightIdx = findTonightAstroIndex();
@@ -1157,10 +1159,10 @@ static void draw_iss() {
   uint16_t colorHome = colorSuccess;
   screen.fillTriangle(homeX - 7, homeY, homeX + 7, homeY, homeX, homeY - 9, colorHome);
   screen.fillRect(homeX - 5, homeY, 10, 7, colorHome);
-  screen.setTextSize(2);
+  screen.setTextSize(1);
   screen.setTextColor(colorHome, colorBg);
   screen.setTextDatum(textdatum_t::top_left);
-  screen.drawString("Home", homeX + 14, homeY - 4);
+  screen.drawString("Home", homeX + 10, homeY - 4);
 
   if (g_issTrackValid && g_issTrackCount > 1) {
     uint16_t colorTrack = screen.color565(255, 170, 60);
@@ -1182,12 +1184,12 @@ static void draw_iss() {
   int issY = MAP_Y + (int)((90 - g_iss.lat) / 180.0f * MAP_H);
   drawIssIcon(issX, issY, colorIss);
 
-  screen.setTextSize(2);
+  screen.setTextSize(1);
   screen.setTextColor(colorIss, colorBg);
   char posLabel[32];
   snprintf(posLabel, sizeof(posLabel), "%.2f, %.2f", g_iss.lat, g_iss.lon);
   int posLabelX = issX + 16;
-  if (posLabelX + 150 > MAP_X + MAP_W) posLabelX = issX - 166; // flip left near the edge
+  if (posLabelX + 80 > MAP_X + MAP_W) posLabelX = issX - 96; // flip left near the edge
   screen.drawString(posLabel, posLabelX, issY - 6);
 
   int belowY = MAP_Y + MAP_H + 15;
@@ -1409,6 +1411,7 @@ static uint16_t astroSeverityColor(int idx, int maxIdx) {
 static void draw_astro() {
   screen.setTextDatum(textdatum_t::top_left);
 
+  astro_recompute_moon_phase();
   int tonightIdx = findTonightAstroIndex();
 
   if (tonightIdx < 0) {
@@ -1478,7 +1481,7 @@ static void draw_astro() {
   screen.setTextColor(colorText, colorBg);
   screen.drawString(g_moonPhaseLabel, col1X, row2Y + 34);
   char moonPct[24];
-  snprintf(moonPct, sizeof(moonPct), "%.0f%% illuminated", g_moonIllumPercent);
+  snprintf(moonPct, sizeof(moonPct), "%.0f pct illuminated", g_moonIllumPercent);
   screen.setTextSize(2);
   screen.setTextColor(colorDim, colorBg);
   screen.drawString(moonPct, col1X, row2Y + 62);

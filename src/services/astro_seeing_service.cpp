@@ -86,11 +86,15 @@ static void computeMoonPhase(uint32_t nowUnix) {
   else                                  g_moonPhaseLabel = "Waning Crescent";
 }
 
-void astro_seeing_service_update() {
+void astro_recompute_moon_phase() {
   uint32_t nowUnix = (uint32_t)time(nullptr);
   if (nowUnix > 100000) {
     computeMoonPhase(nowUnix);
   }
+}
+
+void astro_seeing_service_update() {
+  astro_recompute_moon_phase();
 
   if (!wifi_manager_is_connected()) return;
 

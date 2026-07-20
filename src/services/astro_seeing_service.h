@@ -30,6 +30,14 @@ extern String g_moonPhaseLabel;
 // the current moon phase.
 void astro_seeing_service_update();
 
+// Recalculates just the moon phase from the current time. Cheap (pure
+// math, no network), so it's safe to call every time the astro page is
+// drawn -- this decouples the moon phase from the network fetch timing,
+// since the very first fetch attempt at boot can happen before the clock
+// has finished syncing, silently skipping the calculation until the next
+// scheduled poll (up to ASTRO_POLL_MS later).
+void astro_recompute_moon_phase();
+
 // Index -> human-readable label helpers (kept out of the display code so
 // the mapping tables live in one place).
 const char* astro_seeing_label(int idx);
