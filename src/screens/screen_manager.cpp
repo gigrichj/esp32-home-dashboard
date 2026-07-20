@@ -1339,7 +1339,7 @@ void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
       if (currentTab == AVIATION_TAB_INDEX) {
         if (g_selectedAircraftIndex >= 0) {
           // Card is showing - only the BACK button does anything here.
-          bool hitBack = lastTouchX >= 470 && lastTouchX <= 570 &&
+          bool hitBack = lastTouchX >= 530 && lastTouchX <= 630 &&
                          lastTouchY >= 420 && lastTouchY <= 460;
           if (hitBack) {
             g_selectedAircraftIndex = -1;
@@ -1349,7 +1349,7 @@ void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
           // List is showing - check each row's recorded hit box.
           for (int i = 0; i < g_listRowCount; i++) {
             if (lastTouchY >= g_listRowY0[i] && lastTouchY <= g_listRowY1[i] &&
-                lastTouchX >= 470 && lastTouchX <= 780) {
+                lastTouchX >= 530 && lastTouchX <= 780) {
               int aircraftIdx = g_listRowAircraftIdx[i];
               g_selectedAircraftIndex = aircraftIdx;
               aviation_request_detail(g_aircraft[aircraftIdx].icao, g_aircraft[aircraftIdx].callsign);
