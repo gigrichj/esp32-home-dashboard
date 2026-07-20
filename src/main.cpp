@@ -8,7 +8,6 @@
 #include "services/air_quality_service.h"
 #include "services/aviation_service.h"
 #include "services/iss_service.h"
-#include "services/smarthome_service.h"
 #include "screens/screen_manager.h"
 #include "debug_log.h"
 #include "debug_controls.h"
@@ -23,7 +22,6 @@ static const uint32_t AIR_QUALITY_POLL_MS  = 25UL * 60UL * 1000UL; // deliberate
                                                                      // networkTask iteration.
 
 static const uint32_t ISS_POLL_MS        = 60UL * 1000UL;
-static const uint32_t SMARTHOME_POLL_MS  = 5UL * 1000UL;
 static const uint32_t DRAW_INTERVAL_MS   = 200UL;
 
 bool wasInSetupMode = false;
@@ -114,7 +112,7 @@ void uiTask(void* param) {
 }
 
 void networkTask(void* param) {
-  uint32_t lastWeather = 0, lastAviation = 0, lastIss = 0, lastSmartHome = 0, lastAirQuality = 0;
+  uint32_t lastWeather = 0, lastAviation = 0, lastIss = 0, lastAirQuality = 0;
 
   for (;;) {
     wifi_manager_loop();

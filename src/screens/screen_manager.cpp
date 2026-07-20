@@ -2,7 +2,6 @@
 #include "../panel_display.h"
 #include "../version.h"
 #include "../services/weather_service.h"
-#include "../services/smarthome_service.h"
 #include "../services/iss_service.h"
 #include "../services/aviation_service.h"
 #include "../services/air_quality_service.h"
@@ -16,7 +15,7 @@
 using namespace PanelDisplay;
 
 static const char* TAB_NAMES[] = {
-  "DASHBOARD", "AVIATION", "PORSCHE", "SMART HOME", "ISS", "WEATHER", "DEBUG"
+  "DASHBOARD", "AVIATION", "PORSCHE", "ISS", "WEATHER", "DEBUG"
 };
 static const int TAB_COUNT = sizeof(TAB_NAMES) / sizeof(TAB_NAMES[0]);
 
@@ -104,6 +103,19 @@ static void drawDashboardBackground() {
     screen.fillTriangle(x - 14, y, x + 14, y, x, y - 5, planeColor);
     screen.fillTriangle(x - 4, y - 5, x + 4, y - 5, x, y - 16, planeColor);
   }
+
+  // An ISS icon drifting the opposite direction, higher up, echoing the
+  // ISS page's icon without needing real orbital data for this ambient
+  // touch -- just a bit of life on the dashboard.
+  {
+    uint16_t issColor = screen.color565(120, 100, 160);
+    int span = WIDTH + 80;
+    int x = span - 40 - (int)((t / 26) % (uint32_t)span);
+    int y = 190;
+    screen.fillRect(x - 3, y - 3, 6, 6, issColor);
+    screen.fillRect(x - 15, y - 2, 9, 4, issColor);
+    screen.fillRect(x + 6, y - 2, 9, 4, issColor);
+  }
 }
 
 static int countVisibleAircraft(); // defined further down, used in draw_dashboard()
@@ -137,32 +149,23 @@ static void draw_dashboard() {
   screen.setTextColor(colorText, colorBg);
 
   int y = 100;
-  if (g_weather.valid) {
-    char line[64];
-    snprintf(line, sizeof(line), "Weather: %.0fF  %s", g_weather.tempF, g_weather.condition.c_str());
-    screen.drawString(line, 20, y);
-  } else {
-    screen.drawString("Weather: --", 20, y);
-  }
-  y += 40;
-
-  if (g_iss.valid) {
-    char line[64];
-    snprintf(line, sizeof(line), "ISS altitude: %.0f km", g_iss.altitudeKm);
-    screen.drawString(line, 20, y);
-  } else {
-    screen.drawString("ISS: --", 20, y);
-  }
-  y += 40;
-
   char line[64];
-  snprintf(line, sizeof(line), "House: %d devices online", g_deviceCount);
-  screen.drawString(line, 20, y);
-  y += 40;
 
-  snprintf(line, sizeof(line), "Aircraft nearby: %d", countVisibleAircraft());
-  screen.drawString(line, 20, y);
-  y += 40;
+  // WEATHER + AIR QUALITY group
+  screen.setTextSize(1);
+  screen.setTextColor(colorAccent, colorBg);
+  screen.drawString("WEATHER", 20, y);
+  y += 22;
+
+  screen.setTextSize(2);
+  screen.setTextColor(colorText, colorBg);
+  if (g_weather.valid) {
+    snprintf(line, sizeof(line), "%.0fF  %s", g_weather.tempF, g_weather.condition.c_str());
+    screen.drawString(line, 20, y);
+  } else {
+    screen.drawString("--", 20, y);
+  }
+  y += 34;
 
   if (g_airQuality.valid) {
     char aqLine[64];
@@ -172,6 +175,26 @@ static void draw_dashboard() {
     screen.setTextColor(colorText, colorBg);
   } else {
     screen.drawString("Air quality: --", 20, y);
+  }
+  y += 50;
+
+  // AIRCRAFT + ISS group
+  screen.setTextSize(1);
+  screen.setTextColor(colorAccent, colorBg);
+  screen.drawString("OVERHEAD", 20, y);
+  y += 22;
+
+  screen.setTextSize(2);
+  screen.setTextColor(colorText, colorBg);
+  snprintf(line, sizeof(line), "Aircraft nearby: %d", countVisibleAircraft());
+  screen.drawString(line, 20, y);
+  y += 34;
+
+  if (g_iss.valid) {
+    snprintf(line, sizeof(line), "ISS altitude: %.0f km", g_iss.altitudeKm);
+    screen.drawString(line, 20, y);
+  } else {
+    screen.drawString("ISS: --", 20, y);
   }
 }
 
@@ -465,63 +488,6 @@ static void draw_aviation() {
     if (g_aviationStatus.lastError.length() > 0) {
       screen.drawString(g_aviationStatus.lastError.c_str(), listX, listY);
     }
-  }
-}
-
-static void draw_smarthome() {
-  screen.setTextSize(2);
-  screen.setTextColor(colorText, colorBg);
-  screen.setTextDatum(textdatum_t::top_left);
-  char header[32];
-  snprintf(header, sizeof(header), "%d DEVICES ONLINE", g_deviceCount);
-  screen.drawString(header, 20, 55);
-
-  if (g_deviceCount == 0) {
-    screen.setTextColor(colorDim, colorBg);
-    screen.drawString("No devices found — check Hubitat/HA connection", 20, 100);
-    return;
-  }
-
-  const int colWidth = 380;
-  const int rowHeight = 90;
-  const int rowsPerCol = 4;
-  const int startX = 20;
-  const int startY = 100;
-
-  for (int i = 0; i < g_deviceCount && i < rowsPerCol * 2; i++) {
-    int col = i / rowsPerCol;
-    int row = i % rowsPerCol;
-    int x = startX + col * colWidth;
-    int y = startY + row * rowHeight;
-
-    bool isOn = g_devices[i].state.equalsIgnoreCase("on") ||
-                g_devices[i].state.equalsIgnoreCase("locked") ||
-                g_devices[i].state.equalsIgnoreCase("closed");
-    uint16_t stateColor = isOn ? screen.color565(80, 200, 120) : colorDim;
-
-    screen.fillRect(x, y, colWidth - 20, rowHeight - 12, screen.color565(25, 28, 34));
-
-    screen.setTextSize(2);
-    screen.setTextColor(colorText, screen.color565(25, 28, 34));
-    screen.setTextDatum(textdatum_t::top_left);
-    const char* name = g_devices[i].name.length() > 0 ? g_devices[i].name.c_str() : "(unnamed)";
-    screen.drawString(name, x + 12, y + 10);
-
-    screen.setTextSize(1);
-    screen.setTextColor(colorDim, screen.color565(25, 28, 34));
-    screen.drawString(g_devices[i].type.c_str(), x + 12, y + 38);
-
-    screen.setTextSize(2);
-    screen.setTextColor(stateColor, screen.color565(25, 28, 34));
-    screen.drawString(g_devices[i].state.c_str(), x + 12, y + 54);
-  }
-
-  if (g_deviceCount > rowsPerCol * 2) {
-    screen.setTextSize(1);
-    screen.setTextColor(colorDim, colorBg);
-    char more[32];
-    snprintf(more, sizeof(more), "+ %d more not shown", g_deviceCount - rowsPerCol * 2);
-    screen.drawString(more, startX, startY + rowsPerCol * rowHeight + 10);
   }
 }
 
@@ -1250,10 +1216,9 @@ void screen_manager_draw() {
     case 0: draw_dashboard(); break;
     case 1: draw_aviation(); break;
     case 2: draw_placeholder("Porsche"); break;
-    case 3: draw_smarthome(); break;
-    case 4: draw_iss(); break;
-    case 5: draw_weather(); break;
-    case 6: draw_debug(); break;
+    case 3: draw_iss(); break;
+    case 4: draw_weather(); break;
+    case 5: draw_debug(); break;
   }
 
   screen.setTextSize(1);
@@ -1262,7 +1227,7 @@ void screen_manager_draw() {
   screen.drawString(FIRMWARE_VERSION, WIDTH - 6, HEIGHT - 14);
 }
 
-static const int DEBUG_TAB_INDEX = 6;
+static const int DEBUG_TAB_INDEX = 5;
 static uint16_t lastTouchX = 0;
 static uint16_t lastTouchY = 0;
 
