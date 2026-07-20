@@ -147,6 +147,31 @@ static void drawDashboardBackground() {
     screen.fillRect(x - 15, y - 2, 9, 4, issColor);
     screen.fillRect(x + 6, y - 2, 9, 4, issColor);
   }
+
+  // A small floating galaxy -- a rotating spiral of dots around a bright
+  // core -- drifting slowly across the upper part of the screen. Purely
+  // decorative, but a nice nod to the astro page.
+  {
+    uint16_t galaxyCore = screen.color565(215, 195, 255);
+    uint16_t galaxyArm = screen.color565(120, 100, 170);
+    int span = WIDTH + 100;
+    int gx = (int)((t / 55) % (uint32_t)span) - 50;
+    int gy = 90;
+
+    screen.fillCircle(gx, gy, 4, galaxyCore);
+
+    float rotation = (float)(t / 30) * (PI / 180.0f);
+    for (int arm = 0; arm < 2; arm++) {
+      float armOffset = arm * PI;
+      for (int d = 1; d <= 4; d++) {
+        float angle = rotation + armOffset + d * 0.6f;
+        float radius = d * 5.0f;
+        int dx = gx + (int)(cosf(angle) * radius);
+        int dy = gy + (int)(sinf(angle) * radius * 0.5f);
+        screen.fillCircle(dx, dy, 2, galaxyArm);
+      }
+    }
+  }
 }
 
 static int countVisibleAircraft(); // defined further down, used in draw_dashboard()
