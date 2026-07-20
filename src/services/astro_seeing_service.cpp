@@ -8,6 +8,7 @@
 
 AstroForecastPoint g_astroForecast[ASTRO_MAX_POINTS];
 int g_astroForecastCount = 0;
+int g_astroLastHttpCode = -999;
 
 float g_moonPhaseFraction = 0;
 float g_moonIllumPercent = 0;
@@ -105,6 +106,7 @@ void astro_seeing_service_update() {
                           // was likely cutting it off before it replied.
   http.addHeader("User-Agent", "ESP32-Home-Dashboard/1.0");
   int code = http.GET();
+  g_astroLastHttpCode = code;
   if (code == 200) {
     String payload = http.getString();
     JsonDocument doc;

@@ -1411,6 +1411,16 @@ static void draw_astro() {
 
   int tonightIdx = findTonightAstroIndex();
 
+  if (tonightIdx < 0) {
+    screen.setTextSize(2);
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString("No astro data yet", 20, 55);
+    char httpLine[48];
+    snprintf(httpLine, sizeof(httpLine), "Last HTTP result: %d", g_astroLastHttpCode);
+    screen.drawString(httpLine, 20, 90);
+    screen.drawString("(-999=never tried, neg=connection error)", 20, 122);
+  }
+
   int panelY = 55;
   int col1X = 20, col2X = 290, col3X = 560;
 
@@ -1474,7 +1484,7 @@ static void draw_astro() {
   screen.drawString(moonPct, col1X, row2Y + 62);
 
   {
-    int moonCx = col1X + 220, moonCy = row2Y + 40, moonR = 32;
+    int moonCx = col1X + 353, moonCy = row2Y + 40, moonR = 32;
     screen.fillCircle(moonCx, moonCy, moonR, screen.color565(230, 230, 210));
     float shadowFrac = g_moonPhaseFraction;
     bool waxing = shadowFrac < 0.5f;

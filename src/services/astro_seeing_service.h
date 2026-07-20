@@ -15,6 +15,11 @@ static const int ASTRO_MAX_POINTS = 16; // ~48 hours at 3-hour spacing
 extern AstroForecastPoint g_astroForecast[ASTRO_MAX_POINTS];
 extern int g_astroForecastCount;
 
+// Last HTTP result from the 7Timer fetch (-999 = never attempted), shown
+// on-screen when there's no forecast data so troubleshooting doesn't
+// require a serial monitor or waiting on the debug log.
+extern int g_astroLastHttpCode;
+
 // Moon phase/illumination, calculated locally from the date -- no network
 // call needed, accurate to well within a day.
 extern float g_moonPhaseFraction;   // 0=new, 0.5=full, 1=new again
