@@ -463,6 +463,20 @@ static void draw_aviation() {
       screen.drawString(legend[i].label, legX + 20, legY - 3);
       legY += 34;
     }
+
+    // Ring indicators are drawn as outlines here (rather than filled
+    // swatches) since that's how they actually appear around aircraft
+    // dots on the radar.
+    legY += 4;
+    screen.drawCircle(legX + 7, legY, 7, colorAccent);
+    screen.setTextColor(colorLabel, colorBg);
+    screen.drawString("Closest aircraft", legX + 20, legY - 3);
+    legY += 26;
+
+    screen.drawCircle(legX + 7, legY, 7, colorDanger);
+    screen.setTextColor(colorLabel, colorBg);
+    screen.drawString("Emergency squawk", legX + 20, legY - 3);
+
     screen.setTextDatum(textdatum_t::top_left);
   }
 
