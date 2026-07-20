@@ -1155,10 +1155,17 @@ static void draw_iss() {
     screen.drawString("No upcoming pass found", col2X, contentY);
   }
 
-  // Column 3: Visible Passes list -- up to 3 rows
+  // Column 3: Visible Passes list -- up to 3 rows, columns aligned via
+  // fixed-width padding (this font is monospace, so %-Ns keeps every
+  // row's DATE/START/END/EL/MAG lined up under one another).
   {
     screen.setTextSize(1);
     int rowY = contentY;
+
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString("DATE  START  END    EL  MAG", col3X, rowY);
+    rowY += 18;
+
     int shownPasses = min(g_issPassCount, 3);
     if (shownPasses == 0) {
       screen.setTextColor(colorDim, colorBg);
@@ -1168,7 +1175,7 @@ static void draw_iss() {
       for (int i = 0; i < shownPasses; i++) {
         IssPass& p = g_issPasses[i];
         char line[64];
-        snprintf(line, sizeof(line), "%s %s-%s  El%d  Mag%.1f",
+        snprintf(line, sizeof(line), "%-6s%-7s%-7s%-4d%.1f",
                  formatPassDate(p.startUnix).c_str(),
                  formatPassTime(p.startUnix).c_str(),
                  formatPassTime(p.endUnix).c_str(),
