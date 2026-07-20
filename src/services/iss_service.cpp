@@ -26,14 +26,11 @@ static const int TRACK_STEP_SECONDS = 100; // 60 pts * 100s = 6000s (~100min), >
 // run every few hours; the ground-track math itself is pure local
 // computation with zero network cost once a TLE is loaded.
 static void fetchCrewCount() {
+  // Deliberately bare-bones -- this worked fine before an earlier "fix"
+  // (timeout/redirects/User-Agent, aimed at a 7Timer-style 302 issue that
+  // didn't actually apply here) broke it. Reverted to the simple version.
   HTTPClient http;
-  http.begin("https://api.open-notify.org/astros.json");
-  http.setTimeout(15000);
-  http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS); // same class of fix
-                          // as the 7Timer 302 issue -- Open Notify may
-                          // also redirect, and HTTPClient doesn't follow
-                          // redirects by default.
-  http.addHeader("User-Agent", "ESP32-Home-Dashboard/1.0");
+  http.begin("http://api.open-notify.org/astros.json");
   int code = http.GET();
   g_issCrewLastHttpCode = code;
   if (code == 200) {
