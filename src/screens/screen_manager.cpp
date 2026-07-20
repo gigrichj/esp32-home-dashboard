@@ -37,6 +37,11 @@ static int dotRadiusForAltitude(int altFt) {
   return 6;
 }
 
+// 7500 = hijack, 7600 = radio failure, 7700 = general emergency.
+static bool isEmergencySquawk(const String& squawk) {
+  return squawk == "7500" || squawk == "7600" || squawk == "7700";
+}
+
 // Colors an OpenWeatherMap AQI index (1=Good .. 5=Very Poor) green-to-red.
 static uint16_t airQualityColor(int aqi) {
   switch (aqi) {
@@ -377,6 +382,18 @@ static void draw_aviation() {
   screen.drawString("E", RADAR_CX + RADAR_RADIUS + 12, RADAR_CY);
   screen.drawString("W", RADAR_CX - RADAR_RADIUS - 12, RADAR_CY);
 
+  int closestIdx = -1;
+  float closestDist = 1e9f;
+  bool anyEmergency = false;
+  for (int i = 0; i < g_aircraftCount; i++) {
+    if (g_aircraft[i].distanceNm > RADAR_MAX_RANGE_NM) continue;
+    if (g_aircraft[i].distanceNm < closestDist) {
+      closestDist = g_aircraft[i].distanceNm;
+      closestIdx = i;
+    }
+    if (isEmergencySquawk(g_aircraft[i].squawk)) anyEmergency = true;
+  }
+
   for (int i = 0; i < g_aircraftCount; i++) {
     Aircraft& a = g_aircraft[i];
     float rangeFrac = a.distanceNm / RADAR_MAX_RANGE_NM;
@@ -386,11 +403,19 @@ static void draw_aviation() {
     int px = RADAR_CX + (int)(sinf(bearingRad) * rangeFrac * RADAR_RADIUS);
     int py = RADAR_CY - (int)(cosf(bearingRad) * rangeFrac * RADAR_RADIUS);
 
-    uint16_t planeColor = colorForAltitude(a.altitudeFt);
+    bool isEmergency = isEmergencySquawk(a.squawk);
+    uint16_t planeColor = isEmergency ? colorDanger : colorForAltitude(a.altitudeFt);
     int dotRadius = dotRadiusForAltitude(a.altitudeFt);
     screen.fillCircle(px, py, dotRadius, planeColor);
     int tickLen = constrain(a.altitudeFt / 1000, 2, 14);
     screen.drawLine(px, py + 5, px, py + 5 + tickLen, planeColor);
+
+    if (i == closestIdx) {
+      screen.drawCircle(px, py, dotRadius + 4, colorAccent);
+    }
+    if (isEmergency) {
+      screen.drawCircle(px, py, dotRadius + 6, colorDanger);
+    }
 
     screen.setTextColor(colorLabel, colorBg);
     screen.setTextDatum(textdatum_t::top_left);
@@ -452,6 +477,13 @@ static void draw_aviation() {
   int visibleCount = countVisibleAircraft();
 
   int listY = 55;
+  if (anyEmergency) {
+    screen.setTextSize(1);
+    screen.setTextColor(colorDanger, colorBg);
+    screen.setTextDatum(textdatum_t::top_left);
+    screen.drawString("EMERGENCY SQUAWK DETECTED", listX, listY);
+    listY += 20;
+  }
   screen.setTextSize(2);
   screen.setTextColor(colorText, colorBg);
   screen.setTextDatum(textdatum_t::top_left);
@@ -486,11 +518,19 @@ static void draw_aviation() {
   for (int s = 0; s < sortedCount && shown < rowCap; s++) {
     int i = sortedIdx[s];
     Aircraft& a = g_aircraft[i];
+    bool isEmergency = isEmergencySquawk(a.squawk);
     char row[64];
     const char* callsign = a.callsign.length() > 0 ? a.callsign.c_str() : "????";
-    snprintf(row, sizeof(row), "%-8s %5dft  %.0fnm", callsign, a.altitudeFt, a.distanceNm);
-    screen.fillCircle(listX - 8, listY + 8, 3, colorForAltitude(a.altitudeFt));
-    screen.setTextColor(colorText, colorBg);
+    if (isEmergency) {
+      snprintf(row, sizeof(row), "%-8s %5dft  %.0fnm  SQ%s", callsign, a.altitudeFt, a.distanceNm, a.squawk.c_str());
+    } else {
+      snprintf(row, sizeof(row), "%-8s %5dft  %.0fnm", callsign, a.altitudeFt, a.distanceNm);
+    }
+    screen.fillCircle(listX - 8, listY + 8, 3, isEmergency ? colorDanger : colorForAltitude(a.altitudeFt));
+    uint16_t rowColor = colorText;
+    if (s == 0) rowColor = colorAccent;
+    if (isEmergency) rowColor = colorDanger;
+    screen.setTextColor(rowColor, colorBg);
     screen.drawString(row, listX, listY);
 
     g_listRowAircraftIdx[g_listRowCount] = i;
