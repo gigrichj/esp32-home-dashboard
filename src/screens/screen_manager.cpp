@@ -1405,6 +1405,32 @@ static uint16_t astroSeverityColor(int idx, int maxIdx) {
   return colorDanger;
 }
 
+// Finds the best (lowest composite badness) point across all the astro
+// forecast data we already have (~48 hours), restricted to nighttime
+// hours (20:00-05:59 local) since seeing/transparency only matter after
+// dark. Reuses today's moon illumination as an approximation across the
+// whole window -- moon phase barely shifts over 2 days.
+static int findBestNightIndex(float* outBadness) {
+  int bestIdx = -1;
+  float bestBadness = 2.0f; // worse than any real value (max is 1.0)
+  for (int i = 0; i < g_astroForecastCount; i++) {
+    time_t t = (time_t)g_astroForecast[i].unixTime;
+    struct tm* ti = localtime(&t);
+    bool isNight = (ti->tm_hour >= 20 || ti->tm_hour < 6);
+    if (!isNight) continue;
+
+    float badness = 0;
+    astro_tonight_verdict(g_astroForecast[i].cloudcover, g_astroForecast[i].seeing,
+                           g_astroForecast[i].transparency, g_moonIllumPercent, &badness);
+    if (badness < bestBadness) {
+      bestBadness = badness;
+      bestIdx = i;
+    }
+  }
+  if (outBadness) *outBadness = bestBadness;
+  return bestIdx;
+}
+
 static void draw_astro() {
   screen.setTextDatum(textdatum_t::top_left);
 
@@ -1437,7 +1463,26 @@ static void draw_astro() {
     snprintf(bortleLine, sizeof(bortleLine), "Bortle %.1f (Home)", (double)HOME_BORTLE_CLASS);
     screen.setTextSize(2);
     screen.setTextColor(colorDim, colorBg);
-    screen.drawString(bortleLine, 600, 55);
+    screen.drawString(bortleLine, 560, 55);
+
+    {
+      float bestBadness = 0;
+      int bestIdx = findBestNightIndex(&bestBadness);
+      if (bestIdx >= 0) {
+        uint16_t bestColor;
+        if (bestBadness < 0.25f) bestColor = colorSuccess;
+        else if (bestBadness < 0.5f) bestColor = screen.color565(160, 200, 60);
+        else if (bestBadness < 0.75f) bestColor = screen.color565(230, 130, 40);
+        else bestColor = colorDanger;
+
+        char bestLine[32];
+        snprintf(bestLine, sizeof(bestLine), "Best: %s %s",
+                 formatPassDate(g_astroForecast[bestIdx].unixTime).c_str(),
+                 formatPassTime(g_astroForecast[bestIdx].unixTime).c_str());
+        screen.setTextColor(bestColor, colorBg);
+        screen.drawString(bestLine, 560, 79);
+      }
+    }
 
     if (tonightIdx >= 0) {
       float badness = 0;
