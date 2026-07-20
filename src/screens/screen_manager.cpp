@@ -82,7 +82,11 @@ static void drawHeader() {
   screen.setTextSize(2);
   screen.setTextColor(colorBg, colorAccent);
   screen.setTextDatum(textdatum_t::top_left);
-  screen.drawString(TAB_NAMES[currentTab], 10, 12);
+  if (currentTab == 0) {
+    screen.drawString("DASHBOARD - LORTON, VA", 10, 12);
+  } else {
+    screen.drawString(TAB_NAMES[currentTab], 10, 12);
+  }
 
   screen.setTextSize(1);
   screen.setTextColor(colorBg, colorAccent);
@@ -1425,6 +1429,15 @@ static void draw_astro() {
     screen.setTextColor(colorAccent, colorBg);
     screen.drawString("TONIGHT'S VERDICT", 20, 55);
     screen.drawLine(20, 75, 20 + 18 * 12, 75, colorAccent);
+
+    // Static reference value for this location -- Bortle class doesn't
+    // change day to day like the rest of this page, so it's a hardcoded
+    // constant rather than a network fetch (see HOME_BORTLE_CLASS).
+    char bortleLine[24];
+    snprintf(bortleLine, sizeof(bortleLine), "Bortle %.1f (Home)", (double)HOME_BORTLE_CLASS);
+    screen.setTextSize(2);
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString(bortleLine, 600, 55);
 
     if (tonightIdx >= 0) {
       float badness = 0;
