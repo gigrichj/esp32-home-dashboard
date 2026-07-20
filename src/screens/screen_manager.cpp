@@ -939,20 +939,20 @@ static void draw_weather() {
       prevX = px; prevY = py; havePrev = true;
     }
 
-    screen.setTextSize(1);
+    screen.setTextSize(2);
     screen.setTextColor(colorDim, colorBg);
     screen.setTextDatum(textdatum_t::top_left);
-    screen.drawString("PRECIP", gaugeCx - 18, gaugeCy + gaugeR + 12);
+    screen.drawString("PRECIP", gaugeCx - 36, gaugeCy + gaugeR + 12);
 
     screen.setTextSize(2);
     screen.setTextColor(colorText, colorBg);
     char precipStr[8];
     snprintf(precipStr, sizeof(precipStr), "%d", g_weather.precipChance);
-    screen.drawString(precipStr, gaugeCx - 12, gaugeCy + gaugeR + 30);
+    screen.drawString(precipStr, gaugeCx - 12, gaugeCy + gaugeR + 38);
     {
       // Hand-drawn percent glyph, same trick used for humidity above.
       int gx = gaugeCx + 8;
-      int gy = gaugeCy + gaugeR + 36;
+      int gy = gaugeCy + gaugeR + 44;
       screen.fillCircle(gx, gy - 5, 2, colorText);
       screen.fillCircle(gx + 8, gy + 3, 2, colorText);
       screen.drawLine(gx - 1, gy + 5, gx + 9, gy - 7, colorText);
@@ -992,10 +992,10 @@ static void draw_weather() {
     int ry = tipY + (int)(cosf(rightRad) * 8);
     screen.fillTriangle(tipX, tipY, lx, ly, rx, ry, needleColor);
 
-    screen.setTextSize(1);
+    screen.setTextSize(2);
     screen.setTextColor(colorDim, colorBg);
     screen.setTextDatum(textdatum_t::top_left);
-    screen.drawString("WINDS", windCx - 15, windCy + windR + 12);
+    screen.drawString("WINDS", windCx - 30, windCy + windR + 12);
 
     screen.setTextSize(2);
     screen.setTextColor(colorText, colorBg);
@@ -1005,7 +1005,7 @@ static void draw_weather() {
     // varies (e.g. "1 / 3" vs "12 / 18") -- this font is monospace-ish at
     // roughly 12px/char at text size 2.
     int windStrWidth = (int)strlen(windStr) * 12;
-    screen.drawString(windStr, windCx - windStrWidth / 2, windCy + windR + 30);
+    screen.drawString(windStr, windCx - windStrWidth / 2, windCy + windR + 38);
     screen.setTextDatum(textdatum_t::top_left);
   }
 
@@ -1040,12 +1040,12 @@ static void draw_weather() {
       }
       aqY += barH + 24;
 
-      screen.setTextSize(1);
+      screen.setTextSize(2);
       screen.setTextColor(colorDim, colorBg);
       char pmLine[32];
       snprintf(pmLine, sizeof(pmLine), "PM2.5: %.1f ug/m3", g_airQuality.pm2_5);
       screen.drawString(pmLine, aqX, aqY);
-      aqY += 20;
+      aqY += 26;
       snprintf(pmLine, sizeof(pmLine), "PM10: %.1f ug/m3", g_airQuality.pm10);
       screen.drawString(pmLine, aqX, aqY);
     } else {
@@ -1065,7 +1065,7 @@ static void draw_weather() {
   for (int i = 0; i < g_forecastCount; i++) {
     int cx = 20 + colW * i + colW / 2;
 
-    screen.setTextSize(1);
+    screen.setTextSize(2);
     screen.setTextColor(colorText, colorBg);
     screen.drawString(g_forecast[i].dayLabel, cx, stripY + 4);
 
@@ -1122,11 +1122,11 @@ static void draw_iss() {
     screen.setTextSize(2);
     screen.setTextColor(colorDim, colorBg);
     screen.drawString("No ISS data yet", 20, 100);
-    screen.setTextSize(1);
+    screen.setTextSize(2);
     char errLine[48];
     snprintf(errLine, sizeof(errLine), "Last HTTP result: %d", g_iss.lastHttpCode);
     screen.drawString(errLine, 20, 140);
-    screen.drawString("(200=ok, 401/403=bad API key, negative=connection error)", 20, 165);
+    screen.drawString("(200=ok, 401/403=bad key, neg=connection error)", 20, 175);
     return;
   }
 
@@ -1157,10 +1157,10 @@ static void draw_iss() {
   uint16_t colorHome = colorSuccess;
   screen.fillTriangle(homeX - 7, homeY, homeX + 7, homeY, homeX, homeY - 9, colorHome);
   screen.fillRect(homeX - 5, homeY, 10, 7, colorHome);
-  screen.setTextSize(1);
+  screen.setTextSize(2);
   screen.setTextColor(colorHome, colorBg);
   screen.setTextDatum(textdatum_t::top_left);
-  screen.drawString("Home", homeX + 10, homeY - 4);
+  screen.drawString("Home", homeX + 14, homeY - 4);
 
   if (g_issTrackValid && g_issTrackCount > 1) {
     uint16_t colorTrack = screen.color565(255, 170, 60);
@@ -1182,11 +1182,13 @@ static void draw_iss() {
   int issY = MAP_Y + (int)((90 - g_iss.lat) / 180.0f * MAP_H);
   drawIssIcon(issX, issY, colorIss);
 
-  screen.setTextSize(1);
+  screen.setTextSize(2);
   screen.setTextColor(colorIss, colorBg);
   char posLabel[32];
   snprintf(posLabel, sizeof(posLabel), "%.2f, %.2f", g_iss.lat, g_iss.lon);
-  screen.drawString(posLabel, issX + 16, issY - 6);
+  int posLabelX = issX + 16;
+  if (posLabelX + 150 > MAP_X + MAP_W) posLabelX = issX - 166; // flip left near the edge
+  screen.drawString(posLabel, posLabelX, issY - 6);
 
   int belowY = MAP_Y + MAP_H + 15;
   int col1X = 20;
@@ -1236,12 +1238,12 @@ static void draw_iss() {
     screen.setTextSize(2);
     screen.setTextColor(colorSuccess, colorBg);
     screen.drawString("VISIBLE NOW!", col2X, contentY);
-    screen.setTextSize(1);
+    screen.setTextSize(2);
     screen.setTextColor(colorDim, colorBg);
     screen.drawString("Duration", col2X, contentY + 32);
     screen.setTextColor(colorText, colorBg);
     snprintf(row, sizeof(row), "%d min", g_iss.nextPassDurationSec / 60);
-    screen.drawString(row, col2X + 70, contentY + 32);
+    screen.drawString(row, col2X + 100, contentY + 32);
   } else if (g_iss.nextPassUnix > 0) {
     uint32_t secsUntil = (g_iss.nextPassUnix > nowUnix) ? (g_iss.nextPassUnix - nowUnix) : 0;
     int hh = secsUntil / 3600;
@@ -1286,21 +1288,21 @@ static void draw_iss() {
     screen.setTextDatum(textdatum_t::top_left);
 
     int detailY = boxY + boxH + 10;
-    screen.setTextSize(1);
+    screen.setTextSize(2);
     screen.setTextColor(colorDim, colorBg);
     screen.drawString("Duration", col2X, detailY);
     screen.setTextColor(colorText, colorBg);
     snprintf(row, sizeof(row), "%d min", g_iss.nextPassDurationSec / 60);
-    screen.drawString(row, col2X + 70, detailY);
+    screen.drawString(row, col2X + 100, detailY);
 
     if (g_issPassCount > 0) {
       snprintf(row, sizeof(row), "Max El %d  Look %s", g_issPasses[0].maxElevationDeg,
                g_issPasses[0].maxAzCompass.c_str());
-      screen.drawString(row, col2X, detailY + 16);
+      screen.drawString(row, col2X, detailY + 24);
     }
 
     snprintf(row, sizeof(row), "Crew Aboard %d", g_issCrewCount);
-    screen.drawString(row, col2X, detailY + 32);
+    screen.drawString(row, col2X, detailY + 48);
   } else {
     screen.setTextSize(2);
     screen.setTextColor(colorDim, colorBg);
@@ -1309,33 +1311,33 @@ static void draw_iss() {
 
   // Column 3: Visible Passes list -- up to 3 rows, columns aligned via
   // fixed-width padding (this font is monospace, so %-Ns keeps every
-  // row's DATE/START/END/EL/MAG lined up under one another).
+  // row's DATE/START/EL lined up under one another). End time and
+  // magnitude were dropped from this table to fit the larger text --
+  // date/start/elevation are the more useful at-a-glance fields.
   {
-    screen.setTextSize(1);
+    screen.setTextSize(2);
     int rowY = contentY;
 
     screen.setTextColor(colorDim, colorBg);
-    screen.drawString("DATE  START  END    EL  MAG", col3X, rowY);
-    rowY += 18;
+    screen.drawString("DATE  START  EL", col3X, rowY);
+    rowY += 24;
 
     int shownPasses = min(g_issPassCount, 3);
     if (shownPasses == 0) {
       screen.setTextColor(colorDim, colorBg);
       screen.drawString("No passes in the", col3X, rowY);
-      screen.drawString("next few days", col3X, rowY + 16);
+      screen.drawString("next few days", col3X, rowY + 24);
     } else {
       for (int i = 0; i < shownPasses; i++) {
         IssPass& p = g_issPasses[i];
         char line[64];
-        snprintf(line, sizeof(line), "%-6s%-7s%-7s%-4d%.1f",
+        snprintf(line, sizeof(line), "%-6s%-7sEl%-3d",
                  formatPassDate(p.startUnix).c_str(),
                  formatPassTime(p.startUnix).c_str(),
-                 formatPassTime(p.endUnix).c_str(),
-                 p.maxElevationDeg,
-                 p.magnitude);
+                 p.maxElevationDeg);
         screen.setTextColor(colorText, colorBg);
         screen.drawString(line, col3X, rowY);
-        rowY += 18;
+        rowY += 24;
       }
     }
   }
@@ -1445,7 +1447,7 @@ static void draw_astro() {
 
       char idxLine[16];
       snprintf(idxLine, sizeof(idxLine), "(%d/%d)", p.value, p.maxValue);
-      screen.setTextSize(1);
+      screen.setTextSize(2);
       screen.setTextColor(colorDim, colorBg);
       screen.drawString(idxLine, p.x, panelY + 70);
     } else {
@@ -1467,7 +1469,7 @@ static void draw_astro() {
   screen.drawString(g_moonPhaseLabel, col1X, row2Y + 34);
   char moonPct[24];
   snprintf(moonPct, sizeof(moonPct), "%.0f%% illuminated", g_moonIllumPercent);
-  screen.setTextSize(1);
+  screen.setTextSize(2);
   screen.setTextColor(colorDim, colorBg);
   screen.drawString(moonPct, col1X, row2Y + 62);
 
@@ -1494,7 +1496,7 @@ static void draw_astro() {
     if (g_astroForecast[tonightIdx].prectype != "none") {
       char precipLine[32];
       snprintf(precipLine, sizeof(precipLine), "Precip: %s", g_astroForecast[tonightIdx].prectype.c_str());
-      screen.setTextSize(1);
+      screen.setTextSize(2);
       screen.setTextColor(colorDim, colorBg);
       screen.drawString(precipLine, col3X, row2Y + 62);
     }
@@ -1507,11 +1509,11 @@ static void draw_astro() {
   int stripY = 280;
   screen.drawLine(20, stripY - 10, WIDTH - 20, stripY - 10, colorDim);
 
-  screen.setTextSize(1);
+  screen.setTextSize(2);
   screen.setTextColor(colorDim, colorBg);
-  screen.drawString("SEE", 20, stripY + 10);
+  screen.drawString("SEE", 20, stripY + 6);
   screen.drawString("TRN", 20, stripY + 28);
-  screen.drawString("CLD", 20, stripY + 46);
+  screen.drawString("CLD", 20, stripY + 50);
 
   int stripStartX = 70;
   int colW = (WIDTH - 40 - stripStartX) / 6;
@@ -1526,13 +1528,14 @@ static void draw_astro() {
     int h12 = ti->tm_hour % 12;
     if (h12 == 0) h12 = 12;
     snprintf(timeLabel, sizeof(timeLabel), "%d%s", h12, ti->tm_hour < 12 ? "A" : "P");
+    screen.setTextSize(2);
     screen.setTextDatum(textdatum_t::middle_center);
     screen.setTextColor(colorText, colorBg);
     screen.drawString(timeLabel, cx, stripY - 4);
 
-    screen.fillRect(cx - 20, stripY + 4, 40, 12, astroSeverityColor(pt.seeing, 8));
-    screen.fillRect(cx - 20, stripY + 22, 40, 12, astroSeverityColor(pt.transparency, 8));
-    screen.fillRect(cx - 20, stripY + 40, 40, 12, astroSeverityColor(pt.cloudcover, 9));
+    screen.fillRect(cx - 20, stripY, 40, 16, astroSeverityColor(pt.seeing, 8));
+    screen.fillRect(cx - 20, stripY + 22, 40, 16, astroSeverityColor(pt.transparency, 8));
+    screen.fillRect(cx - 20, stripY + 44, 40, 16, astroSeverityColor(pt.cloudcover, 9));
   }
   screen.setTextDatum(textdatum_t::top_left);
 }
