@@ -28,6 +28,15 @@ static uint16_t colorForAltitude(int altFt) {
   return screen.color565(255, 140, 60);                      // high altitude - orange
 }
 
+// Dot size grows with altitude too, alongside the color, so low/high
+// traffic is distinguishable even at a glance.
+static int dotRadiusForAltitude(int altFt) {
+  if (altFt < 5000)  return 3;
+  if (altFt < 15000) return 4;
+  if (altFt < 30000) return 5;
+  return 6;
+}
+
 // Colors an OpenWeatherMap AQI index (1=Good .. 5=Very Poor) green-to-red.
 static uint16_t airQualityColor(int aqi) {
   switch (aqi) {
@@ -357,7 +366,8 @@ static void draw_aviation() {
     int py = RADAR_CY - (int)(cosf(bearingRad) * rangeFrac * RADAR_RADIUS);
 
     uint16_t planeColor = colorForAltitude(a.altitudeFt);
-    screen.fillCircle(px, py, 4, planeColor);
+    int dotRadius = dotRadiusForAltitude(a.altitudeFt);
+    screen.fillCircle(px, py, dotRadius, planeColor);
     int tickLen = constrain(a.altitudeFt / 1000, 2, 14);
     screen.drawLine(px, py + 5, px, py + 5 + tickLen, planeColor);
 
@@ -731,7 +741,7 @@ static void draw_weather() {
     // Precipitation gauge: a 270-degree arc (gap at the bottom), approximated
     // with short line segments since this display library doesn't expose a
     // drawArc primitive. A blue segment fills in up to the current percent.
-    int gaugeCx = 390, gaugeCy = 115, gaugeR = 42;
+    int gaugeCx = 420, gaugeCy = 115, gaugeR = 38;
     float startDeg = -135.0f, sweepDeg = 270.0f;
     uint16_t trackColor = colorDim;
     uint16_t fillColor = screen.color565(70, 150, 220);
@@ -782,7 +792,7 @@ static void draw_weather() {
 
   {
     // Wind compass: direction needle plus sustained | gust speeds below.
-    int windCx = 390, windCy = 255, windR = 38;
+    int windCx = 420, windCy = 255, windR = 34;
     screen.drawCircle(windCx, windCy, windR, colorDim);
 
     for (int deg = 0; deg < 360; deg += 30) {
@@ -820,7 +830,7 @@ static void draw_weather() {
     screen.setTextSize(2);
     screen.setTextColor(colorText, colorBg);
     char windStr[24];
-    snprintf(windStr, sizeof(windStr), "%.0f | %.0f", g_weather.windMph, g_weather.windGustMph);
+    snprintf(windStr, sizeof(windStr), "%.0f / %.0f", g_weather.windMph, g_weather.windGustMph);
     screen.drawString(windStr, windCx - 40, windCy + windR + 30);
     screen.setTextDatum(textdatum_t::top_left);
   }
