@@ -209,6 +209,25 @@ static void draw_dashboard() {
   } else {
     screen.drawString("Air quality: --", leftX, y);
   }
+  y += 34;
+
+  {
+    // Cross-page teaser: countdown to the next sunrise/sunset, so the
+    // dashboard hints at the weather page's data without duplicating it.
+    if (g_weather.valid && g_weather.sunriseUnix > 0 && g_weather.sunsetUnix > 0) {
+      uint32_t nowUnix = (uint32_t)time(nullptr);
+      bool isDay = nowUnix >= g_weather.sunriseUnix && nowUnix < g_weather.sunsetUnix;
+      uint32_t targetUnix = isDay ? g_weather.sunsetUnix : g_weather.sunriseUnix;
+      uint32_t secsUntil = (targetUnix > nowUnix) ? (targetUnix - nowUnix) : 0;
+      int hh = secsUntil / 3600;
+      int mm = (secsUntil % 3600) / 60;
+      char teaser[48];
+      snprintf(teaser, sizeof(teaser), "%s in %dh %dm", isDay ? "Sunset" : "Sunrise", hh, mm);
+      screen.setTextSize(1);
+      screen.setTextColor(colorDim, colorBg);
+      screen.drawString(teaser, leftX, y);
+    }
+  }
 
   // AIRCRAFT + ISS column, pushed to the right so this reads as a second
   // column rather than continuing the same vertical list.
@@ -230,6 +249,30 @@ static void draw_dashboard() {
     screen.drawString(line, rightX, y2);
   } else {
     screen.drawString("ISS: --", rightX, y2);
+  }
+  y2 += 34;
+
+  {
+    // Cross-page teaser: countdown to the next visible ISS pass, so the
+    // dashboard hints at the ISS page's data without duplicating it.
+    if (g_iss.nextPassUnix > 0) {
+      uint32_t nowUnix = (uint32_t)time(nullptr);
+      bool visibleNow = nowUnix >= g_iss.nextPassUnix &&
+          nowUnix <= g_iss.nextPassUnix + (uint32_t)g_iss.nextPassDurationSec;
+      screen.setTextSize(1);
+      if (visibleNow) {
+        screen.setTextColor(colorSuccess, colorBg);
+        screen.drawString("ISS visible now!", rightX, y2);
+      } else {
+        uint32_t secsUntil = (g_iss.nextPassUnix > nowUnix) ? (g_iss.nextPassUnix - nowUnix) : 0;
+        int hh = secsUntil / 3600;
+        int mm = (secsUntil % 3600) / 60;
+        char teaser[48];
+        snprintf(teaser, sizeof(teaser), "Next pass in %dh %dm", hh, mm);
+        screen.setTextColor(colorDim, colorBg);
+        screen.drawString(teaser, rightX, y2);
+      }
+    }
   }
 }
 
