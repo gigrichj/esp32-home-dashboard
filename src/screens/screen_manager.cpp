@@ -831,7 +831,11 @@ static void draw_weather() {
     screen.setTextColor(colorText, colorBg);
     char windStr[24];
     snprintf(windStr, sizeof(windStr), "%.0f / %.0f", g_weather.windMph, g_weather.windGustMph);
-    screen.drawString(windStr, windCx - 40, windCy + windR + 30);
+    // Center dynamically based on actual string length, since digit count
+    // varies (e.g. "1 / 3" vs "12 / 18") -- this font is monospace-ish at
+    // roughly 12px/char at text size 2.
+    int windStrWidth = (int)strlen(windStr) * 12;
+    screen.drawString(windStr, windCx - windStrWidth / 2, windCy + windR + 30);
     screen.setTextDatum(textdatum_t::top_left);
   }
 
