@@ -1066,7 +1066,7 @@ static void draw_iss() {
 
   if (isVisibleNow) {
     screen.setTextSize(3);
-    screen.setTextColor(screen.color565(80, 220, 120), colorBg);
+    screen.setTextColor(colorSuccess, colorBg);
     screen.drawString("VISIBLE NOW!", rightX, y);
     screen.setTextSize(1);
     screen.setTextColor(colorDim, colorBg);
