@@ -107,12 +107,26 @@ static void drawDashboardBackground() {
   // A little airplane silhouette continuously crossing the lower part of
   // the screen - a fun nod to the fact this thing tracks real aircraft.
   {
-    uint16_t planeColor = screen.color565(45, 55, 70);
+    // A proper top-down plane silhouette -- fuselage, nose cone, swept
+    // wings, and small tail fins -- rather than a couple of plain
+    // triangles. Brightened a bit too, so the shape actually reads
+    // against the dark background instead of nearly disappearing.
+    uint16_t planeColor = screen.color565(95, 110, 135);
     int span = WIDTH + 80;
     int x = (int)((t / 18) % (uint32_t)span) - 40;
     int y = 410;
-    screen.fillTriangle(x - 14, y, x + 14, y, x, y - 5, planeColor);
-    screen.fillTriangle(x - 4, y - 5, x + 4, y - 5, x, y - 16, planeColor);
+
+    // Fuselage + nose cone, pointing right (direction of travel).
+    screen.fillRect(x - 18, y - 2, 24, 4, planeColor);
+    screen.fillTriangle(x + 6, y - 4, x + 6, y + 4, x + 16, y, planeColor);
+
+    // Swept wings, positioned just behind the nose.
+    screen.fillTriangle(x + 2, y, x - 8, y - 14, x - 2, y, planeColor);
+    screen.fillTriangle(x + 2, y, x - 8, y + 14, x - 2, y, planeColor);
+
+    // Small tail fins near the back.
+    screen.fillTriangle(x - 14, y, x - 20, y - 7, x - 16, y, planeColor);
+    screen.fillTriangle(x - 14, y, x - 20, y + 7, x - 16, y, planeColor);
   }
 
   // An ISS icon drifting the opposite direction, higher up, echoing the
