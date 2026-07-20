@@ -51,6 +51,8 @@ static uint16_t airQualityColor(int aqi) {
 static int currentTab = 0;
 
 static uint16_t colorBg;
+static uint16_t colorSuccess;
+static uint16_t colorDanger;
 static uint16_t colorText;
 static uint16_t colorDim;
 static uint16_t colorAccent;
@@ -145,12 +147,12 @@ static void draw_dashboard() {
   if (WiFi.status() == WL_CONNECTED) {
     char line[64];
     snprintf(line, sizeof(line), "WiFi: %s (%s)", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
-    screen.setTextColor(screen.color565(80, 200, 120), colorBg);
+    screen.setTextColor(colorSuccess, colorBg);
     screen.drawString(line, WIDTH - 10, 50);
   } else {
     char line[32];
     snprintf(line, sizeof(line), "WiFi: disconnected (%d)", (int)WiFi.status());
-    screen.setTextColor(screen.color565(220, 80, 80), colorBg);
+    screen.setTextColor(colorDanger, colorBg);
     screen.drawString(line, WIDTH - 10, 50);
   }
   screen.setTextDatum(textdatum_t::top_left);
@@ -986,7 +988,7 @@ static void draw_iss() {
 
   int homeX = MAP_X + (int)((HOME_LON + 180) / 360.0f * MAP_W);
   int homeY = MAP_Y + (int)((90 - HOME_LAT) / 180.0f * MAP_H);
-  uint16_t colorHome = screen.color565(80, 220, 120);
+  uint16_t colorHome = colorSuccess;
   screen.fillTriangle(homeX - 7, homeY, homeX + 7, homeY, homeX, homeY - 9, colorHome);
   screen.fillRect(homeX - 5, homeY, 10, 7, colorHome);
   screen.setTextSize(1);
@@ -1223,6 +1225,8 @@ void screen_manager_init() {
   colorText = screen.color565(235, 240, 245);
   colorDim = screen.color565(120, 130, 140);
   colorAccent = screen.color565(70, 130, 220);
+  colorSuccess = screen.color565(80, 200, 120);
+  colorDanger = screen.color565(220, 80, 80);
 }
 
 void screen_manager_draw() {
