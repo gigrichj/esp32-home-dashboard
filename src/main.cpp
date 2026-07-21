@@ -136,11 +136,20 @@ void networkTask(void* param) {
 
     uint32_t now = millis();
 
+    // Set whenever a heavy Weather/Air Quality/Astro fetch runs this cycle,
+    // so Aviation and ISS can defer to the next cycle instead of firing
+    // back-to-back with one of those fetches -- landing two heavy HTTPS/JSON
+    // operations in the same cycle was starving the ESP32 of heap/TLS buffer
+    // space, causing Aviation's JSON parse to fail (or the whole board to
+    // reboot) whenever its poll happened to coincide with Astro's.
+    bool heavyFetchThisCycle = false;
+
     if (now - lastWeather > WEATHER_POLL_MS) {
       lastWeather = now;
       debug_log("weather fetch start");
       weather_service_update();
       debug_log("weather fetch done");
+      heavyFetchThisCycle = true;
     }
     // Air quality gets its own, longer, deliberately-offset poll interval
     // rather than piggybacking on the weather fetch -- doing all 3 HTTPS
@@ -152,6 +161,7 @@ void networkTask(void* param) {
       air_quality_service_update();
       debug_log("air quality fetch done");
       vTaskDelay(pdMS_TO_TICKS(200)); // let the display catch its breath
+      heavyFetchThisCycle = true;
     }
     if (now - lastAstro > ASTRO_POLL_MS) {
       lastAstro = now;
@@ -159,15 +169,16 @@ void networkTask(void* param) {
       astro_seeing_service_update();
       debug_log("astro fetch done");
       vTaskDelay(pdMS_TO_TICKS(200)); // let the display catch its breath
+      heavyFetchThisCycle = true;
     }
-    if (now - lastAviation > g_aviationPollMs) {
+    if (!heavyFetchThisCycle && now - lastAviation > g_aviationPollMs) {
       lastAviation = now;
       debug_log("aviation fetch start");
       aviation_service_update();
       debug_log("aviation fetch done");
     }
     aviation_service_detail_loop();
-    if (now - lastIss > ISS_POLL_MS) {
+    if (!heavyFetchThisCycle && now - lastIss > ISS_POLL_MS) {
       lastIss = now;
       debug_log("iss fetch start");
       iss_service_update();
