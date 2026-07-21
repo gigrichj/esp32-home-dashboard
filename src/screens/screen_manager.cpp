@@ -913,12 +913,6 @@ static void draw_weather() {
   screen.drawString("Sunset", 20, y);
   screen.setTextColor(colorText, colorBg);
   screen.drawString(formatHHMM(g_weather.sunsetUnix), 260, y);
-  y += 30;
-
-  // TEMP DEBUG (v113): on-screen trace since serial monitor is unavailable.
-  // Remove once root cause of sunrise/sunset being 0 is confirmed.
-  screen.setTextColor(colorDim, colorBg);
-  screen.drawString(g_weather.debugSunLine, 20, y);
 
   {
     // Precipitation gauge: a 270-degree arc (gap at the bottom), approximated
@@ -1406,6 +1400,24 @@ static void draw_debug() {
   screen.setTextDatum(textdatum_t::middle_center);
   screen.drawString("NEXT >>", 320, 340);
   screen.setTextDatum(textdatum_t::top_left);
+
+  // TEMP DEBUG (v114): clear sunrise/sunset readout, moved here from the
+  // Weather page so it is not crowded by other data. Remove once root
+  // cause of sunrise/sunset being wrong is confirmed and fixed.
+  {
+    char srLine[64];
+    char ssLine[64];
+    snprintf(srLine, sizeof(srLine), "SUNRISE %s UNIX %lu",
+             formatHHMM(g_weather.sunriseUnix).c_str(),
+             (unsigned long)g_weather.sunriseUnix);
+    snprintf(ssLine, sizeof(ssLine), "SUNSET %s UNIX %lu",
+             formatHHMM(g_weather.sunsetUnix).c_str(),
+             (unsigned long)g_weather.sunsetUnix);
+    screen.setTextSize(2);
+    screen.setTextColor(colorAccent, colorBg);
+    screen.drawString(srLine, 400, 50);
+    screen.drawString(ssLine, 400, 78);
+  }
 
   screen.setTextSize(1);
   screen.setTextColor(colorText, colorBg);
