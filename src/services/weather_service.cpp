@@ -48,18 +48,6 @@ static void fetchCurrentConditions() {
                       (unsigned long)g_weather.sunsetUnix);
       }
 
-      // TEMP DEBUG (v112): trace why sunrise/sunset may be sticking at 0
-      // while other current-conditions fields parse fine. Remove once
-      // root cause is confirmed.
-      {
-        String sysDump;
-        serializeJson(doc["sys"], sysDump);
-        Serial.printf("[Weather][DEBUG] raw sys block: %s\n", sysDump.c_str());
-        Serial.printf("[Weather][DEBUG] parsed sunriseUnix=%lu sunsetUnix=%lu\n",
-                      (unsigned long)g_weather.sunriseUnix,
-                      (unsigned long)g_weather.sunsetUnix);
-      }
-
       // Dew point via the Magnus formula -- not present in the free
       // current-conditions endpoint, but derivable from temp + humidity,
       // which we already have. Accurate to within about +/-0.4C.
