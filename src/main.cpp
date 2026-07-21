@@ -93,21 +93,6 @@ void uiTask(void* param) {
 
     screen_manager_draw();
 
-    uint16_t dbgBg = screen.color565(0, 0, 0);
-    uint16_t dbgText = touched ? screen.color565(80, 220, 100) : screen.color565(120, 120, 120);
-    screen.fillRect(0, HEIGHT - 24, 240, 24, dbgBg);
-    screen.setTextSize(1);
-    screen.setTextColor(dbgText, dbgBg);
-    screen.setTextDatum(textdatum_t::top_left);
-    char touchDbg[64];
-    if (!screen.touchAvailable()) {
-      snprintf(touchDbg, sizeof(touchDbg), "TOUCH: controller NOT initialized");
-    } else {
-      snprintf(touchDbg, sizeof(touchDbg), "TOUCH: x=%d y=%d count=%d",
-               touchX, touchY, screen.lastTouchReadCount());
-    }
-    screen.drawString(touchDbg, 6, HEIGHT - 18);
-
     if (!screen.present()) {
       Serial.println("[uiTask] present failed; restarting");
       Serial.flush();
