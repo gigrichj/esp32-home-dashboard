@@ -36,16 +36,17 @@ static void fetchCurrentConditions() {
       g_weather.sunriseUnix = doc["sys"]["sunrise"]      | 0;
       g_weather.sunsetUnix  = doc["sys"]["sunset"]       | 0;
 
-      // TEMP DEBUG (v112): trace why sunrise/sunset may be sticking at 0
-      // while other current-conditions fields parse fine. Remove once
-      // root cause is confirmed.
+      // TEMP DEBUG (v113): font-safe on-screen trace (serial monitor is
+      // unavailable), since our bitmap font can't render braces or quotes.
+      // Remove once root cause of sunrise/sunset being 0 is confirmed.
       {
-        String sysDump;
-        serializeJson(doc["sys"], sysDump);
-        Serial.printf("[Weather][DEBUG] raw sys block: %s\n", sysDump.c_str());
-        Serial.printf("[Weather][DEBUG] parsed sunriseUnix=%lu sunsetUnix=%lu\n",
-                      (unsigned long)g_weather.sunriseUnix,
-                      (unsigned long)g_weather.sunsetUnix);
+        bool hasSys = doc["sys"].is<JsonObject>();
+        char dbg[64];
+        snprintf(dbg, sizeof(dbg), "HAS SYS %s SR %lu SS %lu",
+                 hasSys ? "Y" : "N",
+                 (unsigned long)g_weather.sunriseUnix,
+                 (unsigned long)g_weather.sunsetUnix);
+        g_weather.debugSunLine = String(dbg);
       }
 
       // Dew point via the Magnus formula -- not present in the free

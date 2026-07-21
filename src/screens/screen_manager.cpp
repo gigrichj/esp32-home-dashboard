@@ -913,6 +913,12 @@ static void draw_weather() {
   screen.drawString("Sunset", 20, y);
   screen.setTextColor(colorText, colorBg);
   screen.drawString(formatHHMM(g_weather.sunsetUnix), 260, y);
+  y += 30;
+
+  // TEMP DEBUG (v113): on-screen trace since serial monitor is unavailable.
+  // Remove once root cause of sunrise/sunset being 0 is confirmed.
+  screen.setTextColor(colorDim, colorBg);
+  screen.drawString(g_weather.debugSunLine, 20, y);
 
   {
     // Precipitation gauge: a 270-degree arc (gap at the bottom), approximated
