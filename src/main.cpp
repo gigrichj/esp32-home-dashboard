@@ -21,9 +21,13 @@ static const uint32_t AIR_QUALITY_POLL_MS  = 25UL * 60UL * 1000UL; // deliberate
                                                                      // so the two heavy HTTPS fetches
                                                                      // rarely land in the same
                                                                      // networkTask iteration.
-static const uint32_t ASTRO_POLL_MS        = 40UL * 60UL * 1000UL; // seeing forecasts change slowly;
+static const uint32_t ASTRO_POLL_MS        = 30UL * 60UL * 1000UL; // seeing forecasts change slowly;
                                                                      // also deliberately offset from
                                                                      // the other poll intervals.
+static const uint32_t ASTRO_RETRY_MS       = 60UL * 1000UL; // 60s retry cadence
+                                                                     // until the first successful fetch,
+                                                                     // then settles to ASTRO_POLL_MS --
+                                                                     // same pattern used for ISS crew count.
 
 static const uint32_t ISS_POLL_MS        = 60UL * 1000UL;
 static const uint32_t DRAW_INTERVAL_MS   = 200UL;
@@ -117,6 +121,7 @@ void uiTask(void* param) {
 
 void networkTask(void* param) {
   uint32_t lastWeather = 0, lastAviation = 0, lastIss = 0, lastAirQuality = 0, lastAstro = 0;
+  bool astroDataLoaded = false;
 
   for (;;) {
     wifi_manager_loop();
@@ -163,10 +168,14 @@ void networkTask(void* param) {
       vTaskDelay(pdMS_TO_TICKS(200)); // let the display catch its breath
       heavyFetchThisCycle = true;
     }
-    if (now - lastAstro > ASTRO_POLL_MS) {
+    uint32_t astroInterval = astroDataLoaded ? ASTRO_POLL_MS : ASTRO_RETRY_MS;
+    if (now - lastAstro > astroInterval) {
       lastAstro = now;
       debug_log("astro fetch start");
       astro_seeing_service_update();
+      if (g_astroLastHttpCode == 200 && g_astroForecastCount > 0) {
+        astroDataLoaded = true;
+      }
       debug_log("astro fetch done");
       vTaskDelay(pdMS_TO_TICKS(200)); // let the display catch its breath
       heavyFetchThisCycle = true;

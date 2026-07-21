@@ -1,4 +1,6 @@
 #include "astro_seeing_service.h"
+#include <WiFiClient.h>
+#include <esp_heap_caps.h>
 #include "wifi_manager.h"
 #include "secrets.h"
 #include <HTTPClient.h>
@@ -138,7 +140,48 @@ void astro_seeing_service_update() {
   int code = http.GET();
   g_astroLastHttpCode = code;
   if (code == 200) {
-    String payload = http.getString();
+    // Read the body manually with an explicit timeout and a yield on every
+    // iteration, instead of http.getString() -- that call reads one byte at
+    // a time in a tight loop with no yield, and a reset/stalled connection
+    // can block long enough to trip the FreeRTOS task watchdog (same fix
+    // applied to the aviation states fetch after a decoded crash trace
+    // confirmed it there).
+    int payloadLen = http.getSize();
+    int bufSize = (payloadLen > 0) ? payloadLen + 1 : 32768;
+    char *rawBuf = (char *)heap_caps_malloc(bufSize, MALLOC_CAP_8BIT);
+    if (rawBuf == nullptr) {
+      Serial.println("[Astro] payload buffer alloc failed");
+      http.end();
+      return;
+    }
+
+    WiFiClient *stream = http.getStreamPtr();
+    size_t readTotal = 0;
+    uint32_t startMs = millis();
+    bool readError = false;
+    while (readTotal < (size_t)(bufSize - 1) && millis() - startMs < 15000) {
+      if (!http.connected() && stream->available() == 0) break;
+      size_t avail = stream->available();
+      if (avail > 0) {
+        int toRead = (int)min(avail, (size_t)(bufSize - 1 - readTotal));
+        int r = stream->readBytes(rawBuf + readTotal, toRead);
+        if (r <= 0) { readError = true; break; }
+        readTotal += r;
+      } else {
+        vTaskDelay(pdMS_TO_TICKS(5)); // yield -- the critical fix
+      }
+    }
+    rawBuf[readTotal] = '\0';
+
+    if (readError) {
+      Serial.println("[Astro] payload read error");
+      free(rawBuf);
+      http.end();
+      return;
+    }
+
+    String payload(rawBuf);
+    free(rawBuf);
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, payload);
     if (!err) {
