@@ -18,8 +18,21 @@ void mqtt_service_begin() {
   mqttClient.setCallback(onMessage);
 }
 
+// If the broker is unreachable/unconfigured, mqttClient.connect() was being
+// retried every single networkTask iteration (~10-30ms) with zero backoff --
+// hammering the network stack with rapid-fire connection resets whenever the
+// broker refused or reset the socket. Now retries are spaced at least 5s
+// apart, so a dead/misconfigured broker can no longer spin like that.
+static uint32_t lastMqttAttemptMs = 0;
+static const uint32_t MQTT_RETRY_INTERVAL_MS = 5000;
+
 void mqtt_service_loop() {
   if (!mqttClient.connected()) {
+    uint32_t now = millis();
+    if (now - lastMqttAttemptMs < MQTT_RETRY_INTERVAL_MS) {
+      return;
+    }
+    lastMqttAttemptMs = now;
     if (mqttClient.connect("esp32-dashboard", MQTT_USER, MQTT_PASSWORD)) {
       mqttClient.subscribe("dashboard/notify");
       mqttClient.subscribe("home/#"); // house-wide status/events, filter in onMessage
