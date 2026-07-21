@@ -1692,6 +1692,34 @@ static void draw_astro() {
     screen.fillRect(cx - 20, stripY + 22, 40, 16, astroSeverityColor(pt.transparency, 8));
     screen.fillRect(cx - 20, stripY + 44, 40, 16, astroSeverityColor(pt.cloudcover, 9));
   }
+
+  // Color key: explains the green-to-red severity scale shared by the
+  // SEEING/TRANSPARENCY/CLOUD COVER panels and the SEE/TRN/CLD strip below.
+  {
+    screen.setTextDatum(textdatum_t::top_left);
+    int legendY = 428;
+
+    screen.setTextSize(2);
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString("KEY", 20, legendY + 2);
+
+    struct LegendItem { uint16_t color; const char* label; };
+    LegendItem items[4] = {
+      { colorSuccess,                    "GOOD" },
+      { screen.color565(160, 200, 60),   "FAIR" },
+      { screen.color565(230, 130, 40),   "POOR" },
+      { colorDanger,                     "BAD"  },
+    };
+
+    int lx = 90;
+    for (int i = 0; i < 4; i++) {
+      screen.fillRect(lx, legendY, 24, 20, items[i].color);
+      screen.setTextColor(colorText, colorBg);
+      screen.drawString(items[i].label, lx + 32, legendY + 2);
+      lx += 32 + (int)strlen(items[i].label) * 12 + 30;
+    }
+  }
+
   screen.setTextDatum(textdatum_t::top_left);
 }
 
