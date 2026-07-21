@@ -318,21 +318,29 @@ void aviation_request_detail(const String& icaoHex, const String& callsign) {
 static void fetchAircraftType(const String& icaoHex) {
   HTTPClient http;
   String url = "https://api.adsbdb.com/v0/aircraft/" + icaoHex;
+  Serial.printf("[Aviation] adsbdb aircraft lookup URL: %s\n", url.c_str());
   http.begin(url);
   int code = http.GET();
+  Serial.printf("[Aviation] adsbdb aircraft lookup HTTP %d\n", code);
   if (code == 200) {
     String payload = http.getString();
+    Serial.printf("[Aviation] adsbdb aircraft raw response: %s\n", payload.c_str());
     JsonDocument doc;
-    if (!deserializeJson(doc, payload)) {
+    DeserializationError err = deserializeJson(doc, payload);
+    if (!err) {
       JsonObject aircraft = doc["response"]["aircraft"];
       if (!aircraft.isNull()) {
         g_aircraftDetail.type = aircraft["type"].as<String>();
         const char* thumb = aircraft["url_photo_thumbnail"];
         g_aircraftDetail.photoThumbUrl = thumb ? String(thumb) : String("");
+        Serial.printf("[Aviation] parsed type='%s' photoThumbUrl='%s'\n",
+                      g_aircraftDetail.type.c_str(), g_aircraftDetail.photoThumbUrl.c_str());
+      } else {
+        Serial.println("[Aviation] adsbdb response['response']['aircraft'] is null/missing");
       }
+    } else {
+      Serial.printf("[Aviation] adsbdb aircraft JSON parse error: %s\n", err.c_str());
     }
-  } else {
-    Serial.printf("[Aviation] adsbdb aircraft lookup HTTP %d\n", code);
   }
   http.end();
 }
