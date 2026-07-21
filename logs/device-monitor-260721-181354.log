@@ -1,0 +1,13 @@
+[I][Expander][esp_panel_board.cpp:0066](init): Initializing board (Waveshare:ESP32-S3-Touch-LCD-7)
+[I][Expander][esp_panel_board.cpp:0235](init): Board initialize success
+[I][Expander][esp_panel_board.cpp:0253](begin): Beginning board (Waveshare:ESP32-S3-Touch-LCD-7)
+[I][Expander][esp_io_expander_ch422g.c:0075](esp_io_expander_new_i2c_ch422g): version: 0.1.0
+[I][Panel][esp_lcd_touch_gt911.c:0067](esp_lcd_touch_new_i2c_gt911): version: 1.1.1
+[W][Panel][esp_lcd_touch_gt911.c:0144](esp_lcd_touch_new_i2c_gt911): Unable to initialize the I2C address
+[I][Panel][esp_lcd_touch_gt911.c:0401](touch_gt911_read_cfg): TouchPad_ID:0x39,0x31,0x31
+[I][Panel][esp_lcd_touch_gt911.c:0402](touch_gt911_read_cfg): TouchPad_Config_Version:88
+[I][Expander][esp_panel_board.cpp:0463](begin): Board begin success
+[  3631][E][Preferences.cpp:506] getString(): nvs_get_str len fail: ssid NOT_FOUND
+[  3639][E][Preferences.cpp:506] getString(): nvs_get_str len fail: pass NOT_FOUND
+[ 16820][E][NetworkClientSecure.cpp:159] connect(): start_ssl_client: connect failed: -1
+[ 31547][E][NetworkClient.cpp:278] connect(): socket error on fd 49, errno: 104, "Connection reset by peer"

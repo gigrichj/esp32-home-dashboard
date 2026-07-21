@@ -301,12 +301,19 @@ bool aviation_lookup_flight(const String& flightNumber, Aircraft& out) {
 }
 
 void aviation_request_detail(const String& icaoHex, const String& callsign) {
+  Serial.printf("[Aviation] aviation_request_detail called: icaoHex='%s' callsign='%s' (cached valid=%d lookedUpIcao='%s', pending=%d pendingIcao='%s')\n",
+                icaoHex.c_str(), callsign.c_str(),
+                g_aircraftDetail.valid, g_aircraftDetail.lookedUpIcao.c_str(),
+                pendingDetailRequested, pendingIcao.c_str());
   if (g_aircraftDetail.valid && g_aircraftDetail.lookedUpIcao == icaoHex) {
+    Serial.println("[Aviation] -> cache hit, skipping fetch");
     return; // cache hit, already have this one
   }
   if (pendingDetailRequested && pendingIcao == icaoHex) {
+    Serial.println("[Aviation] -> already in flight, skipping");
     return; // already in flight
   }
+  Serial.println("[Aviation] -> queuing new detail request");
   pendingIcao = icaoHex;
   pendingCallsign = callsign;
   pendingDetailRequested = true;
@@ -377,11 +384,16 @@ static void fetchRoute(const String& callsign) {
 
 void aviation_service_detail_loop() {
   if (!pendingDetailRequested) return;
-  if (!wifi_manager_is_connected()) return;
+  if (!wifi_manager_is_connected()) {
+    Serial.println("[Aviation] detail_loop: pending but WiFi not connected, skipping this cycle");
+    return;
+  }
 
   String icaoHex = pendingIcao;
   String callsign = pendingCallsign;
   pendingDetailRequested = false;
+  Serial.printf("[Aviation] detail_loop: servicing pending request for icaoHex='%s' callsign='%s'\n",
+                icaoHex.c_str(), callsign.c_str());
 
   g_aircraftDetail = AircraftDetail();
   g_aircraftDetail.lookupInProgress = true;

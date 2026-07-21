@@ -1,0 +1,2 @@
+[284037][E][NetworkClient.cpp:278] connect(): socket error on fd 49, errno: 104, "Connection reset by peer"
+[312234][E][NetworkClient.cpp:278] connect(): socket error on fd 49, errno: 104, "Connection reset by peer"
