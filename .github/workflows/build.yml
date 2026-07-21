@@ -39,6 +39,7 @@ jobs:
           #define OWM_API_KEY "${OWM_API_KEY}"
           #define HOME_LAT ${HOME_LAT:-38.6871}
           #define HOME_LON ${HOME_LON:--77.2624}
+          #define HOME_BORTLE_CLASS 7.4f
           #define ADSBX_API_KEY "${ADSBX_API_KEY}"
           #define FLIGHTAWARE_API_KEY ""
           #define FAVORITE_AIRPORTS {"KIAD", "KDCA"}
