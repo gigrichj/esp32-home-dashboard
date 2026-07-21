@@ -6,6 +6,7 @@ struct AirQualityData {
   float pm2_5 = 0;
   float pm10 = 0;
   bool valid = false;
+  int lastHttpCode = -999; // shown on-screen if fetch never succeeds
 };
 
 extern AirQualityData g_airQuality;

@@ -17,6 +17,7 @@ struct WeatherData {
   uint32_t sunriseUnix = 0;
   uint32_t sunsetUnix = 0;
   bool valid = false;
+  int lastHttpCode = -999; // shown on-screen if fetch never succeeds
 };
 
 struct ForecastDay {

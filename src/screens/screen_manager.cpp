@@ -83,7 +83,7 @@ static void drawHeader() {
   screen.setTextColor(colorBg, colorAccent);
   screen.setTextDatum(textdatum_t::top_left);
   if (currentTab == 0) {
-    screen.drawString("DASHBOARD - LORTON, VA", 10, 12);
+    screen.drawString("DASHBOARD - LORTON,VA", 10, 12);
   } else {
     screen.drawString(TAB_NAMES[currentTab], 10, 12);
   }
@@ -837,6 +837,9 @@ static void draw_weather() {
     screen.setTextSize(2);
     screen.setTextColor(colorDim, colorBg);
     screen.drawString("No weather data yet", 20, 100);
+    char errLine[48];
+    snprintf(errLine, sizeof(errLine), "Last HTTP result: %d", g_weather.lastHttpCode);
+    screen.drawString(errLine, 20, 134);
     return;
   }
 
@@ -1047,6 +1050,10 @@ static void draw_weather() {
       screen.setTextSize(2);
       screen.setTextColor(colorDim, colorBg);
       screen.drawString("--", aqX, aqY);
+      aqY += 30;
+      char errLine[32];
+      snprintf(errLine, sizeof(errLine), "HTTP %d", g_airQuality.lastHttpCode);
+      screen.drawString(errLine, aqX, aqY);
     }
     screen.setTextSize(2);
     screen.setTextColor(colorText, colorBg);

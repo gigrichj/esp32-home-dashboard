@@ -19,6 +19,7 @@ static void fetchCurrentConditions() {
 
   http.begin(url);
   int code = http.GET();
+  g_weather.lastHttpCode = code;
   if (code == 200) {
     String payload = http.getString();
     JsonDocument doc;

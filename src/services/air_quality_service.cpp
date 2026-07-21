@@ -28,6 +28,7 @@ void air_quality_service_update() {
 
   http.begin(url);
   int code = http.GET();
+  g_airQuality.lastHttpCode = code;
   if (code == 200) {
     String payload = http.getString();
     JsonDocument doc;
