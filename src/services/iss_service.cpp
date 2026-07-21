@@ -19,6 +19,14 @@ static Sgp4 sat;
 static bool tleLoaded = false;
 static uint32_t lastTleFetchMs = 0;
 static const uint32_t TLE_REFRESH_INTERVAL_MS = 6UL * 60UL * 60UL * 1000UL; // 6 hours
+
+// Crew count is decoupled from the TLE refresh -- poll every 60s until we
+// have a first successful value, then settle into the same 6-hour cadence
+// as the TLE (crew rotations are infrequent, no need to check more often).
+static bool crewCountLoaded = false;
+static uint32_t lastCrewFetchMs = 0;
+static const uint32_t CREW_REFRESH_INTERVAL_MS = 6UL * 60UL * 60UL * 1000UL; // 6 hours
+static const uint32_t CREW_REFRESH_RETRY_MS = 60UL * 1000UL; // 60 seconds, until first success
 static const int TRACK_STEP_SECONDS = 100; // 60 pts * 100s = 6000s (~100min), > one ISS orbit (~92min)
 
 // Fetches the current TLE from CelesTrak (free, no key needed) and loads it
@@ -44,6 +52,7 @@ static void fetchCrewCount() {
         if (String(craft) == "ISS") count++;
       }
       g_issCrewCount = count;
+      crewCountLoaded = true;
     }
   } else {
     Serial.printf("[ISS] astros.json HTTP %d\n", code);
@@ -192,7 +201,13 @@ void iss_service_update() {
       tleLoaded = true;
       lastTleFetchMs = millis();
     }
+  }
+
+  uint32_t crewRefreshInterval = crewCountLoaded ? CREW_REFRESH_INTERVAL_MS : CREW_REFRESH_RETRY_MS;
+  if (!crewCountLoaded || millis() - lastCrewFetchMs > crewRefreshInterval) {
+    lastCrewFetchMs = millis();
     fetchCrewCount();
   }
+
   computeGroundTrack();
 }
