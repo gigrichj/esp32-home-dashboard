@@ -819,13 +819,11 @@ static void drawWeatherIcon(int cx, int cy, int r, int weatherId, uint16_t color
   }
 }
 
-static String formatHHMM(uint32_t unixTime) {
-  if (unixTime == 0) return String("--:--");
+static void formatHHMM(uint32_t unixTime, char* out, size_t outLen) {
+  if (unixTime == 0) { snprintf(out, outLen, "--:--"); return; }
   time_t t = (time_t)unixTime;
   struct tm* timeInfo = localtime(&t);
-  char buf[16];
-  strftime(buf, sizeof(buf), "%I:%M %p", timeInfo);
-  return String(buf);
+  strftime(out, outLen, "%I:%M %p", timeInfo);
 }
 
 // A fun animated background scene that reacts to current conditions -
@@ -974,13 +972,21 @@ static void draw_weather() {
   screen.setTextColor(colorDim, colorBg);
   screen.drawString("Sunrise", 20, y);
   screen.setTextColor(colorText, colorBg);
-  screen.drawString(formatHHMM(g_weather.sunriseUnix), 260, y);
+  {
+    char sunriseBuf[16];
+    formatHHMM(g_weather.sunriseUnix, sunriseBuf, sizeof(sunriseBuf));
+    screen.drawString(sunriseBuf, 260, y);
+  }
   y += 30;
 
   screen.setTextColor(colorDim, colorBg);
   screen.drawString("Sunset", 20, y);
   screen.setTextColor(colorText, colorBg);
-  screen.drawString(formatHHMM(g_weather.sunsetUnix), 260, y);
+  {
+    char sunsetBuf[16];
+    formatHHMM(g_weather.sunsetUnix, sunsetBuf, sizeof(sunsetBuf));
+    screen.drawString(sunsetBuf, 260, y);
+  }
 
   {
     // Precipitation gauge: a 270-degree arc (gap at the bottom), approximated
@@ -1158,25 +1164,21 @@ static String formatUnixTime(uint32_t unixTime) {
 }
 
 // Compact time like "9:43P" for the visible-passes list, where space is tight.
-static String formatPassTime(uint32_t unixTime) {
-  if (unixTime == 0) return "--";
+static void formatPassTime(uint32_t unixTime, char* out, size_t outLen) {
+  if (unixTime == 0) { snprintf(out, outLen, "--"); return; }
   time_t t = (time_t)unixTime;
   struct tm* ti = localtime(&t);
   int h12 = ti->tm_hour % 12;
   if (h12 == 0) h12 = 12;
-  char buf[16];
-  snprintf(buf, sizeof(buf), "%d:%02d%s", h12, ti->tm_min, ti->tm_hour < 12 ? "A" : "P");
-  return String(buf);
+  snprintf(out, outLen, "%d:%02d%s", h12, ti->tm_min, ti->tm_hour < 12 ? "A" : "P");
 }
 
 // Compact date like "Jul18" for the visible-passes list.
-static String formatPassDate(uint32_t unixTime) {
-  if (unixTime == 0) return "--";
+static void formatPassDate(uint32_t unixTime, char* out, size_t outLen) {
+  if (unixTime == 0) { snprintf(out, outLen, "--"); return; }
   time_t t = (time_t)unixTime;
   struct tm* ti = localtime(&t);
-  char buf[16];
-  strftime(buf, sizeof(buf), "%b%d", ti);
-  return String(buf);
+  strftime(out, outLen, "%b%d", ti);
 }
 
 static void drawIssIcon(int cx, int cy, uint16_t color) {
@@ -1427,9 +1429,13 @@ static void draw_iss() {
       for (int i = 0; i < shownPasses; i++) {
         IssPass& p = g_issPasses[i];
         char line[64];
+        char passDateBuf[16];
+        char passTimeBuf[16];
+        formatPassDate(p.startUnix, passDateBuf, sizeof(passDateBuf));
+        formatPassTime(p.startUnix, passTimeBuf, sizeof(passTimeBuf));
         snprintf(line, sizeof(line), "%-6s%-7sEl%-3d",
-                 formatPassDate(p.startUnix).c_str(),
-                 formatPassTime(p.startUnix).c_str(),
+                 passDateBuf,
+                 passTimeBuf,
                  p.maxElevationDeg);
         screen.setTextColor(colorText, colorBg);
         screen.drawString(line, col3X, rowY);
@@ -1483,11 +1489,15 @@ static void draw_debug() {
   {
     char srLine[64];
     char ssLine[64];
+    char debugSunriseBuf[16];
+    char debugSunsetBuf[16];
+    formatHHMM(g_weather.sunriseUnix, debugSunriseBuf, sizeof(debugSunriseBuf));
+    formatHHMM(g_weather.sunsetUnix, debugSunsetBuf, sizeof(debugSunsetBuf));
     snprintf(srLine, sizeof(srLine), "SUNRISE %s UNIX %lu",
-             formatHHMM(g_weather.sunriseUnix).c_str(),
+             debugSunriseBuf,
              (unsigned long)g_weather.sunriseUnix);
     snprintf(ssLine, sizeof(ssLine), "SUNSET %s UNIX %lu",
-             formatHHMM(g_weather.sunsetUnix).c_str(),
+             debugSunsetBuf,
              (unsigned long)g_weather.sunsetUnix);
     screen.setTextSize(2);
     screen.setTextColor(colorAccent, colorBg);
@@ -1599,9 +1609,13 @@ static void draw_astro() {
         else bestColor = colorDanger;
 
         char bestLine[32];
+        char bestDateBuf[16];
+        char bestTimeBuf[16];
+        formatPassDate(g_astroForecast[bestIdx].unixTime, bestDateBuf, sizeof(bestDateBuf));
+        formatPassTime(g_astroForecast[bestIdx].unixTime, bestTimeBuf, sizeof(bestTimeBuf));
         snprintf(bestLine, sizeof(bestLine), "Best: %s %s",
-                 formatPassDate(g_astroForecast[bestIdx].unixTime).c_str(),
-                 formatPassTime(g_astroForecast[bestIdx].unixTime).c_str());
+                 bestDateBuf,
+                 bestTimeBuf);
         screen.setTextColor(bestColor, colorBg);
         screen.drawString(bestLine, 560, 79);
       }
