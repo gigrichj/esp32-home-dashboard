@@ -223,7 +223,52 @@ void aviation_service_update() {
       http.end();
       return;
     }
-    String payload = http.getString();
+
+    // Read the body manually with an explicit timeout and a yield on every
+    // iteration, instead of http.getString() -- that call (via
+    // Stream::readString()) reads one byte at a time in a tight loop with no
+    // yield, and if the peer resets the connection mid-read (observed:
+    // errno 104 "Connection reset by peer"), the underlying mbedtls_ssl_read
+    // can block long enough to starve the CPU 0 idle task and trip the
+    // FreeRTOS task watchdog, crashing the whole device. This mirrors the
+    // safe streaming pattern already used in fetchAndDecodePhoto() above.
+    int bufSize = (payloadLen > 0) ? payloadLen + 1 : 65536;
+    char *rawBuf = (char *)heap_caps_malloc(bufSize, MALLOC_CAP_8BIT);
+    if (rawBuf == nullptr) {
+      Serial.println("[Aviation] states payload buffer alloc failed");
+      g_aviationStatus.lastError = "Buffer alloc failed";
+      http.end();
+      return;
+    }
+
+    WiFiClient *stream = http.getStreamPtr();
+    size_t readTotal = 0;
+    uint32_t startMs = millis();
+    bool readError = false;
+    while (readTotal < (size_t)(bufSize - 1) && millis() - startMs < 8000) {
+      if (!http.connected() && stream->available() == 0) break;
+      size_t avail = stream->available();
+      if (avail > 0) {
+        int toRead = (int)min(avail, (size_t)(bufSize - 1 - readTotal));
+        int r = stream->readBytes(rawBuf + readTotal, toRead);
+        if (r <= 0) { readError = true; break; }
+        readTotal += r;
+      } else {
+        vTaskDelay(pdMS_TO_TICKS(5)); // yield -- this is the critical fix
+      }
+    }
+    rawBuf[readTotal] = '\0';
+
+    if (readError) {
+      Serial.println("[Aviation] states payload read error");
+      g_aviationStatus.lastError = "States payload read error";
+      free(rawBuf);
+      http.end();
+      return;
+    }
+
+    String payload(rawBuf);
+    free(rawBuf);
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, payload);
     if (!err) {
