@@ -60,11 +60,13 @@ const char* astro_tonight_verdict(int cloudcover, int seeing, int transparency,
   float badness = (cloudFrac * 3.0f + seeingFrac * 2.0f + transFrac * 1.0f + moonFrac * 1.0f) / 7.0f;
   if (outBadness) *outBadness = badness;
 
-  if (badness < 0.2f) return "Excellent Night";
-  if (badness < 0.4f) return "Good Night";
-  if (badness < 0.6f) return "Fair Night";
-  if (badness < 0.8f) return "Poor Night";
-  return "Skip Tonight";
+  // Thresholds match the 0.25/0.5/0.75 bands used everywhere this badness
+  // value is turned into a color, so the word and the color it's drawn in
+  // always agree with the on-screen GOOD/FAIR/POOR/BAD key.
+  if (badness < 0.25f) return "GOOD NIGHT";
+  if (badness < 0.5f)  return "FAIR NIGHT";
+  if (badness < 0.75f) return "POOR NIGHT";
+  return "BAD NIGHT";
 }
 
 // ESP32's toolchain doesn't provide timegm(), and mktime() assumes local

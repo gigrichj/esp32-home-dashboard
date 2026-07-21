@@ -184,6 +184,7 @@ static uint16_t astroSeverityColor(int idx, int maxIdx); // defined further down
 
 static void draw_dashboard() {
   drawDashboardBackground();
+  astro_recompute_moon_phase(); // keeps moon illum% current for the ASTRO column below
 
   screen.setTextSize(2);
   screen.setTextColor(colorAccent, colorBg);
@@ -211,7 +212,8 @@ static void draw_dashboard() {
   screen.setTextColor(colorText, colorBg);
 
   int leftX = 20;
-  int rightX = 420;
+  int midX = 300;
+  int rightX = 560;
   char line[64];
 
   // WEATHER + AIR QUALITY column
@@ -273,22 +275,51 @@ static void draw_dashboard() {
   }
   y += 40;
 
+  // ASTRO column: seeing + tonight's verdict, broken out on their own
+  // rather than tucked into the WEATHER list.
   {
+    int y3 = 207;
+    screen.setTextSize(2);
+    screen.setTextColor(colorAccent, colorBg);
+    screen.drawString("ASTRO", midX, y3);
+    screen.drawLine(midX, y3 + 20, midX + 60, y3 + 20, colorAccent);
+    y3 += 30;
+
     int tonightIdx = findTonightAstroIndex();
     screen.setTextSize(2);
     if (tonightIdx >= 0) {
       int seeingVal = g_astroForecast[tonightIdx].seeing;
       char seeingLine[40];
-      snprintf(seeingLine, sizeof(seeingLine), "Seeing tonight: %s", astro_seeing_label(seeingVal));
+      snprintf(seeingLine, sizeof(seeingLine), "Seeing: %s", astro_seeing_label(seeingVal));
       screen.setTextColor(astroSeverityColor(seeingVal, 8), colorBg);
-      screen.drawString(seeingLine, leftX, y);
+      screen.drawString(seeingLine, midX, y3);
+      y3 += 34;
+
+      float badness = 0;
+      const char* verdict = astro_tonight_verdict(
+          g_astroForecast[tonightIdx].cloudcover,
+          g_astroForecast[tonightIdx].seeing,
+          g_astroForecast[tonightIdx].transparency,
+          g_moonIllumPercent, &badness);
+      uint16_t verdictColor;
+      if (badness < 0.25f) verdictColor = colorSuccess;
+      else if (badness < 0.5f) verdictColor = screen.color565(160, 200, 60);
+      else if (badness < 0.75f) verdictColor = screen.color565(230, 130, 40);
+      else verdictColor = colorDanger;
+
+      char verdictLine[40];
+      snprintf(verdictLine, sizeof(verdictLine), "Tonight: %s", verdict);
+      screen.setTextColor(verdictColor, colorBg);
+      screen.drawString(verdictLine, midX, y3);
     } else {
       screen.setTextColor(colorDim, colorBg);
-      screen.drawString("Seeing tonight: --", leftX, y);
+      screen.drawString("Seeing: --", midX, y3);
+      y3 += 34;
+      screen.drawString("Tonight: --", midX, y3);
     }
   }
 
-  // AIRCRAFT + ISS column, pushed to the right so this reads as a second
+  // AIRCRAFT + ISS column, pushed further right so this reads as a third
   // column rather than continuing the same vertical list.
   int y2 = 207;
   screen.setTextSize(2);
