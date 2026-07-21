@@ -249,7 +249,18 @@ static void draw_dashboard() {
     if (g_weather.valid && g_weather.sunriseUnix > 0 && g_weather.sunsetUnix > 0) {
       uint32_t nowUnix = (uint32_t)time(nullptr);
       bool isDay = nowUnix >= g_weather.sunriseUnix && nowUnix < g_weather.sunsetUnix;
-      uint32_t targetUnix = isDay ? g_weather.sunsetUnix : g_weather.sunriseUnix;
+      uint32_t targetUnix;
+      if (isDay) {
+        targetUnix = g_weather.sunsetUnix;
+      } else if (nowUnix < g_weather.sunriseUnix) {
+        targetUnix = g_weather.sunriseUnix;
+      } else {
+        // Today's sunset has already passed and we haven't polled fresh
+        // data yet. Day length shifts by only ~1-2 min/day this time of
+        // year, so today's sunrise + 24h is a solid stand-in for
+        // tomorrow's sunrise until the next weather poll corrects it.
+        targetUnix = g_weather.sunriseUnix + 86400;
+      }
       uint32_t secsUntil = (targetUnix > nowUnix) ? (targetUnix - nowUnix) : 0;
       int hh = secsUntil / 3600;
       int mm = (secsUntil % 3600) / 60;
