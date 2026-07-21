@@ -329,7 +329,7 @@ static void draw_dashboard() {
           g_moonIllumPercent, &badness);
       uint16_t verdictColor;
       if (badness < 0.25f) verdictColor = colorSuccess;
-      else if (badness < 0.5f) verdictColor = screen.color565(160, 200, 60);
+      else if (badness < 0.5f) verdictColor = screen.color565(230, 200, 40); // true yellow = FAIR
       else if (badness < 0.75f) verdictColor = screen.color565(230, 130, 40);
       else verdictColor = colorDanger;
 
@@ -1507,7 +1507,7 @@ static int findTonightAstroIndex() {
 static uint16_t astroSeverityColor(int idx, int maxIdx) {
   float frac = (float)(idx - 1) / (float)(maxIdx - 1);
   if (frac < 0.25f) return colorSuccess;
-  if (frac < 0.5f)  return screen.color565(160, 200, 60);
+  if (frac < 0.5f)  return screen.color565(230, 200, 40); // true yellow = FAIR
   if (frac < 0.75f) return screen.color565(230, 130, 40);
   return colorDanger;
 }
@@ -1578,7 +1578,7 @@ static void draw_astro() {
       if (bestIdx >= 0) {
         uint16_t bestColor;
         if (bestBadness < 0.25f) bestColor = colorSuccess;
-        else if (bestBadness < 0.5f) bestColor = screen.color565(160, 200, 60);
+        else if (bestBadness < 0.5f) bestColor = screen.color565(230, 200, 40); // true yellow = FAIR
         else if (bestBadness < 0.75f) bestColor = screen.color565(230, 130, 40);
         else bestColor = colorDanger;
 
@@ -1600,7 +1600,7 @@ static void draw_astro() {
           g_moonIllumPercent, &badness);
       uint16_t verdictColor;
       if (badness < 0.25f) verdictColor = colorSuccess;
-      else if (badness < 0.5f) verdictColor = screen.color565(160, 200, 60);
+      else if (badness < 0.5f) verdictColor = screen.color565(230, 200, 40); // true yellow = FAIR
       else if (badness < 0.75f) verdictColor = screen.color565(230, 130, 40);
       else verdictColor = colorDanger;
 
@@ -1755,7 +1755,7 @@ static void draw_astro() {
     struct LegendItem { uint16_t color; const char* label; };
     LegendItem items[4] = {
       { colorSuccess,                    "GOOD" },
-      { screen.color565(160, 200, 60),   "FAIR" },
+      { screen.color565(230, 200, 40),   "FAIR" },
       { screen.color565(230, 130, 40),   "POOR" },
       { colorDanger,                     "BAD"  },
     };
