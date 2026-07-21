@@ -1483,6 +1483,13 @@ static void draw_debug() {
   screen.setTextColor(colorAccent, colorBg);
   screen.drawString(heapLine, 10, 130);
 
+  char largestBlockLine[64];
+  snprintf(largestBlockLine, sizeof(largestBlockLine), "Largest free block (8BIT): %u",
+           static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)));
+  screen.setTextSize(2);
+  screen.setTextColor(colorAccent, colorBg);
+  screen.drawString(largestBlockLine, 10, 160);
+
   // TEMP DEBUG (v114): clear sunrise/sunset readout, moved here from the
   // Weather page so it is not crowded by other data. Remove once root
   // cause of sunrise/sunset being wrong is confirmed and fixed.
