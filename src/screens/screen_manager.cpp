@@ -182,6 +182,29 @@ static int countVisibleAircraft(); // defined further down, used in draw_dashboa
 static int findTonightAstroIndex(); // defined further down, used in draw_dashboard()
 static uint16_t astroSeverityColor(int idx, int maxIdx); // defined further down, used in draw_dashboard()
 
+// Draws a temperature as "NN" + a hand-drawn degree ring + "F", since the
+// custom bitmap font has no degree glyph (same trick as the hand-drawn
+// percent glyph used for humidity). Returns the x position just past the
+// "F", so callers can chain more text after it (e.g. a condition string).
+static int drawTempF(float tempF, int x, int y, int textSize, uint16_t fgColor, uint16_t bgColor) {
+  char numStr[12];
+  snprintf(numStr, sizeof(numStr), "%.0f", tempF);
+  screen.setTextSize(textSize);
+  screen.setTextColor(fgColor, bgColor);
+  screen.drawString(numStr, x, y);
+  int numWidth = screen.textWidth(numStr);
+
+  int ringR = textSize * 2;
+  int gap = textSize * 2;
+  int ringCx = x + numWidth + gap + ringR;
+  int ringCy = y + ringR;
+  screen.drawCircle(ringCx, ringCy, ringR, fgColor);
+
+  int fX = ringCx + ringR + (textSize * 2);
+  screen.drawString("F", fX, y);
+  return fX + screen.textWidth("F");
+}
+
 static void draw_dashboard() {
   drawDashboardBackground();
   astro_recompute_moon_phase(); // keeps moon illum% current for the ASTRO column below
@@ -227,8 +250,11 @@ static void draw_dashboard() {
   screen.setTextSize(2);
   screen.setTextColor(colorText, colorBg);
   if (g_weather.valid) {
-    snprintf(line, sizeof(line), "%.0fF  %s", g_weather.tempF, g_weather.condition.c_str());
-    screen.drawString(line, leftX, y);
+    int afterF = drawTempF(g_weather.tempF, leftX, y, 2, colorText, colorBg);
+    char condLine[48];
+    snprintf(condLine, sizeof(condLine), "  %s", g_weather.condition.c_str());
+    screen.setTextColor(colorText, colorBg);
+    screen.drawString(condLine, afterF, y);
   } else {
     screen.drawString("--", leftX, y);
   }
@@ -894,11 +920,7 @@ static void draw_weather() {
 
   drawWeatherIcon(80, 100, 40, g_weather.weatherId, colorText);
 
-  screen.setTextSize(4);
-  screen.setTextColor(colorText, colorBg);
-  char tempStr[16];
-  snprintf(tempStr, sizeof(tempStr), "%.0fF", g_weather.tempF);
-  screen.drawString(tempStr, 150, 70);
+  drawTempF(g_weather.tempF, 150, 70, 4, colorText, colorBg);
 
   screen.setTextSize(2);
   screen.setTextColor(colorAccent, colorBg);
@@ -910,9 +932,7 @@ static void draw_weather() {
 
   screen.setTextColor(colorDim, colorBg);
   screen.drawString("Feels like", 20, y);
-  screen.setTextColor(colorText, colorBg);
-  snprintf(row, sizeof(row), "%.0fF", g_weather.feelsLikeF);
-  screen.drawString(row, 260, y);
+  drawTempF(g_weather.feelsLikeF, 260, y, 2, colorText, colorBg);
   y += 30;
 
   screen.setTextColor(colorDim, colorBg);
@@ -940,9 +960,7 @@ static void draw_weather() {
 
   screen.setTextColor(colorDim, colorBg);
   screen.drawString("Dew Point", 20, y);
-  screen.setTextColor(colorText, colorBg);
-  snprintf(row, sizeof(row), "%.0fF", g_weather.dewPointF);
-  screen.drawString(row, 260, y);
+  drawTempF(g_weather.dewPointF, 260, y, 2, colorText, colorBg);
   y += 30;
 
   screen.setTextColor(colorDim, colorBg);
