@@ -16,6 +16,7 @@ struct IssPass {
   uint32_t endUnix = 0;
   int maxElevationDeg = 0;
   float magnitude = 99.0f;
+  float maxAz = 0;           // degrees, 0=N clockwise -- for drawing a compass needle
   String maxAzCompass = "";  // e.g. "NW" -- where to look at the pass's peak
 };
 

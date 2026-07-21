@@ -173,6 +173,7 @@ void iss_service_update() {
         {
           const char* az = p["maxAzCompass"] | "";
           g_issPasses[g_issPassCount].maxAzCompass = String(az);
+          g_issPasses[g_issPassCount].maxAz = p["maxAz"] | 0.0f;
         }
         g_issPassCount++;
       }

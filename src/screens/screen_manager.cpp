@@ -1298,9 +1298,31 @@ static void draw_iss() {
     screen.drawString(row, col2X + 100, detailY);
 
     if (g_issPassCount > 0) {
-      snprintf(row, sizeof(row), "Max El %d  Look %s", g_issPasses[0].maxElevationDeg,
-               g_issPasses[0].maxAzCompass.c_str());
-      screen.drawString(row, col2X, detailY + 24);
+      // Look-direction compass, matching the wind compass style on the
+      // Weather page: a small dial with cardinal ticks and a needle
+      // pointing where to look at the pass's peak.
+      int compassCx = col2X + 22, compassCy = detailY + 46, compassR = 22;
+      screen.drawCircle(compassCx, compassCy, compassR, colorDim);
+      for (int deg = 0; deg < 360; deg += 30) {
+        float rad = deg * PI / 180.0f;
+        bool isCardinal = (deg % 90 == 0);
+        int tickLen = isCardinal ? 6 : 3;
+        int x0 = compassCx + (int)(sinf(rad) * compassR);
+        int y0 = compassCy - (int)(cosf(rad) * compassR);
+        int x1 = compassCx + (int)(sinf(rad) * (compassR - tickLen));
+        int y1 = compassCy - (int)(cosf(rad) * (compassR - tickLen));
+        screen.drawLine(x0, y0, x1, y1, isCardinal ? colorText : colorDim);
+      }
+      float azRad = g_issPasses[0].maxAz * PI / 180.0f;
+      int tipX = compassCx + (int)(sinf(azRad) * (compassR - 6));
+      int tipY = compassCy - (int)(cosf(azRad) * (compassR - 6));
+      screen.drawLine(compassCx, compassCy, tipX, tipY, colorSuccess);
+      screen.fillCircle(tipX, tipY, 3, colorSuccess);
+
+      char maxElLine[24];
+      snprintf(maxElLine, sizeof(maxElLine), "Max El %d", g_issPasses[0].maxElevationDeg);
+      screen.setTextColor(colorText, colorBg);
+      screen.drawString(maxElLine, compassCx + compassR + 12, compassCy - 10);
     }
 
     if (g_issCrewCount == 0) {
@@ -1308,7 +1330,7 @@ static void draw_iss() {
     } else {
       snprintf(row, sizeof(row), "Crew Aboard %d", g_issCrewCount);
     }
-    screen.drawString(row, col2X, detailY + 48);
+    screen.drawString(row, col2X, detailY + 84);
   } else {
     screen.setTextSize(2);
     screen.setTextColor(colorDim, colorBg);
