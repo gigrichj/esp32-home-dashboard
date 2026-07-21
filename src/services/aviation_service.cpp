@@ -210,6 +210,19 @@ void aviation_service_update() {
   g_aviationStatus.lastHttpCode = code;
 
   if (code == 200) {
+    int payloadLen = http.getSize();
+    // Guard against an implausibly large response -- the lamin/lomin/lamax/lomax
+    // bounding box should keep this to a small local dataset. If OpenSky ever
+    // ignores the bounding box (rate limiting, auth hiccup, API change) and
+    // returns the full global states dataset instead, it can be several MB;
+    // letting http.getString() try to allocate that is suspected of causing
+    // the standalone heap-exhaustion crashes seen with an empty aircraft list.
+    if (payloadLen > 100000) {
+      Serial.printf("[Aviation] states payload implausibly large (%d bytes), skipping\n", payloadLen);
+      g_aviationStatus.lastError = "States payload too large, skipped";
+      http.end();
+      return;
+    }
     String payload = http.getString();
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, payload);

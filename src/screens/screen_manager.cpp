@@ -1,4 +1,5 @@
 #include "screen_manager.h"
+#include <esp_heap_caps.h>
 #include "../panel_display.h"
 #include "../version.h"
 #include "../services/weather_service.h"
@@ -1467,6 +1468,14 @@ static void draw_debug() {
   screen.setTextDatum(textdatum_t::middle_center);
   screen.drawString("NEXT >>", 320, 340);
   screen.setTextDatum(textdatum_t::top_left);
+
+  char heapLine[64];
+  snprintf(heapLine, sizeof(heapLine), "Free heap: %u  Free PSRAM: %u",
+           static_cast<unsigned>(ESP.getFreeHeap()),
+           static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
+  screen.setTextSize(2);
+  screen.setTextColor(colorAccent, colorBg);
+  screen.drawString(heapLine, 10, 130);
 
   // TEMP DEBUG (v114): clear sunrise/sunset readout, moved here from the
   // Weather page so it is not crowded by other data. Remove once root
