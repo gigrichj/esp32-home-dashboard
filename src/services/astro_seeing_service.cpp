@@ -14,28 +14,32 @@ float g_moonPhaseFraction = 0;
 float g_moonIllumPercent = 0;
 String g_moonPhaseLabel = "--";
 
+// Wording now mirrors the on-screen GOOD/FAIR/POOR/BAD color key exactly --
+// same index thresholds as astroSeverityColor() in screen_manager.cpp, so a
+// given index always shows a word that matches its color band.
 const char* astro_seeing_label(int idx) {
-  if (idx <= 2) return "Excellent";
-  if (idx <= 4) return "Good";
-  if (idx <= 6) return "Average";
-  if (idx <= 8) return "Poor";
+  if (idx <= 2) return "GOOD";
+  if (idx <= 4) return "FAIR";
+  if (idx <= 6) return "POOR";
+  if (idx <= 8) return "BAD";
   return "--";
 }
 
 const char* astro_transparency_label(int idx) {
-  if (idx <= 2) return "Excellent";
-  if (idx <= 4) return "Good";
-  if (idx <= 6) return "Average";
-  if (idx <= 8) return "Poor";
+  if (idx <= 2) return "GOOD";
+  if (idx <= 4) return "FAIR";
+  if (idx <= 6) return "POOR";
+  if (idx <= 8) return "BAD";
   return "--";
 }
 
 const char* astro_cloudcover_label(int idx) {
-  if (idx <= 2) return "Clear";
-  if (idx <= 4) return "Mostly Clear";
-  if (idx <= 6) return "Partly Cloudy";
-  if (idx <= 7) return "Mostly Cloudy";
-  if (idx <= 9) return "Overcast";
+  // Cloud cover's color scale uses a max of 9 (not 8), so the thresholds
+  // are scaled up proportionally to land on the same 4 color bands.
+  if (idx <= 2) return "GOOD";
+  if (idx <= 4) return "FAIR";
+  if (idx <= 6) return "POOR";
+  if (idx <= 9) return "BAD";
   return "--";
 }
 
