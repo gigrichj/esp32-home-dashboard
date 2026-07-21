@@ -356,7 +356,12 @@ static bool fetchOpenMeteoFallback() {
 void astro_seeing_service_update() {
   astro_recompute_moon_phase();
 
-  if (!wifi_manager_is_connected()) return;
+  Serial.printf("[Astro] astro_seeing_service_update called, wifi connected=%d\n", wifi_manager_is_connected());
+
+  if (!wifi_manager_is_connected()) {
+    Serial.println("[Astro] WiFi not connected, skipping this cycle");
+    return;
+  }
 
   if (fetch7Timer()) {
     return;
