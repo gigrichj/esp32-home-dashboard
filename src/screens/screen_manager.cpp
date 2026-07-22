@@ -97,22 +97,23 @@ static void drawHeader() {
   screen.drawString(tabIndicator, WIDTH - 10, 15);
 }
 
-static void drawCloudIcon(int cx, int cy, int r, uint16_t color); // defined further down, used here
+static void drawCloudIcon(int cx, int cy, int r, uint16_t color); // defined further down
+static void drawWeatherBackground(int weatherId, bool isNight); // defined further down, used here
 
 static void drawDashboardBackground() {
   uint32_t t = millis();
 
-  // Cloud drift low on the screen, echoing whatever the weather page is
-  // currently showing, so the dashboard feels alive without being busy.
-  if (g_weather.valid && g_weather.weatherId > 800) {
-    uint16_t cloudColor = screen.color565(22, 26, 32);
-    for (int i = 0; i < 4; i++) {
-      int driftSpan = WIDTH + 200;
-      uint32_t speed = 35 + (uint32_t)(i % 2) * 15;
-      int x = (int)((t / speed + (uint32_t)i * 220) % (uint32_t)driftSpan) - 100;
-      int y = 320 + (i % 2) * 50;
-      drawCloudIcon(x, y, 26 + (i % 2) * 8, cloudColor);
+  // Full weather-reactive background (rain, snow, sun/moon, thunderstorm
+  // flashes, clouds) -- the same effects used on the Weather page, so the
+  // Dashboard reflects current conditions instead of a generic low-key
+  // cloud drift. isNight computed the same way draw_weather() does.
+  if (g_weather.valid) {
+    bool isNight = false;
+    time_t nowTime = time(nullptr);
+    if (nowTime > 100000 && g_weather.sunriseUnix > 0 && g_weather.sunsetUnix > 0) {
+      isNight = (uint32_t)nowTime < g_weather.sunriseUnix || (uint32_t)nowTime > g_weather.sunsetUnix;
     }
+    drawWeatherBackground(g_weather.weatherId, isNight);
   }
 
   // A little airplane silhouette continuously crossing the lower part of
