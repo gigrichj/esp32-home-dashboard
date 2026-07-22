@@ -1572,12 +1572,24 @@ static void drawDebugBadge() {
   screen.fillRect(satX - 12, satY - 2, 8, 4, issColor);
   screen.fillRect(satX + 4, satY - 2, 8, 4, issColor);
 
-  // A little airplane silhouette drifting across the lower part of the
-  // shield, echoing the Dashboard's own background animation.
+  // A little airplane silhouette drifting across the FULL screen width
+  // (not just the shield), echoing the Dashboard's own background
+  // animation. Each pass picks a fresh random vertical position, so the
+  // flight path varies across any portion of the screen instead of
+  // repeating the same line every lap.
   {
-    int span = shieldR * 2 - 20;
-    int px = (cx - shieldR + 10) + (int)((t / 22) % (uint32_t)span);
-    int py = apexY - 45;
+    static const int HEADER_H = 40;
+    static int planeY = -1;
+    static int lastLap = -1;
+    int span = WIDTH + 80;
+    uint32_t cycle = t / 22;
+    int x = (int)(cycle % (uint32_t)span) - 40;
+    int lap = (int)(cycle / (uint32_t)span);
+    if (lap != lastLap || planeY < 0) {
+      lastLap = lap;
+      planeY = HEADER_H + 40 + (int)(esp_random() % (uint32_t)(HEIGHT - HEADER_H - 80));
+    }
+    int px = x, py = planeY;
     screen.fillRect(px - 14, py - 2, 20, 4, planeColor);
     screen.fillTriangle(px + 4, py - 3, px + 4, py + 3, px + 13, py, planeColor);
     screen.fillTriangle(px + 1, py, px - 7, py - 11, px - 2, py, planeColor);
