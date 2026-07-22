@@ -1585,6 +1585,8 @@ static void draw_astro() {
     snprintf(httpLine, sizeof(httpLine), "Last HTTP result: %d", g_astroLastHttpCode);
     screen.drawString(httpLine, 460, 418);
     screen.drawString("(-999=never tried, neg=connection error)", 460, 446);
+    screen.setTextSize(1);
+    screen.drawString(g_astroLastFailureReason, 460, 470);
   }
 
   {

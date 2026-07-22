@@ -11,6 +11,7 @@
 AstroForecastPoint g_astroForecast[ASTRO_MAX_POINTS];
 int g_astroForecastCount = 0;
 int g_astroLastHttpCode = -999;
+String g_astroLastFailureReason = "";
 
 float g_moonPhaseFraction = 0;
 float g_moonIllumPercent = 0;
@@ -182,12 +183,14 @@ static bool fetch7Timer() {
 
   if (code != 200) {
     Serial.printf("[Astro] 7Timer HTTP %d (negative = connection/timeout error)\n", code);
+    g_astroLastFailureReason = "7Timer: HTTP " + String(code);
     http.end();
     return false;
   }
 
   String payload;
   if (!readHttpBodySafely(http, payload, "7Timer")) {
+    g_astroLastFailureReason = "7Timer: payload read failed";
     http.end();
     return false;
   }
@@ -198,6 +201,7 @@ static bool fetch7Timer() {
   if (err) {
     Serial.printf("[Astro] 7Timer JSON parse error: %s\n", err.c_str());
     Serial.printf("[Astro] 7Timer raw payload: %s\n", payload.c_str());
+    g_astroLastFailureReason = "7Timer: JSON parse: " + String(err.c_str());
     return false;
   }
 
@@ -232,6 +236,9 @@ static bool fetch7Timer() {
     g_astroForecastCount++;
   }
 
+  if (g_astroForecastCount == 0) {
+    g_astroLastFailureReason = "7Timer: parsed OK but 0 forecast points";
+  }
   return g_astroForecastCount > 0;
 }
 
@@ -295,12 +302,14 @@ static bool fetchOpenMeteoFallback() {
 
   if (code != 200) {
     Serial.printf("[Astro] Open-Meteo fallback HTTP %d\n", code);
+    g_astroLastFailureReason = "Open-Meteo: HTTP " + String(code);
     http.end();
     return false;
   }
 
   String payload;
   if (!readHttpBodySafely(http, payload, "Open-Meteo fallback")) {
+    g_astroLastFailureReason = "Open-Meteo: payload read failed";
     http.end();
     return false;
   }
@@ -310,12 +319,14 @@ static bool fetchOpenMeteoFallback() {
   DeserializationError err = deserializeJson(doc, payload);
   if (err) {
     Serial.printf("[Astro] Open-Meteo fallback JSON parse error: %s\n", err.c_str());
+    g_astroLastFailureReason = "Open-Meteo: JSON parse: " + String(err.c_str());
     return false;
   }
 
   JsonObject hourly = doc["hourly"];
   if (hourly.isNull()) {
     Serial.println("[Astro] Open-Meteo fallback: missing 'hourly' object");
+    g_astroLastFailureReason = "Open-Meteo: response missing 'hourly' object";
     return false;
   }
 
@@ -354,6 +365,9 @@ static bool fetchOpenMeteoFallback() {
   if (g_astroForecastCount > 0) {
     g_astroLastHttpCode = 200; // fallback succeeded; on-screen diagnostic
                                // still reads as a healthy fetch.
+    g_astroLastFailureReason = "";
+  } else {
+    g_astroLastFailureReason = "Open-Meteo: HTTP 200 but 0 forecast points (times.size()=" + String(times.size()) + ")";
   }
 
   return g_astroForecastCount > 0;

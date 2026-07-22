@@ -20,6 +20,13 @@ extern int g_astroForecastCount;
 // require a serial monitor or waiting on the debug log.
 extern int g_astroLastHttpCode;
 
+// Human-readable reason for the most recent fetch/parse failure (either
+// source), shown on-screen next to the HTTP code -- since serial logging
+// isn't always reliably captured, this gives on-device visibility into
+// exactly which step failed (JSON parse, missing field, etc.) without
+// needing a serial monitor.
+extern String g_astroLastFailureReason;
+
 // Moon phase/illumination, calculated locally from the date -- no network
 // call needed, accurate to well within a day.
 extern float g_moonPhaseFraction;   // 0=new, 0.5=full, 1=new again
