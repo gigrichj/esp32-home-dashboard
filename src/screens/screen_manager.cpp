@@ -64,10 +64,28 @@ static uint16_t colorText;
 static uint16_t colorDim;
 static uint16_t colorAccent;
 
+// Day (normal) and Night (red-shifted, vision-preserving) palettes.
+// screen_manager_draw() picks between these every frame and assigns the
+// active set to the colorBg/colorText/etc. statics above, so every
+// existing draw_* function keeps using those same names unchanged.
+static uint16_t colorBgDay, colorSuccessDay, colorDangerDay, colorTextDay, colorDimDay, colorAccentDay;
+static uint16_t colorBgNight, colorSuccessNight, colorDangerNight, colorTextNight, colorDimNight, colorAccentNight;
+
 static bool touchWasDown = false;
 static uint32_t touchDownMs = 0;
 static const uint32_t TAP_MIN_MS = 50;
 static const uint32_t TAP_MAX_MS = 600;
+static const uint32_t LONGPRESS_MIN_MS = 900;   // hold longer than this toggles night mode
+static uint16_t touchDownX = 0;
+static uint16_t touchDownY = 0;
+static const int SWIPE_MIN_PX = 70;             // minimum horizontal drag to count as a swipe
+
+static uint32_t lastInteractionMs = 0;
+static uint32_t lastAutoAdvanceMs = 0;
+static const uint32_t IDLE_TIMEOUT_MS = 30000;        // no touch for this long -> start auto-cycling pages
+static const uint32_t AUTO_CYCLE_INTERVAL_MS = 15000; // page advance cadence once idle
+
+static int nightModeOverride = 0; // 0 = auto (follow sunset/sunrise), 1 = forced on, 2 = forced off
 
 static String formatCurrentDateTime() {
   time_t now = time(nullptr);
@@ -1949,15 +1967,73 @@ static void draw_placeholder(const char* label) {
 }
 
 void screen_manager_init() {
-  colorBg = screen.color565(10, 12, 16);
-  colorText = screen.color565(235, 240, 245);
-  colorDim = screen.color565(120, 130, 140);
-  colorAccent = screen.color565(70, 130, 220);
-  colorSuccess = screen.color565(80, 200, 120);
-  colorDanger = screen.color565(220, 80, 80);
+  colorBgDay = screen.color565(10, 12, 16);
+  colorTextDay = screen.color565(235, 240, 245);
+  colorDimDay = screen.color565(120, 130, 140);
+  colorAccentDay = screen.color565(70, 130, 220);
+  colorSuccessDay = screen.color565(80, 200, 120);
+  colorDangerDay = screen.color565(220, 80, 80);
+
+  // Night mode: shades of red only, to preserve night vision for
+  // astrophotography. Meaning that used to come from hue (blue vs green
+  // vs orange) now comes from brightness instead.
+  colorBgNight = screen.color565(10, 0, 0);
+  colorTextNight = screen.color565(210, 40, 40);
+  colorDimNight = screen.color565(90, 15, 15);
+  colorAccentNight = screen.color565(160, 30, 30);
+  colorSuccessNight = screen.color565(180, 50, 50);
+  colorDangerNight = screen.color565(255, 60, 60);
+
+  colorBg = colorBgDay;
+  colorText = colorTextDay;
+  colorDim = colorDimDay;
+  colorAccent = colorAccentDay;
+  colorSuccess = colorSuccessDay;
+  colorDanger = colorDangerDay;
+
+  lastInteractionMs = millis();
+  lastAutoAdvanceMs = millis();
 }
 
+// Decides whether night (red-shifted) mode should be active right now.
+// override 0 = follow real sunset/sunrise via g_weather; 1 = forced on;
+// 2 = forced off. A long-press anywhere cycles the override in
+// screen_manager_handle_touch().
+static bool computeNightModeActive() {
+  if (nightModeOverride == 1) return true;
+  if (nightModeOverride == 2) return false;
+  if (g_weather.valid && g_weather.sunriseUnix > 0 && g_weather.sunsetUnix > 0) {
+    time_t now = time(nullptr);
+    if (now > 100000) {
+      return (uint32_t)now < g_weather.sunriseUnix || (uint32_t)now > g_weather.sunsetUnix;
+    }
+  }
+  return false;
+}
+
+static bool g_nightModeActive = false; // updated once per frame below
+
 void screen_manager_draw() {
+  g_nightModeActive = computeNightModeActive();
+  colorBg = g_nightModeActive ? colorBgNight : colorBgDay;
+  colorText = g_nightModeActive ? colorTextNight : colorTextDay;
+  colorDim = g_nightModeActive ? colorDimNight : colorDimDay;
+  colorAccent = g_nightModeActive ? colorAccentNight : colorAccentDay;
+  colorSuccess = g_nightModeActive ? colorSuccessNight : colorSuccessDay;
+  colorDanger = g_nightModeActive ? colorDangerNight : colorDangerDay;
+
+  // Idle auto-cycle: once nobody has touched the screen for
+  // IDLE_TIMEOUT_MS, advance to the next tab every AUTO_CYCLE_INTERVAL_MS.
+  // Any touch (handled in screen_manager_handle_touch) resets the idle
+  // clock, so this stops immediately as soon as someone interacts.
+  uint32_t nowMs = millis();
+  if (nowMs - lastInteractionMs > IDLE_TIMEOUT_MS) {
+    if (nowMs - lastAutoAdvanceMs > AUTO_CYCLE_INTERVAL_MS) {
+      currentTab = (currentTab + 1) % TAB_COUNT;
+      lastAutoAdvanceMs = nowMs;
+    }
+  }
+
   screen.fillScreen(colorBg);
   drawHeader();
 
@@ -1974,6 +2050,12 @@ void screen_manager_draw() {
   screen.setTextColor(colorDim, colorBg);
   screen.setTextDatum(textdatum_t::top_right);
   screen.drawString(FIRMWARE_VERSION, WIDTH - 6, HEIGHT - 14);
+
+  if (g_nightModeActive) {
+    screen.setTextColor(colorDim, colorBg);
+    screen.setTextDatum(textdatum_t::top_left);
+    screen.drawString("NIGHT", 10, HEIGHT - 14);
+  }
 }
 
 static const int DEBUG_TAB_INDEX = 5;
@@ -1985,6 +2067,7 @@ static const int AVIATION_TAB_INDEX = 1;
 void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
   uint32_t now = millis();
   if (touched) {
+    lastInteractionMs = now; // any touch resets the idle auto-cycle clock
     // Remember the position while the finger is actually down - on
     // release, readTouch() reports no point and x/y come in as 0,0,
     // so we can't rely on the release-time coordinates directly.
@@ -1992,11 +2075,30 @@ void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
     lastTouchY = y;
     if (!touchWasDown) {
       touchDownMs = now;
+      touchDownX = x;
+      touchDownY = y;
     }
   }
   if (!touched && touchWasDown) {
     uint32_t held = now - touchDownMs;
-    if (held >= TAP_MIN_MS && held <= TAP_MAX_MS) {
+    int dx = (int)lastTouchX - (int)touchDownX;
+    int dy = (int)lastTouchY - (int)touchDownY;
+    bool isSwipe = abs(dx) >= SWIPE_MIN_PX && abs(dx) > abs(dy);
+
+    if (isSwipe) {
+      // Horizontal swipe pages left/right, in whichever direction the
+      // finger moved -- swiping right-to-left (dx negative) advances
+      // forward, matching the usual photo-gallery convention.
+      if (dx < 0) {
+        currentTab = (currentTab + 1) % TAB_COUNT;
+      } else {
+        currentTab = (currentTab - 1 + TAB_COUNT) % TAB_COUNT;
+      }
+    } else if (held >= LONGPRESS_MIN_MS) {
+      // Long press anywhere cycles night mode: auto -> forced on ->
+      // forced off -> back to auto.
+      nightModeOverride = (nightModeOverride + 1) % 3;
+    } else if (held >= TAP_MIN_MS && held <= TAP_MAX_MS) {
       bool hitNextButton = currentTab == DEBUG_TAB_INDEX &&
                             lastTouchX >= 600 && lastTouchX <= 780 &&
                             lastTouchY >= 400 && lastTouchY <= 460;
