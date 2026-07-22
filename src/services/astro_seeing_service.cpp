@@ -292,6 +292,14 @@ static bool fetchOpenMeteoFallback() {
 
   http.begin(url);
   http.setTimeout(15000);
+  // Force HTTP/1.0 -- Open-Meteo's larger response was suspected to arrive
+  // chunked (Transfer-Encoding: chunked, no Content-Length), and our manual
+  // raw-stream read loop (readHttpBodySafely, used since v128) doesn't
+  // strip chunk-size framing the way http.getString() would -- resulting
+  // in "invalid input" JSON parse errors even though the underlying data
+  // was valid. HTTP/1.0 has no chunked transfer mechanism, so servers
+  // typically respond with a plain Content-Length body instead.
+  http.useHTTP10(true);
   int code = http.GET();
   // Expose this fallback's own HTTP code on the Debug tab -- previously
   // g_astroLastHttpCode only reflected 7Timer's result (or a hardcoded 200
