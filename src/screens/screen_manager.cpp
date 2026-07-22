@@ -211,7 +211,7 @@ static void draw_dashboard() {
   drawDashboardBackground();
   astro_recompute_moon_phase(); // keeps moon illum% current for the ASTRO column below
 
-  screen.setTextSize(2);
+  screen.setTextSize(3);
   screen.setTextColor(colorAccent, colorBg);
   screen.setTextDatum(textdatum_t::top_left);
   screen.drawString(formatCurrentDateTime(), 20, 55);
@@ -601,6 +601,16 @@ static void draw_aviation() {
     char rangeLabel[16];
     snprintf(rangeLabel, sizeof(rangeLabel), "%.0fnm", RADAR_MAX_RANGE_NM);
     screen.drawString(rangeLabel, rangeLabelX, rangeLabelY);
+
+    // Same treatment for the 2nd ring from the middle (ring 2 of 4), so
+    // the mid-range distance is labeled too, not just the outer edge.
+    int ring2Radius = RADAR_RADIUS * 2 / RADAR_RINGS;
+    int ring2LabelX = RADAR_CX + (int)(sinf(rad45) * ring2Radius);
+    int ring2LabelY = RADAR_CY - (int)(cosf(rad45) * ring2Radius);
+    float ring2Nm = RADAR_MAX_RANGE_NM * 2.0f / RADAR_RINGS;
+    char ring2Label[16];
+    snprintf(ring2Label, sizeof(ring2Label), "%.0fnm", ring2Nm);
+    screen.drawString(ring2Label, ring2LabelX, ring2LabelY);
   }
 
   {
@@ -993,7 +1003,7 @@ static void draw_weather() {
     // Precipitation gauge: a 270-degree arc (gap at the bottom), approximated
     // with short line segments since this display library doesn't expose a
     // drawArc primitive. A blue segment fills in up to the current percent.
-    int gaugeCx = 575, gaugeCy = 228, gaugeR = 22;
+    int gaugeCx = 560, gaugeCy = 228, gaugeR = 22; // shifted left 15px to center the precip+wind pair under the 5 AQI bars (which span x=520-720)
     float startDeg = -135.0f, sweepDeg = 270.0f;
     uint16_t trackColor = colorDim;
     uint16_t fillColor = screen.color565(70, 150, 220);
@@ -1044,7 +1054,7 @@ static void draw_weather() {
 
   {
     // Wind compass: direction needle plus sustained | gust speeds below.
-    int windCx = 695, windCy = 228, windR = 22;
+    int windCx = 680, windCy = 228, windR = 22; // shifted left 15px, see gaugeCx comment above
     screen.drawCircle(windCx, windCy, windR, colorDim);
 
     for (int deg = 0; deg < 360; deg += 30) {
@@ -1305,7 +1315,7 @@ static void draw_iss() {
   screen.drawString("Longitude", col1X, contentY + 32);
   screen.setTextColor(colorText, colorBg);
   snprintf(row, sizeof(row), "%.2f", g_iss.lon);
-  screen.drawString(row, col1X + 110, contentY + 32);
+  screen.drawString(row, col1X + 130, contentY + 32);
 
   screen.setTextColor(colorDim, colorBg);
   screen.drawString("Altitude", col1X, contentY + 64);
@@ -1458,82 +1468,77 @@ static void draw_iss() {
   }
 }
 
+// A simple, original decorative badge for the Debug page -- a generic
+// heraldic shield silhouette (rounded top, tapering sides to a point;
+// a common, non-branded shape used widely, not matching any specific
+// company's trademark) containing a compass rose (echoing the Aviation
+// page) and an orbiting satellite dot with a center star (echoing the
+// ISS/Astro pages). All diagnostic readouts were previously here; they
+// are intentionally hidden per request, not removed from the codebase
+// logic (the NEXT/poll buttons still function via their existing touch
+// coordinates in screen_manager_handle_touch, just without a visible
+// button drawn here).
+static void drawDebugBadge() {
+  int cx = WIDTH / 2;
+  int shieldR = 140;      // scaled up (was 95) so the badge fills the screen top-to-bottom
+  int shieldTopCy = 20 + shieldR;  // top of the rounded arc sits ~20px from the screen's top edge
+  int apexY = HEIGHT - 20;         // point of the shield sits ~20px from the screen's bottom edge
+  uint16_t badgeColor = screen.color565(200, 170, 90);
+  uint16_t badgeAccent = screen.color565(230, 200, 120);
+
+  float prevX = 0, prevY = 0;
+  bool havePrev = false;
+  for (int i = 0; i <= 60; i++) {
+    float deg = 180.0f + 180.0f * (i / 60.0f);
+    float rad = deg * PI / 180.0f;
+    float px = cx + cosf(rad) * shieldR;
+    float py = shieldTopCy + sinf(rad) * shieldR;
+    if (havePrev) screen.drawLine((int)prevX, (int)prevY, (int)px, (int)py, badgeColor);
+    prevX = px; prevY = py; havePrev = true;
+  }
+  int leftShoulderX = cx - shieldR, rightShoulderX = cx + shieldR;
+  screen.drawLine(leftShoulderX, shieldTopCy, cx, apexY, badgeColor);
+  screen.drawLine(rightShoulderX, shieldTopCy, cx, apexY, badgeColor);
+
+  int compassCy = shieldTopCy + 59;  // same proportion as before, scaled to the larger shield
+  int compassR = 103;
+  screen.drawCircle(cx, compassCy, compassR, badgeColor);
+  for (int deg = 0; deg < 360; deg += 30) {
+    float rad = deg * PI / 180.0f;
+    bool isCardinal = (deg % 90 == 0);
+    int tickLen = isCardinal ? 10 : 5;
+    int x0 = cx + (int)(sinf(rad) * compassR);
+    int y0 = compassCy - (int)(cosf(rad) * compassR);
+    int x1 = cx + (int)(sinf(rad) * (compassR - tickLen));
+    int y1 = compassCy - (int)(cosf(rad) * (compassR - tickLen));
+    screen.drawLine(x0, y0, x1, y1, isCardinal ? badgeAccent : badgeColor);
+  }
+
+  int orbitR = 62;
+  screen.drawCircle(cx, compassCy, orbitR, badgeColor);
+  uint32_t t = millis();
+  float orbitAngle = (float)(t % 6000) / 6000.0f * 2.0f * PI;
+  int satX = cx + (int)(cosf(orbitAngle) * orbitR);
+  int satY = compassCy + (int)(sinf(orbitAngle) * orbitR);
+  screen.fillCircle(satX, satY, 4, badgeAccent);
+
+  int starOuterR = 29, starInnerR = 13;
+  float starPtsX[10], starPtsY[10];
+  for (int i = 0; i < 10; i++) {
+    float ang = -PI / 2.0f + i * (PI / 5.0f);
+    float r = (i % 2 == 0) ? (float)starOuterR : (float)starInnerR;
+    starPtsX[i] = cx + cosf(ang) * r;
+    starPtsY[i] = compassCy + sinf(ang) * r;
+  }
+  for (int i = 0; i < 10; i++) {
+    int next = (i + 1) % 10;
+    screen.fillTriangle(cx, compassCy, (int)starPtsX[i], (int)starPtsY[i],
+                        (int)starPtsX[next], (int)starPtsY[next], badgeAccent);
+  }
+}
+
 static void draw_debug() {
-  screen.setTextDatum(textdatum_t::top_left);
-
-  char bbLine[48];
-  snprintf(bbLine, sizeof(bbLine), "Bounce buffer: %d lines", PanelDisplay::getBounceBufferLines());
-  screen.setTextSize(2);
-  screen.setTextColor(colorAccent, colorBg);
-  screen.drawString(bbLine, 10, 50);
-  screen.setTextSize(1);
-  screen.setTextColor(colorDim, colorBg);
-  screen.drawString("Tap NEXT to save the next test value and reboot", 10, 78);
-
-  screen.fillRect(600, 400, 180, 60, colorAccent);
-  screen.setTextColor(colorBg, colorAccent);
-  screen.setTextSize(2);
-  screen.setTextDatum(textdatum_t::middle_center);
-  screen.drawString("NEXT >>", 690, 430);
-  screen.setTextDatum(textdatum_t::top_left);
-
-  char pollLine[48];
-  snprintf(pollLine, sizeof(pollLine), "Aviation poll: %lus", (unsigned long)(g_aviationPollMs / 1000));
-  screen.setTextSize(2);
-  screen.setTextColor(colorAccent, colorBg);
-  screen.drawString(pollLine, 10, 320);
-  screen.fillRect(230, 310, 180, 60, colorAccent);
-  screen.setTextColor(colorBg, colorAccent);
-  screen.setTextDatum(textdatum_t::middle_center);
-  screen.drawString("NEXT >>", 320, 340);
-  screen.setTextDatum(textdatum_t::top_left);
-
-  char heapLine[64];
-  snprintf(heapLine, sizeof(heapLine), "Free heap: %u  Free PSRAM: %u",
-           static_cast<unsigned>(ESP.getFreeHeap()),
-           static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
-  screen.setTextSize(2);
-  screen.setTextColor(colorAccent, colorBg);
-  screen.drawString(heapLine, 10, 130);
-
-  char largestBlockLine[64];
-  snprintf(largestBlockLine, sizeof(largestBlockLine), "Largest free block (8BIT): %u",
-           static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)));
-  screen.setTextSize(2);
-  screen.setTextColor(colorAccent, colorBg);
-  screen.drawString(largestBlockLine, 10, 160);
-
-  // TEMP DEBUG (v114): clear sunrise/sunset readout, moved here from the
-  // Weather page so it is not crowded by other data. Remove once root
-  // cause of sunrise/sunset being wrong is confirmed and fixed.
-  {
-    char srLine[64];
-    char ssLine[64];
-    char debugSunriseBuf[16];
-    char debugSunsetBuf[16];
-    formatHHMM(g_weather.sunriseUnix, debugSunriseBuf, sizeof(debugSunriseBuf));
-    formatHHMM(g_weather.sunsetUnix, debugSunsetBuf, sizeof(debugSunsetBuf));
-    snprintf(srLine, sizeof(srLine), "SUNRISE %s UNIX %lu",
-             debugSunriseBuf,
-             (unsigned long)g_weather.sunriseUnix);
-    snprintf(ssLine, sizeof(ssLine), "SUNSET %s UNIX %lu",
-             debugSunsetBuf,
-             (unsigned long)g_weather.sunsetUnix);
-    screen.setTextSize(2);
-    screen.setTextColor(colorAccent, colorBg);
-    screen.drawString(srLine, 400, 50);
-    screen.drawString(ssLine, 400, 78);
-  }
-
-  screen.setTextSize(1);
-  screen.setTextColor(colorText, colorBg);
-  int y = 105;
-  for (int i = 0; i < DEBUG_LOG_LINES; i++) {
-    if (g_debugLog[i].length() > 0) {
-      screen.drawString(g_debugLog[i], 10, y);
-    }
-    y += 18;
-  }
+  drawDebugBadge();
 }
 
 // Finds the first astro forecast point at or after tonight's sunset --
@@ -1748,6 +1753,39 @@ static void draw_astro() {
     screen.setTextSize(2);
     screen.setTextColor(li > 0 ? colorSuccess : colorDanger, colorBg);
     screen.drawString(astro_instability_label(li), col3X, row2Y + 34);
+
+    // Tiny legend under the value: all 4 possible Storm Risk levels,
+    // best to worst, each in its matching color -- same GOOD/FAIR/POOR/BAD
+    // color scale used elsewhere on this page (astroSeverityColor).
+    {
+      screen.setTextSize(1);
+      int legendY = row2Y + 56;
+      int legendX = col3X;
+      const char* labels[4] = {"Stable", "Slight Risk", "Moderate Risk", "High Risk"};
+      uint16_t colors[4] = {
+        colorSuccess,
+        screen.color565(230, 200, 40),
+        screen.color565(230, 130, 40),
+        colorDanger
+      };
+      char legendLine[8];
+      screen.setTextColor(colorDim, colorBg);
+      screen.drawString("(", legendX, legendY);
+      legendX += 6;
+      for (int i = 0; i < 4; i++) {
+        screen.setTextColor(colors[i], colorBg);
+        screen.drawString(labels[i], legendX, legendY);
+        legendX += strlen(labels[i]) * 6;
+        if (i < 3) {
+          screen.setTextColor(colorDim, colorBg);
+          screen.drawString(",", legendX, legendY);
+          legendX += 6;
+        }
+      }
+      screen.setTextColor(colorDim, colorBg);
+      screen.drawString(")", legendX, legendY);
+      (void)legendLine; // unused, kept for potential future formatting
+    }
     if (g_astroForecast[tonightIdx].prectype != "none") {
       char precipLine[32];
       snprintf(precipLine, sizeof(precipLine), "Precip: %s", g_astroForecast[tonightIdx].prectype.c_str());
