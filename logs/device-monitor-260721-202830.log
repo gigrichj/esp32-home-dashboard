@@ -1,0 +1,9 @@
+[boot] display begin
+[display] ESP32_Display_Panel backend begin
+[display] board.init begin
+[I][Expander][esp_panel_board.cpp:0066](init): Initializing board (Waveshare:ESP32-S3-Touch-LCD-7)
+[I][Expander][esp_panel_board.cpp:0235](init): Board initialize success
+[display] bounce buffer set to 15 lines (12000 px)
+[display] board.begin begin
+[I][Expander][esp_panel_board.cpp:0253](begin): Beginning board (Waveshare:ESP32-S3-Touch-LCD-7)
+[I][Expander][esp_io_expander_ch422g.c:0075](esp_io_expander_new_i2c_ch422g): version: 0.1.0

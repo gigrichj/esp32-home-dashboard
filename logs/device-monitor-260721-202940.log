@@ -1,0 +1,10 @@
+[ 92114][E][NetworkClient.cpp:278] connect(): socket error on fd 49, errno: 104, "Connection reset by peer"
+[107919][E][NetworkClientSecure.cpp:159] connect(): start_ssl_client: connect failed: -1
+[110916][E][NetworkClient.cpp:278] connect(): socket error on fd 49, errno: 104, "Connection reset by peer"
+[115917][E][NetworkClient.cpp:278] connect(): socket error on fd 49, errno: 104, "Connection reset by peer"
+[125226][E][NetworkClientSecure.cpp:159] connect(): start_ssl_client: connect failed: -1
+[153688][E][NetworkClient.cpp:278] connect(): socket error on fd 49, errno: 104, "Connection reset by peer"
+[167425][E][NetworkClientSecure.cpp:159] connect(): start_ssl_client: connect failed: -1
+[167459][E][NetworkClient.cpp:278] connect(): socket error on fd 49, errno: 104, "Connection reset by peer"
+[179780][E][NetworkClient.cpp:278] connect(): socket error on fd 49, errno: 104, "Connection reset by peer"
+[185237][E][NetworkClientSecure.cpp:159] connect(): start_ssl_client: connect failed: -1

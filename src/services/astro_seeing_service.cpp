@@ -286,6 +286,12 @@ static bool fetchOpenMeteoFallback() {
   http.begin(url);
   http.setTimeout(15000);
   int code = http.GET();
+  // Expose this fallback's own HTTP code on the Debug tab -- previously
+  // g_astroLastHttpCode only reflected 7Timer's result (or a hardcoded 200
+  // on fallback success), so a failing fallback was invisible: the on-screen
+  // diagnostic kept showing 7Timer's stale failure code with no way to tell
+  // whether the fallback was even being attempted, let alone what it got back.
+  g_astroLastHttpCode = code;
 
   if (code != 200) {
     Serial.printf("[Astro] Open-Meteo fallback HTTP %d\n", code);
