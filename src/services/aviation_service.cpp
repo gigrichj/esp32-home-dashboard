@@ -301,19 +301,12 @@ bool aviation_lookup_flight(const String& flightNumber, Aircraft& out) {
 }
 
 void aviation_request_detail(const String& icaoHex, const String& callsign) {
-  Serial.printf("[Aviation] aviation_request_detail called: icaoHex='%s' callsign='%s' (cached valid=%d lookedUpIcao='%s', pending=%d pendingIcao='%s')\n",
-                icaoHex.c_str(), callsign.c_str(),
-                g_aircraftDetail.valid, g_aircraftDetail.lookedUpIcao.c_str(),
-                pendingDetailRequested, pendingIcao.c_str());
   if (g_aircraftDetail.valid && g_aircraftDetail.lookedUpIcao == icaoHex) {
-    Serial.println("[Aviation] -> cache hit, skipping fetch");
     return; // cache hit, already have this one
   }
   if (pendingDetailRequested && pendingIcao == icaoHex) {
-    Serial.println("[Aviation] -> already in flight, skipping");
     return; // already in flight
   }
-  Serial.println("[Aviation] -> queuing new detail request");
   pendingIcao = icaoHex;
   pendingCallsign = callsign;
   pendingDetailRequested = true;
@@ -325,29 +318,21 @@ void aviation_request_detail(const String& icaoHex, const String& callsign) {
 static void fetchAircraftType(const String& icaoHex) {
   HTTPClient http;
   String url = "https://api.adsbdb.com/v0/aircraft/" + icaoHex;
-  Serial.printf("[Aviation] adsbdb aircraft lookup URL: %s\n", url.c_str());
   http.begin(url);
   int code = http.GET();
-  Serial.printf("[Aviation] adsbdb aircraft lookup HTTP %d\n", code);
   if (code == 200) {
     String payload = http.getString();
-    Serial.printf("[Aviation] adsbdb aircraft raw response: %s\n", payload.c_str());
     JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, payload);
-    if (!err) {
+    if (!deserializeJson(doc, payload)) {
       JsonObject aircraft = doc["response"]["aircraft"];
       if (!aircraft.isNull()) {
         g_aircraftDetail.type = aircraft["type"].as<String>();
         const char* thumb = aircraft["url_photo_thumbnail"];
         g_aircraftDetail.photoThumbUrl = thumb ? String(thumb) : String("");
-        Serial.printf("[Aviation] parsed type='%s' photoThumbUrl='%s'\n",
-                      g_aircraftDetail.type.c_str(), g_aircraftDetail.photoThumbUrl.c_str());
-      } else {
-        Serial.println("[Aviation] adsbdb response['response']['aircraft'] is null/missing");
       }
-    } else {
-      Serial.printf("[Aviation] adsbdb aircraft JSON parse error: %s\n", err.c_str());
     }
+  } else {
+    Serial.printf("[Aviation] adsbdb aircraft lookup HTTP %d\n", code);
   }
   http.end();
 }
@@ -384,16 +369,11 @@ static void fetchRoute(const String& callsign) {
 
 void aviation_service_detail_loop() {
   if (!pendingDetailRequested) return;
-  if (!wifi_manager_is_connected()) {
-    Serial.println("[Aviation] detail_loop: pending but WiFi not connected, skipping this cycle");
-    return;
-  }
+  if (!wifi_manager_is_connected()) return;
 
   String icaoHex = pendingIcao;
   String callsign = pendingCallsign;
   pendingDetailRequested = false;
-  Serial.printf("[Aviation] detail_loop: servicing pending request for icaoHex='%s' callsign='%s'\n",
-                icaoHex.c_str(), callsign.c_str());
 
   g_aircraftDetail = AircraftDetail();
   g_aircraftDetail.lookupInProgress = true;

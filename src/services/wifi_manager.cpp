@@ -152,12 +152,7 @@ void wifi_manager_loop() {
     return;
   }
 
-  uint32_t handleClientStartMs = millis();
   server.handleClient();
-  uint32_t handleClientDurationMs = millis() - handleClientStartMs;
-  if (handleClientDurationMs > 100) {
-    Serial.printf("[WiFi] server.handleClient() took %lums this cycle\n", (unsigned long)handleClientDurationMs);
-  }
 
   if (WiFi.status() != WL_CONNECTED) {
     uint32_t now = millis();
