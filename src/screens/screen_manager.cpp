@@ -1248,6 +1248,18 @@ static void draw_iss() {
       prevY = py;
       havePrev = true;
     }
+  } else {
+    // No ground track without a successfully loaded TLE -- show why on
+    // screen, since serial logging hasn't been reliably captured tonight.
+    char tleLine[64];
+    snprintf(tleLine, sizeof(tleLine), "TLE HTTP: %d", g_tleLastHttpCode);
+    screen.setTextSize(1);
+    screen.setTextColor(colorDim, colorBg);
+    screen.setTextDatum(textdatum_t::top_left);
+    screen.drawString(tleLine, MAP_X + 4, MAP_Y + 4);
+    if (g_tleLastFailureReason.length() > 0) {
+      screen.drawString(g_tleLastFailureReason, MAP_X + 4, MAP_Y + 18);
+    }
   }
 
   int issX = MAP_X + (int)((g_iss.lon + 180) / 360.0f * MAP_W);

@@ -19,6 +19,8 @@ bool g_issTrackValid = false;
 
 static Sgp4 sat;
 static bool tleLoaded = false;
+int g_tleLastHttpCode = -999;
+String g_tleLastFailureReason = "";
 static uint32_t lastTleFetchMs = 0;
 static const uint32_t TLE_REFRESH_INTERVAL_MS = 6UL * 60UL * 60UL * 1000UL; // 6 hours
 
@@ -66,8 +68,10 @@ static bool fetchAndInitTLE() {
   HTTPClient http;
   http.begin("https://celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=TLE");
   int code = http.GET();
+  g_tleLastHttpCode = code;
   if (code != 200) {
     Serial.printf("[ISS] TLE fetch HTTP %d\n", code);
+    g_tleLastFailureReason = "HTTP " + String(code);
     http.end();
     return false;
   }
@@ -108,6 +112,7 @@ static bool fetchAndInitTLE() {
 
   if (readError) {
     Serial.println("[ISS] TLE payload read error");
+    g_tleLastFailureReason = "payload read error";
     free(rawBuf);
     return false;
   }
@@ -119,6 +124,7 @@ static bool fetchAndInitTLE() {
   int nl2 = payload.indexOf('\n', nl1 + 1);
   if (nl1 < 0 || nl2 < 0) {
     Serial.println("[ISS] TLE response missing expected line breaks");
+    g_tleLastFailureReason = "response missing line breaks (len=" + String(payload.length()) + ")";
     return false;
   }
 
@@ -131,6 +137,7 @@ static bool fetchAndInitTLE() {
 
   if (line1.length() < 60 || line2.length() < 60) {
     Serial.println("[ISS] TLE lines look truncated, skipping");
+    g_tleLastFailureReason = "lines truncated (l1=" + String(line1.length()) + " l2=" + String(line2.length()) + ")";
     return false;
   }
 
@@ -144,6 +151,7 @@ static bool fetchAndInitTLE() {
   sat.site((double)HOME_LAT, (double)HOME_LON, 0);
   sat.init(nameBuf, line1Buf, line2Buf); // return value just means "TLE unchanged since last call" - not an error
   Serial.println("[ISS] TLE loaded/refreshed");
+  g_tleLastFailureReason = "";
   return true;
 }
 

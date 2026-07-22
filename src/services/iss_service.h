@@ -42,4 +42,11 @@ extern TrackPoint g_issTrack[ISS_TRACK_POINTS];
 extern int g_issTrackCount;
 extern bool g_issTrackValid;
 
+// Last HTTP result from the TLE (orbital elements) fetch, and a human-
+// readable reason if it failed -- the ground track can't draw without a
+// successfully loaded TLE, so this gives on-screen visibility into why,
+// without needing a serial monitor.
+extern int g_tleLastHttpCode;
+extern String g_tleLastFailureReason;
+
 void iss_service_update();
