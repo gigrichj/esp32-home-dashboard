@@ -78,7 +78,13 @@ static const uint32_t TAP_MAX_MS = 600;
 static const uint32_t LONGPRESS_MIN_MS = 900;   // hold longer than this toggles night mode
 static uint16_t touchDownX = 0;
 static uint16_t touchDownY = 0;
-static const int SWIPE_MIN_PX = 70;             // minimum horizontal drag to count as a swipe
+static const int SWIPE_MIN_PX = 40;             // minimum horizontal drag to count as a swipe --
+                                                 // lowered from 70 because left-to-right (backward)
+                                                 // swipes were sometimes coming up just short of the
+                                                 // old threshold and falling through to the plain-tap
+                                                 // branch below, which always advances FORWARD
+                                                 // regardless of drag direction -- so a nearly-70px
+                                                 // backward swipe looked like it went the wrong way.
 
 static uint32_t lastInteractionMs = 0;
 static uint32_t lastAutoAdvanceMs = 0;
