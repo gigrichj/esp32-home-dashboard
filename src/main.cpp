@@ -122,9 +122,23 @@ void networkTask(void* param) {
       mqtt_service_begin();
     }
 
+    uint32_t mqttStartMs = millis();
     mqtt_service_loop();
+    uint32_t mqttDurationMs = millis() - mqttStartMs;
+    if (mqttDurationMs > 100) {
+      Serial.printf("[networkTask] mqtt_service_loop() took %lums this cycle\n", (unsigned long)mqttDurationMs);
+    }
 
     uint32_t now = millis();
+
+    static uint32_t lastHeartbeatMs = 0;
+    if (now - lastHeartbeatMs > 5000) {
+      lastHeartbeatMs = now;
+      uint32_t astroIntervalDbg = astroDataLoaded ? ASTRO_POLL_MS : ASTRO_RETRY_MS;
+      Serial.printf("[networkTask] heartbeat now=%lu lastAstro=%lu diff=%lu astroInterval=%lu astroDataLoaded=%d\n",
+                    (unsigned long)now, (unsigned long)lastAstro, (unsigned long)(now - lastAstro),
+                    (unsigned long)astroIntervalDbg, astroDataLoaded);
+    }
 
     // Set whenever a heavy Weather/Air Quality/Astro fetch runs this cycle,
     // so Aviation and ISS can defer to the next cycle instead of firing
