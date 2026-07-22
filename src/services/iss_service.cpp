@@ -131,6 +131,11 @@ static bool initSatFromTle(const String& nameLine, const String& line1, const St
 static bool fetchTLEFromCelestrak() {
   HTTPClient http;
   http.begin("https://celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=TLE");
+  // Force HTTP/1.0 to avoid chunked transfer encoding -- our manual
+  // raw-stream read loop doesn't strip chunk-size framing, which caused
+  // "invalid input" JSON parse errors on Open-Meteo earlier tonight (v141)
+  // even for small responses; applying the same fix here defensively.
+  http.useHTTP10(true);
   int code = http.GET();
   g_tleLastHttpCode = code;
   if (code != 200) {
@@ -175,6 +180,11 @@ static bool fetchTLEFromCelestrak() {
 static bool fetchTLEFromIvanstanojevic() {
   HTTPClient http;
   http.begin("https://tle.ivanstanojevic.me/api/tle/25544");
+  // Force HTTP/1.0 to avoid chunked transfer encoding -- same fix as
+  // Open-Meteo (v141); transfer encoding is a server choice independent
+  // of response size, so even this small JSON response can arrive chunked
+  // and get corrupted by our manual read loop, producing "invalid input".
+  http.useHTTP10(true);
   int code = http.GET();
   g_tleLastHttpCode = code;
   if (code != 200) {
