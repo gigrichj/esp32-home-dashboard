@@ -1,4 +1,6 @@
 #include "iss_service.h"
+#include <WiFiClient.h>
+#include <esp_heap_caps.h>
 #include "wifi_manager.h"
 #include "secrets.h"
 #include <HTTPClient.h>
@@ -70,8 +72,48 @@ static bool fetchAndInitTLE() {
     return false;
   }
 
-  String payload = http.getString();
+  // Read the body manually with an explicit timeout and a yield on every
+  // iteration, instead of http.getString() -- the same fix applied to
+  // aviation (v128) and astro (v133/v141) after connection resets were
+  // found to interact badly with that call. Without a real TLE, the ground
+  // track never draws (computeGroundTrack() short-circuits on !tleLoaded),
+  // even though position/altitude (a separate API) can still work fine.
+  int payloadLen = http.getSize();
+  int bufSize = (payloadLen > 0) ? payloadLen + 1 : 8192;
+  char *rawBuf = (char *)heap_caps_malloc(bufSize, MALLOC_CAP_8BIT);
+  if (rawBuf == nullptr) {
+    Serial.println("[ISS] TLE payload buffer alloc failed");
+    http.end();
+    return false;
+  }
+
+  WiFiClient *stream = http.getStreamPtr();
+  size_t readTotal = 0;
+  uint32_t startMs = millis();
+  bool readError = false;
+  while (readTotal < (size_t)(bufSize - 1) && millis() - startMs < 15000) {
+    if (!http.connected() && stream->available() == 0) break;
+    size_t avail = stream->available();
+    if (avail > 0) {
+      int toRead = (int)min(avail, (size_t)(bufSize - 1 - readTotal));
+      int r = stream->readBytes(rawBuf + readTotal, toRead);
+      if (r <= 0) { readError = true; break; }
+      readTotal += r;
+    } else {
+      vTaskDelay(pdMS_TO_TICKS(5)); // yield -- the critical fix
+    }
+  }
+  rawBuf[readTotal] = '\0';
   http.end();
+
+  if (readError) {
+    Serial.println("[ISS] TLE payload read error");
+    free(rawBuf);
+    return false;
+  }
+
+  String payload(rawBuf);
+  free(rawBuf);
 
   int nl1 = payload.indexOf('\n');
   int nl2 = payload.indexOf('\n', nl1 + 1);
