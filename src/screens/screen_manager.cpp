@@ -2659,6 +2659,14 @@ void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
       bool hitPollButton = currentTab == DEBUG_TAB_INDEX &&
                             lastTouchX >= 230 && lastTouchX <= 410 &&
                             lastTouchY >= 310 && lastTouchY <= 370;
+      // Hidden test button for the alert takeover banner -- bottom-left
+      // corner of the Debug page, same invisible-touch-zone convention as
+      // the two buttons above. Lets the banner/dismiss behavior be
+      // verified on demand instead of waiting for a real condition
+      // transition (astro-good, storm-risk-high, emergency squawk).
+      bool hitAlertTestButton = currentTab == DEBUG_TAB_INDEX &&
+                                lastTouchX >= 20 && lastTouchX <= 200 &&
+                                lastTouchY >= 400 && lastTouchY <= 460;
 
       bool handledAviation = false;
       if (currentTab == AVIATION_TAB_INDEX) {
@@ -2689,6 +2697,11 @@ void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
         PanelDisplay::cycleBounceBufferAndRestart();
       } else if (hitPollButton) {
         cycleAviationPollInterval();
+      } else if (hitAlertTestButton) {
+        g_alertActive = true;
+        g_alertShownAtMs = now;
+        g_alertColorOverride = colorDanger;
+        snprintf(g_alertMessage, sizeof(g_alertMessage), "TEST ALERT - HIDDEN DEBUG TRIGGER");
       } else if (!handledAviation && !g_pageLocked) {
         currentTab = (currentTab + 1) % TAB_COUNT;
       }
