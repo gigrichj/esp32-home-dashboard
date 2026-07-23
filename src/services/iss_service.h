@@ -24,6 +24,14 @@ static const int ISS_MAX_PASSES = 5;
 extern IssPass g_issPasses[ISS_MAX_PASSES];
 extern int g_issPassCount;
 
+// Diagnostics for the visualpasses fetch specifically, separate from
+// g_iss.lastHttpCode (which only reflects the /positions/ call) -- this
+// endpoint silently returning maxEl=0 for every pass (chunked-encoding
+// JSON parse failure, same root cause as the Open-Meteo/TLE fetches
+// elsewhere in this project) was previously invisible on screen.
+extern int g_issPassesLastHttpCode;
+extern bool g_issPassesParseFailed;
+
 // Number of people currently aboard the ISS specifically (Open Notify's
 // astros.json lists everyone in space across all craft; we filter to ISS).
 extern int g_issCrewCount;

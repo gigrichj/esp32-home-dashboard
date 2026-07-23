@@ -11,6 +11,8 @@
 IssData g_iss;
 IssPass g_issPasses[ISS_MAX_PASSES];
 int g_issPassCount = 0;
+int g_issPassesLastHttpCode = -999;
+bool g_issPassesParseFailed = false;
 int g_issCrewCount = 0;
 int g_issCrewLastHttpCode = -999;
 TrackPoint g_issTrack[ISS_TRACK_POINTS];
@@ -292,11 +294,23 @@ void iss_service_update() {
     (double)HOME_LAT, (double)HOME_LON, N2YO_API_KEY);
 
   passHttp.begin(passUrl);
+  // N2YO's visualpasses response was silently failing to parse -- traced
+  // to chunked transfer encoding, the same root cause hit twice before
+  // with Open-Meteo (astro fallback, ISS TLE fallback). Forcing HTTP/1.0
+  // gets a plain Content-Length body instead, which plain getString()
+  // below expects.
+  passHttp.useHTTP10(true);
   int passCode = passHttp.GET();
+  g_issPassesLastHttpCode = passCode;
+  g_issPassesParseFailed = false;
   if (passCode == 200) {
     String passPayload = passHttp.getString();
     JsonDocument passDoc;
-    if (!deserializeJson(passDoc, passPayload)) {
+    DeserializationError passErr = deserializeJson(passDoc, passPayload);
+    if (passErr) {
+      g_issPassesParseFailed = true;
+      Serial.printf("[ISS] visualpasses JSON parse error: %s\n", passErr.c_str());
+    } else {
       JsonArray passes = passDoc["passes"].as<JsonArray>();
       g_issPassCount = 0;
       for (JsonObject p : passes) {

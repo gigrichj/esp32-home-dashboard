@@ -1133,11 +1133,10 @@ static void draw_weather() {
     // Precipitation gauge: a 270-degree arc (gap at the bottom), approximated
     // with short line segments since this display library doesn't expose a
     // drawArc primitive. A blue segment fills in up to the current percent.
-    int gaugeCx = 410, gaugeCy = 200, gaugeR = 18; // moved into its own column in the gap between
-                                                     // the left stat list (ends ~x=360) and the
-                                                     // AQI/UV column (starts x=520) -- the AQI/UV
-                                                     // block grew taller once UV Index was added and
-                                                     // started overlapping this pair's old position.
+    int gaugeCx = 434, gaugeCy = 170, gaugeR = 18; // nudged right ~2 chars and up ~1/4in from the
+                                                     // first pass at this column, plus more vertical
+                                                     // room below (see the label/number y-offsets
+                                                     // further down) and before the wind compass.
     float startDeg = -135.0f, sweepDeg = 270.0f;
     uint16_t trackColor = colorDim;
     uint16_t fillColor = screen.color565(70, 150, 220);
@@ -1168,17 +1167,17 @@ static void draw_weather() {
     screen.setTextSize(2);
     screen.setTextColor(colorDim, colorBg);
     screen.setTextDatum(textdatum_t::top_left);
-    screen.drawString("PRECIP", gaugeCx - 36, gaugeCy + gaugeR + 12);
+    screen.drawString("PRECIP", gaugeCx - 36, gaugeCy + gaugeR + 18);
 
     screen.setTextSize(2);
     screen.setTextColor(colorText, colorBg);
     char precipStr[8];
     snprintf(precipStr, sizeof(precipStr), "%d", g_weather.precipChance);
-    screen.drawString(precipStr, gaugeCx - 12, gaugeCy + gaugeR + 38);
+    screen.drawString(precipStr, gaugeCx - 12, gaugeCy + gaugeR + 48);
     {
       // Hand-drawn percent glyph, same trick used for humidity above.
       int gx = gaugeCx + 8;
-      int gy = gaugeCy + gaugeR + 44;
+      int gy = gaugeCy + gaugeR + 54;
       screen.fillCircle(gx, gy - 5, 2, colorText);
       screen.fillCircle(gx + 8, gy + 3, 2, colorText);
       screen.drawLine(gx - 1, gy + 5, gx + 9, gy - 7, colorText);
@@ -1188,10 +1187,10 @@ static void draw_weather() {
 
   {
     // Wind compass: direction needle plus sustained | gust speeds below.
-    int windCx = 410, windCy = 288, windR = 18; // stacked directly below the precip gauge in the
-                                                 // same column (rather than side-by-side), so both
-                                                 // fit cleanly in the gap without crowding the
-                                                 // taller AQI/UV block -- see gaugeCx comment above.
+    int windCx = 434, windCy = 300, windR = 18; // same column as the precip gauge above, with
+                                                 // extra vertical gap between the two (was too
+                                                 // tight, precip's number/percent text nearly
+                                                 // touched this circle) -- see gaugeCx comment above.
     screen.drawCircle(windCx, windCy, windR, colorDim);
 
     for (int deg = 0; deg < 360; deg += 30) {
