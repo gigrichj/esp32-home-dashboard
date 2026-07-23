@@ -1888,8 +1888,41 @@ static void drawDebugBadge() {
   }
 }
 
+// Small legend explaining what each animated element's speed actually
+// tracks now that the badge doubles as a real system-health monitor
+// (see the metrics computed at the top of drawDebugBadge()). Placed in
+// the open left margin, which stays clear of the shield shape at every
+// height on this page.
+static void drawDebugLegend() {
+  uint16_t planeColor = screen.color565(120, 200, 150);
+  uint16_t issColor = screen.color565(150, 170, 235);
+  uint16_t galaxyColor = screen.color565(170, 120, 210);
+
+  int legX = 20;
+  int legY = 55;
+  int swatchSize = 12;
+  int lineGap = 26;
+
+  struct LegendEntry { uint16_t color; const char* label; };
+  LegendEntry legend[] = {
+    { planeColor,  "PLANE = WIFI SIGNAL" },
+    { issColor,    "ORBIT = FREE HEAP" },
+    { galaxyColor, "GALAXY = HEAP HEALTH" },
+  };
+
+  screen.setTextSize(1);
+  screen.setTextDatum(textdatum_t::top_left);
+  for (int i = 0; i < 3; i++) {
+    screen.fillRect(legX, legY - 2, swatchSize, swatchSize, legend[i].color);
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString(legend[i].label, legX + swatchSize + 8, legY);
+    legY += lineGap;
+  }
+}
+
 static void draw_debug() {
   drawDebugBadge();
+  drawDebugLegend();
 }
 
 // Finds the first astro forecast point at or after tonight's sunset --
