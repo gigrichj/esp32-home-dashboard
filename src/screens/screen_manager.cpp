@@ -2176,7 +2176,8 @@ static void draw_astro() {
   screen.drawString(moonPct, col1X, row2Y + 62);
 
   {
-    int moonCx = col1X + 353, moonCy = row2Y + 40, moonR = 32;
+    int moonCx = col1X + 393, moonCy = row2Y + 40, moonR = 32; // shifted right ~1/2in (40px) --
+                                                                 // was overlapping the MOON text block.
     screen.fillCircle(moonCx, moonCy, moonR, screen.color565(230, 230, 210));
     float shadowFrac = g_moonPhaseFraction;
     bool waxing = shadowFrac < 0.5f;
