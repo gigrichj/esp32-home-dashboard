@@ -80,6 +80,15 @@ static uint16_t touchDownX = 0;
 static uint16_t touchDownY = 0;
 static uint16_t touchMinX = 0;                  // smallest X seen so far this gesture (left excursion)
 static uint16_t touchMaxX = 0;                  // largest X seen so far this gesture (right excursion)
+
+static bool g_screenFrozen = false;             // when true, screen_manager_draw() skips redrawing
+                                                 // entirely (see top of that function) -- whatever
+                                                 // was on screen at the moment of freezing just stays,
+                                                 // useful for locking a page steady mid-observation.
+static uint32_t lastTapUpMs = 0;                // release time of the most recent single tap
+static uint16_t lastTapUpX = 0, lastTapUpY = 0; // release position of the most recent single tap
+static const uint32_t DOUBLE_TAP_MAX_GAP_MS = 400;  // 2nd tap must land within this long after the 1st
+static const int DOUBLE_TAP_MAX_DIST_PX = 50;       // and within this many px of the 1st tap's position
 static const int SWIPE_MIN_PX = 40;             // minimum excursion (in either direction from the
                                                  // touch-down point) to count as a swipe. Measured as
                                                  // peak excursion during the gesture rather than net
@@ -2127,6 +2136,17 @@ static bool computeNightModeActive() {
 static bool g_nightModeActive = false; // updated once per frame below
 
 void screen_manager_draw() {
+  if (g_screenFrozen) {
+    // Deliberately do nothing else -- leave the screen exactly as it was
+    // the instant it was frozen. Just a small badge so it's clear this is
+    // an intentional pause and not the device having hung.
+    screen.setTextSize(1);
+    screen.setTextColor(colorDanger, colorBg);
+    screen.setTextDatum(textdatum_t::top_right);
+    screen.drawString("FROZEN", WIDTH - 6, HEIGHT - 28);
+    return;
+  }
+
   g_nightModeActive = computeNightModeActive();
   colorBg = g_nightModeActive ? colorBgNight : colorBgDay;
   colorText = g_nightModeActive ? colorTextNight : colorTextDay;
@@ -2207,7 +2227,7 @@ void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
     bool isSwipe = (movedLeftEnough || movedRightEnough) &&
                    max(leftExcursion, rightExcursion) > abs(dy);
 
-    if (isSwipe) {
+    if (isSwipe && !g_screenFrozen) {
       // Horizontal swipe pages left/right. Whichever direction had the
       // larger excursion wins, in case both got a little jitter --
       // moving left advances forward, matching the usual photo-gallery
@@ -2217,49 +2237,71 @@ void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
       } else {
         currentTab = (currentTab - 1 + TAB_COUNT) % TAB_COUNT;
       }
-    } else if (held >= LONGPRESS_MIN_MS) {
+    } else if (held >= LONGPRESS_MIN_MS && !g_screenFrozen) {
       // Long press anywhere cycles night mode: auto -> forced on ->
       // forced off -> back to auto.
       nightModeOverride = (nightModeOverride + 1) % 3;
     } else if (held >= TAP_MIN_MS && held <= TAP_MAX_MS) {
-      bool hitNextButton = currentTab == DEBUG_TAB_INDEX &&
-                            lastTouchX >= 600 && lastTouchX <= 780 &&
-                            lastTouchY >= 400 && lastTouchY <= 460;
-      bool hitPollButton = currentTab == DEBUG_TAB_INDEX &&
-                            lastTouchX >= 230 && lastTouchX <= 410 &&
-                            lastTouchY >= 310 && lastTouchY <= 370;
+      // Double-tap detection runs regardless of frozen state -- it's the
+      // one gesture that always works, since it's the only way to
+      // unfreeze. Two quick taps close together in both time and position
+      // toggle the freeze; anything else falls through to normal handling
+      // (which is itself skipped entirely while frozen).
+      uint32_t sinceLastTap = now - lastTapUpMs;
+      int tapDx = (int)lastTouchX - (int)lastTapUpX;
+      int tapDy = (int)lastTouchY - (int)lastTapUpY;
+      bool isDoubleTap = lastTapUpMs != 0 && sinceLastTap <= DOUBLE_TAP_MAX_GAP_MS &&
+                         abs(tapDx) <= DOUBLE_TAP_MAX_DIST_PX && abs(tapDy) <= DOUBLE_TAP_MAX_DIST_PX;
 
-      bool handledAviation = false;
-      if (currentTab == AVIATION_TAB_INDEX) {
-        if (g_selectedAircraftIndex >= 0) {
-          // Card is showing - only the BACK button does anything here.
-          bool hitBack = lastTouchX >= 530 && lastTouchX <= 630 &&
-                         lastTouchY >= 420 && lastTouchY <= 460;
-          if (hitBack) {
-            g_selectedAircraftIndex = -1;
-          }
-          handledAviation = true;
-        } else {
-          // List is showing - check each row's recorded hit box.
-          for (int i = 0; i < g_listRowCount; i++) {
-            if (lastTouchY >= g_listRowY0[i] && lastTouchY <= g_listRowY1[i] &&
-                lastTouchX >= 530 && lastTouchX <= 780) {
-              int aircraftIdx = g_listRowAircraftIdx[i];
-              g_selectedAircraftIndex = aircraftIdx;
-              aviation_request_detail(g_aircraft[aircraftIdx].icao, g_aircraft[aircraftIdx].callsign);
+      if (isDoubleTap) {
+        g_screenFrozen = !g_screenFrozen;
+        lastTapUpMs = 0; // consumed, so a 3rd tap doesn't chain into another toggle
+      } else {
+        lastTapUpMs = now;
+        lastTapUpX = lastTouchX;
+        lastTapUpY = lastTouchY;
+
+        if (!g_screenFrozen) {
+          bool hitNextButton = currentTab == DEBUG_TAB_INDEX &&
+                                lastTouchX >= 600 && lastTouchX <= 780 &&
+                                lastTouchY >= 400 && lastTouchY <= 460;
+          bool hitPollButton = currentTab == DEBUG_TAB_INDEX &&
+                                lastTouchX >= 230 && lastTouchX <= 410 &&
+                                lastTouchY >= 310 && lastTouchY <= 370;
+
+          bool handledAviation = false;
+          if (currentTab == AVIATION_TAB_INDEX) {
+            if (g_selectedAircraftIndex >= 0) {
+              // Card is showing - only the BACK button does anything here.
+              bool hitBack = lastTouchX >= 530 && lastTouchX <= 630 &&
+                             lastTouchY >= 420 && lastTouchY <= 460;
+              if (hitBack) {
+                g_selectedAircraftIndex = -1;
+              }
               handledAviation = true;
-              break;
+            } else {
+              // List is showing - check each row's recorded hit box.
+              for (int i = 0; i < g_listRowCount; i++) {
+                if (lastTouchY >= g_listRowY0[i] && lastTouchY <= g_listRowY1[i] &&
+                    lastTouchX >= 530 && lastTouchX <= 780) {
+                  int aircraftIdx = g_listRowAircraftIdx[i];
+                  g_selectedAircraftIndex = aircraftIdx;
+                  aviation_request_detail(g_aircraft[aircraftIdx].icao, g_aircraft[aircraftIdx].callsign);
+                  handledAviation = true;
+                  break;
+                }
+              }
             }
           }
-        }
-      }
 
-      if (hitNextButton) {
-        PanelDisplay::cycleBounceBufferAndRestart();
-      } else if (hitPollButton) {
-        cycleAviationPollInterval();
-      } else if (!handledAviation) {
-        currentTab = (currentTab + 1) % TAB_COUNT;
+          if (hitNextButton) {
+            PanelDisplay::cycleBounceBufferAndRestart();
+          } else if (hitPollButton) {
+            cycleAviationPollInterval();
+          } else if (!handledAviation) {
+            currentTab = (currentTab + 1) % TAB_COUNT;
+          }
+        }
       }
     }
   }
