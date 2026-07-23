@@ -78,13 +78,17 @@ static const uint32_t TAP_MAX_MS = 600;
 static const uint32_t LONGPRESS_MIN_MS = 900;   // hold longer than this toggles night mode
 static uint16_t touchDownX = 0;
 static uint16_t touchDownY = 0;
-static const int SWIPE_MIN_PX = 40;             // minimum horizontal drag to count as a swipe --
-                                                 // lowered from 70 because left-to-right (backward)
-                                                 // swipes were sometimes coming up just short of the
-                                                 // old threshold and falling through to the plain-tap
-                                                 // branch below, which always advances FORWARD
-                                                 // regardless of drag direction -- so a nearly-70px
-                                                 // backward swipe looked like it went the wrong way.
+static uint16_t touchMinX = 0;                  // smallest X seen so far this gesture (left excursion)
+static uint16_t touchMaxX = 0;                  // largest X seen so far this gesture (right excursion)
+static const int SWIPE_MIN_PX = 40;             // minimum excursion (in either direction from the
+                                                 // touch-down point) to count as a swipe. Measured as
+                                                 // peak excursion during the gesture rather than net
+                                                 // start-to-release displacement, since DRAW_INTERVAL_MS
+                                                 // only samples touch once per ~200ms frame -- a quick
+                                                 // swipe can be under-sampled at both ends, shrinking
+                                                 // the naive "last - down" distance even when the real
+                                                 // physical swipe was well past threshold. Peak excursion
+                                                 // is symmetric and doesn't favor either direction.
 
 static uint32_t lastInteractionMs = 0;
 static uint32_t lastAutoAdvanceMs = 0;
@@ -2083,19 +2087,29 @@ void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
       touchDownMs = now;
       touchDownX = x;
       touchDownY = y;
+      touchMinX = x;
+      touchMaxX = x;
+    } else {
+      if (x < touchMinX) touchMinX = x;
+      if (x > touchMaxX) touchMaxX = x;
     }
   }
   if (!touched && touchWasDown) {
     uint32_t held = now - touchDownMs;
-    int dx = (int)lastTouchX - (int)touchDownX;
     int dy = (int)lastTouchY - (int)touchDownY;
-    bool isSwipe = abs(dx) >= SWIPE_MIN_PX && abs(dx) > abs(dy);
+    int leftExcursion = (int)touchDownX - (int)touchMinX;   // how far left of start the finger reached
+    int rightExcursion = (int)touchMaxX - (int)touchDownX;  // how far right of start the finger reached
+    bool movedLeftEnough = leftExcursion >= SWIPE_MIN_PX;
+    bool movedRightEnough = rightExcursion >= SWIPE_MIN_PX;
+    bool isSwipe = (movedLeftEnough || movedRightEnough) &&
+                   max(leftExcursion, rightExcursion) > abs(dy);
 
     if (isSwipe) {
-      // Horizontal swipe pages left/right, in whichever direction the
-      // finger moved -- swiping right-to-left (dx negative) advances
-      // forward, matching the usual photo-gallery convention.
-      if (dx < 0) {
+      // Horizontal swipe pages left/right. Whichever direction had the
+      // larger excursion wins, in case both got a little jitter --
+      // moving left advances forward, matching the usual photo-gallery
+      // convention.
+      if (leftExcursion > rightExcursion) {
         currentTab = (currentTab + 1) % TAB_COUNT;
       } else {
         currentTab = (currentTab - 1 + TAB_COUNT) % TAB_COUNT;
