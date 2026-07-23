@@ -89,6 +89,15 @@ static uint32_t lastTapUpMs = 0;                // release time of the most rece
 static uint16_t lastTapUpX = 0, lastTapUpY = 0; // release position of the most recent single tap
 static const uint32_t DOUBLE_TAP_MAX_GAP_MS = 400;  // 2nd tap must land within this long after the 1st
 static const int DOUBLE_TAP_MAX_DIST_PX = 50;       // and within this many px of the 1st tap's position
+
+static uint32_t lastFreezeToggleMs = 0;         // when the freeze state last flipped
+static const uint32_t FREEZE_TOGGLE_COOLDOWN_MS = 600; // swallow all tap gestures for this long
+                                                        // afterward -- capacitive touch contact
+                                                        // bounce can report one physical tap as two
+                                                        // quick blips, which could otherwise chain
+                                                        // into a second accidental toggle (or a
+                                                        // stray single-tap tab change) immediately
+                                                        // after a real double-tap.
 static const int SWIPE_MIN_PX = 40;             // minimum excursion (in either direction from the
                                                  // touch-down point) to count as a swipe. Measured as
                                                  // peak excursion during the gesture rather than net
@@ -2244,12 +2253,16 @@ void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
       // Long press anywhere cycles night mode: auto -> forced on ->
       // forced off -> back to auto.
       nightModeOverride = (nightModeOverride + 1) % 3;
-    } else if (held >= TAP_MIN_MS && held <= TAP_MAX_MS) {
+    } else if (held >= TAP_MIN_MS && held <= TAP_MAX_MS && now - lastFreezeToggleMs > FREEZE_TOGGLE_COOLDOWN_MS) {
       // Double-tap detection runs regardless of frozen state -- it's the
       // one gesture that always works, since it's the only way to
       // unfreeze. Two quick taps close together in both time and position
       // toggle the freeze; anything else falls through to normal handling
-      // (which is itself skipped entirely while frozen).
+      // (which is itself skipped entirely while frozen). The cooldown
+      // guard above blocks this whole block for a short window right
+      // after any toggle, so contact-bounce noise from the same physical
+      // gesture can't register as extra taps and chain into another
+      // accidental toggle or a stray tab change.
       uint32_t sinceLastTap = now - lastTapUpMs;
       int tapDx = (int)lastTouchX - (int)lastTapUpX;
       int tapDy = (int)lastTouchY - (int)lastTapUpY;
@@ -2259,6 +2272,7 @@ void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
       if (isDoubleTap) {
         g_screenFrozen = !g_screenFrozen;
         lastTapUpMs = 0; // consumed, so a 3rd tap doesn't chain into another toggle
+        lastFreezeToggleMs = now;
       } else {
         lastTapUpMs = now;
         lastTapUpX = lastTouchX;
