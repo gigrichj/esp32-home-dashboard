@@ -3,6 +3,7 @@
 #include "secrets.h"
 #include <HTTPClient.h>
 #include <esp_heap_caps.h>
+#include <WiFi.h>
 #include <ArduinoJson.h>
 
 AirQualityData g_airQuality;
