@@ -1639,21 +1639,11 @@ static void draw_iss() {
     screen.drawString("DATE  START  EL", col3X, rowY);
     rowY += 24;
 
-    // Diagnostics for the visualpasses fetch (separate from the main
-    // /positions/ fetch's HTTP code shown elsewhere on this page) --
-    // this endpoint was found silently returning maxEl=0 for every pass;
-    // showing its actual HTTP code and parse status here makes any
-    // future silent failure visible instead of just an unexplained 0.
-    {
-      char passesDiag[40];
-      snprintf(passesDiag, sizeof(passesDiag), "Passes HTTP %d%s",
-               g_issPassesLastHttpCode, g_issPassesParseFailed ? " (parse err)" : "");
-      screen.setTextSize(1);
-      screen.setTextColor(colorDim, colorBg);
-      screen.drawString(passesDiag, col3X, rowY);
-      rowY += 16;
-      screen.setTextSize(2);
-    }
+    // Passes-fetch diagnostic line (HTTP code / parse status) that lived
+    // here during the maxEl=0 bug hunt has been hidden now that it's
+    // fixed and confirmed working -- the underlying tracking
+    // (g_issPassesLastHttpCode / g_issPassesParseFailed) is left in place
+    // in case it's needed again.
 
     int shownPasses = min(g_issPassCount, 3);
     if (shownPasses == 0) {
