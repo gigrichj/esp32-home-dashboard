@@ -1390,7 +1390,62 @@ static void draw_weather() {
     screen.setTextColor(colorText, colorBg);
   }
 
-  int stripY = 360;
+  {
+    // 24-hour precipitation-probability strip, from the same Open-Meteo
+    // hourly data source already used for the UV index (see
+    // fetchHourlyPrecip() in weather_service.cpp) -- gives a glance at
+    // rain chances through the day/night ahead, versus the single
+    // "right now" PRECIP gauge drawn above.
+    int stripX = 20, precipTopY = 328, precipStripW = WIDTH - 40;
+    screen.setTextSize(2);
+    screen.setTextColor(colorAccent, colorBg);
+    screen.setTextDatum(textdatum_t::top_left);
+    screen.drawString("24HR PRECIP", stripX, precipTopY);
+    screen.drawLine(stripX, precipTopY + 20, stripX + 170, precipTopY + 20, colorAccent);
+
+    int barAreaY = precipTopY + 30;
+    int barAreaH = 24;
+    int barBaselineY = barAreaY + barAreaH;
+
+    if (g_precipHourlyValid && g_precipHourlyCount > 0) {
+      int n = g_precipHourlyCount;
+      int slotW = precipStripW / n;
+      uint16_t barColor = screen.color565(70, 150, 220);
+      for (int i = 0; i < n; i++) {
+        int prob = constrain(g_precipHourly[i].precipProb, 0, 100);
+        int barH = (int)(barAreaH * (prob / 100.0f));
+        int bx = stripX + i * slotW;
+        if (barH > 0) {
+          screen.fillRect(bx + 1, barBaselineY - barH, max(slotW - 2, 1), barH, barColor);
+        }
+      }
+      screen.drawLine(stripX, barBaselineY, stripX + precipStripW, barBaselineY, colorDim);
+
+      // Compact hour-of-day tick labels every 4 hours -- labeling all 24
+      // would be too dense at this width and this font's minimum size.
+      screen.setTextSize(1);
+      screen.setTextColor(colorDim, colorBg);
+      for (int i = 0; i < n; i += 4) {
+        time_t t = (time_t)g_precipHourly[i].unixTime;
+        struct tm* ti = localtime(&t);
+        int h12 = ti->tm_hour % 12;
+        if (h12 == 0) h12 = 12;
+        char hourBuf[8];
+        snprintf(hourBuf, sizeof(hourBuf), "%d%s", h12, ti->tm_hour < 12 ? "A" : "P");
+        screen.drawString(hourBuf, stripX + i * slotW, barBaselineY + 4);
+      }
+    } else {
+      screen.setTextSize(2);
+      screen.setTextColor(colorDim, colorBg);
+      char errLine[32];
+      snprintf(errLine, sizeof(errLine), "HTTP %d", g_precipHourlyLastHttpCode);
+      screen.drawString(errLine, stripX, barAreaY);
+    }
+    screen.setTextSize(2);
+    screen.setTextColor(colorText, colorBg);
+  }
+
+  int stripY = 409;
   screen.drawLine(20, stripY - 11, WIDTH - 20, stripY - 11, colorDim);
 
   int colW = (WIDTH - 40) / 5;
@@ -1400,13 +1455,13 @@ static void draw_weather() {
 
     screen.setTextSize(2);
     screen.setTextColor(colorText, colorBg);
-    screen.drawString(g_forecast[i].dayLabel, cx, stripY + 4);
+    screen.drawString(g_forecast[i].dayLabel, cx, stripY + 2);
 
-    drawWeatherIcon(cx, stripY + 40, 20, g_forecast[i].weatherId, colorText);
+    drawWeatherIcon(cx, stripY + 30, 14, g_forecast[i].weatherId, colorText);
 
     char hilo[24];
     snprintf(hilo, sizeof(hilo), "%.0f / %.0f", g_forecast[i].highF, g_forecast[i].lowF);
-    screen.drawString(hilo, cx, stripY + 74);
+    screen.drawString(hilo, cx, stripY + 54);
   }
   screen.setTextDatum(textdatum_t::top_left);
 }

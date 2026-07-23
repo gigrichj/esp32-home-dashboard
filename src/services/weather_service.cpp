@@ -10,6 +10,11 @@ WeatherData g_weather;
 ForecastDay g_forecast[FORECAST_DAYS];
 int g_forecastCount = 0;
 
+HourlyPrecipPoint g_precipHourly[PRECIP_HOURLY_POINTS];
+int g_precipHourlyCount = 0;
+bool g_precipHourlyValid = false;
+int g_precipHourlyLastHttpCode = -999;
+
 static void fetchCurrentConditions() {
   HTTPClient http;
   char url[256];
@@ -227,6 +232,135 @@ static void fetchUvIndex() {
   http.end();
 }
 
+// Same yield-safe manual read-loop as astro_seeing_service.cpp's
+// readHttpBodySafely() -- duplicated locally as a small per-file static
+// helper (same pattern already used for utcTmToUnix below) rather than
+// shared across services, since a plain http.getString() here risks the
+// same FreeRTOS watchdog crash already fixed in aviation/air-quality.
+static bool readHttpBodySafely(HTTPClient& http, String& outPayload, const char* sourceName) {
+  int payloadLen = http.getSize();
+  int bufSize = (payloadLen > 0) ? payloadLen + 1 : 32768;
+  char *rawBuf = (char *)heap_caps_malloc(bufSize, MALLOC_CAP_8BIT);
+  if (rawBuf == nullptr) {
+    Serial.printf("[Weather] %s payload buffer alloc failed\n", sourceName);
+    return false;
+  }
+
+  WiFiClient *stream = http.getStreamPtr();
+  size_t readTotal = 0;
+  uint32_t startMs = millis();
+  bool readError = false;
+  while (readTotal < (size_t)(bufSize - 1) && millis() - startMs < 15000) {
+    if (!http.connected() && stream->available() == 0) break;
+    size_t avail = stream->available();
+    if (avail > 0) {
+      int toRead = (int)min(avail, (size_t)(bufSize - 1 - readTotal));
+      int r = stream->readBytes(rawBuf + readTotal, toRead);
+      if (r <= 0) { readError = true; break; }
+      readTotal += r;
+    } else {
+      vTaskDelay(pdMS_TO_TICKS(5)); // yield -- the critical fix
+    }
+  }
+  rawBuf[readTotal] = '\0';
+
+  if (readError) {
+    Serial.printf("[Weather] %s payload read error\n", sourceName);
+    free(rawBuf);
+    return false;
+  }
+
+  outPayload = String(rawBuf);
+  free(rawBuf);
+  return true;
+}
+
+// Same "days from civil" UTC conversion as astro_seeing_service.cpp's
+// utcTmToUnix() (this toolchain has no timegm(), and mktime() assumes
+// local time) -- duplicated locally for the same reason as the read-loop
+// helper above. Open-Meteo's hourly timestamps are always on the hour
+// (":00" minutes), so no minutes parameter is needed here either.
+static uint32_t utcTmToUnix(int year, int month, int day, int hour) {
+  int y = year;
+  int m = month;
+  y -= m <= 2;
+  long era = (y >= 0 ? y : y - 399) / 400;
+  int yoe = (int)(y - era * 400);
+  int doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + day - 1;
+  int doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+  long daysSinceEpoch = era * 146097L + doe - 719468L;
+  return (uint32_t)(daysSinceEpoch * 86400L + (long)hour * 3600L);
+}
+
+// 24-hour precipitation-probability forecast from Open-Meteo, used for
+// the Weather page's hourly strip. forecast_days=2 (rather than 1) so
+// there's always a full 24-hour rolling window available even late in
+// the day, when "today" alone wouldn't have 24 hours left in it.
+static void fetchHourlyPrecip() {
+  HTTPClient http;
+  char url[256];
+  snprintf(url, sizeof(url),
+    "https://api.open-meteo.com/v1/forecast?latitude=%f&longitude=%f"
+    "&hourly=precipitation_probability&forecast_days=2&timezone=UTC",
+    (double)HOME_LAT, (double)HOME_LON);
+
+  http.begin(url);
+  // Same useHTTP10 fix required for every manual-read-loop JSON fetch in
+  // this project -- Open-Meteo can serve chunked transfer encoding on
+  // larger responses, which corrupts a raw stream read if not forced to
+  // HTTP/1.0.
+  http.useHTTP10(true);
+  int code = http.GET();
+  g_precipHourlyLastHttpCode = code;
+  if (code != 200) {
+    Serial.printf("[Weather] Precip HTTP %d\n", code);
+    http.end();
+    return;
+  }
+
+  String payload;
+  if (!readHttpBodySafely(http, payload, "Precip")) {
+    http.end();
+    return;
+  }
+  http.end();
+
+  JsonDocument doc;
+  DeserializationError err = deserializeJson(doc, payload);
+  if (err) {
+    Serial.printf("[Weather] Precip JSON parse error: %s\n", err.c_str());
+    return;
+  }
+
+  JsonArray times = doc["hourly"]["time"].as<JsonArray>();
+  JsonArray probs = doc["hourly"]["precipitation_probability"].as<JsonArray>();
+
+  // times[] starts at hour 0 of "today" (UTC, per timezone=UTC above) --
+  // start at the current UTC hour and take the next PRECIP_HOURLY_POINTS
+  // entries as a rolling "next 24 hours" window, same same-day hour
+  // lookup approach as fetchUvIndex() above.
+  time_t now = time(nullptr);
+  struct tm* utcNow = gmtime(&now);
+  int startIdx = utcNow->tm_hour;
+  if (startIdx < 0 || startIdx >= (int)times.size()) startIdx = 0;
+
+  g_precipHourlyCount = 0;
+  for (int i = startIdx;
+       i < (int)times.size() && i < (int)probs.size() && g_precipHourlyCount < PRECIP_HOURLY_POINTS;
+       i++) {
+    String tStr = times[i].as<String>();
+    int yr, mo, dy, hr, mi;
+    if (sscanf(tStr.c_str(), "%d-%d-%dT%d:%d", &yr, &mo, &dy, &hr, &mi) == 5) {
+      g_precipHourly[g_precipHourlyCount].unixTime = utcTmToUnix(yr, mo, dy, hr);
+    } else {
+      g_precipHourly[g_precipHourlyCount].unixTime = 0;
+    }
+    g_precipHourly[g_precipHourlyCount].precipProb = probs[i] | 0;
+    g_precipHourlyCount++;
+  }
+  g_precipHourlyValid = (g_precipHourlyCount > 0);
+}
+
 void weather_service_update() {
   if (!wifi_manager_is_connected()) return;
   // 3 heavy HTTPS/JSON calls in a row were stacking with zero breathing
@@ -241,4 +375,6 @@ void weather_service_update() {
   fetchForecast();
   vTaskDelay(pdMS_TO_TICKS(200));
   fetchUvIndex();
+  vTaskDelay(pdMS_TO_TICKS(200));
+  fetchHourlyPrecip();
 }

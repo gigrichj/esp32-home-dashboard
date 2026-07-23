@@ -28,6 +28,22 @@ struct WeatherData {
   int uvLastHttpCode = -999;
 };
 
+// 24-hour rolling precipitation-probability forecast, from Open-Meteo
+// (same source already used for the Astro page's 7Timer fallback and
+// the UV index above) -- OpenWeatherMap's forecast used for g_weather
+// is only 3-hour resolution and only surfaces a single "pop" per call,
+// not a full next-24-hours view.
+struct HourlyPrecipPoint {
+  uint32_t unixTime = 0;
+  int precipProb = 0; // 0-100
+};
+
+static const int PRECIP_HOURLY_POINTS = 24;
+extern HourlyPrecipPoint g_precipHourly[PRECIP_HOURLY_POINTS];
+extern int g_precipHourlyCount;
+extern bool g_precipHourlyValid;
+extern int g_precipHourlyLastHttpCode;
+
 struct ForecastDay {
   String dayLabel = "";      // "Mon", "Tue", etc.
   float highF = -999.0f;
