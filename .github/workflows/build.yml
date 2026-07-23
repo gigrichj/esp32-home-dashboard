@@ -37,8 +37,8 @@ jobs:
           #define WIFI_SSID "${WIFI_SSID}"
           #define WIFI_PASSWORD "${WIFI_PASSWORD}"
           #define OWM_API_KEY "${OWM_API_KEY}"
-          #define HOME_LAT ${HOME_LAT:-38.6871}
-          #define HOME_LON ${HOME_LON:--77.2624}
+          #define HOME_LAT ${HOME_LAT:-38.704282}
+          #define HOME_LON ${HOME_LON:--77.227760}
           #define HOME_BORTLE_CLASS 7.4f
           #define ADSBX_API_KEY "${ADSBX_API_KEY}"
           #define FLIGHTAWARE_API_KEY ""
