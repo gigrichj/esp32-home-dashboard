@@ -78,7 +78,19 @@ static void draw_setup_screen() {
   screen.drawString(FIRMWARE_VERSION, WIDTH - 6, HEIGHT - 14);
 }
 
+// Touch is polled far more often than the screen redraws (every ~20ms vs
+// every ~200ms). This matters for quick gestures like double-tap: with
+// touch only sampled once per draw cycle, a real double-tap's second tap
+// -- and the brief finger-up moment between taps -- could land entirely
+// within a single 200ms gap and never get seen at all, so the gesture
+// handler only ever saw one long continuous touch. Decoupling the two
+// keeps the display's redraw workload (and DMA/flicker behavior) exactly
+// as before, while letting quick multi-tap gestures actually register.
+static const uint32_t TOUCH_POLL_MS = 20UL;
+
 void uiTask(void* param) {
+  uint32_t msSinceLastDraw = 0;
+
   for (;;) {
     if (setupModeActive) {
       draw_setup_screen();
@@ -91,16 +103,21 @@ void uiTask(void* param) {
     bool touched = screen.readTouch(&touchX, &touchY);
     screen_manager_handle_touch(touched, touchX, touchY);
 
-    screen_manager_draw();
+    msSinceLastDraw += TOUCH_POLL_MS;
+    if (msSinceLastDraw >= DRAW_INTERVAL_MS) {
+      msSinceLastDraw = 0;
 
-    if (!screen.present()) {
-      Serial.println("[uiTask] present failed; restarting");
-      Serial.flush();
-      delay(100);
-      ESP.restart();
+      screen_manager_draw();
+
+      if (!screen.present()) {
+        Serial.println("[uiTask] present failed; restarting");
+        Serial.flush();
+        delay(100);
+        ESP.restart();
+      }
     }
 
-    vTaskDelay(pdMS_TO_TICKS(DRAW_INTERVAL_MS));
+    vTaskDelay(pdMS_TO_TICKS(TOUCH_POLL_MS));
   }
 }
 
