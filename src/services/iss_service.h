@@ -46,6 +46,10 @@ struct TrackPoint {
 };
 
 static const int ISS_TRACK_POINTS = 60;
+// Index within g_issTrack representing "now" -- points before this
+// index are the recent past (drawn dim), points at/after it are the
+// near future (drawn bright).
+static const int ISS_TRACK_NOW_INDEX = ISS_TRACK_POINTS / 2;
 extern TrackPoint g_issTrack[ISS_TRACK_POINTS];
 extern int g_issTrackCount;
 extern bool g_issTrackValid;

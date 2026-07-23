@@ -1499,14 +1499,19 @@ static void draw_iss() {
   screen.drawString("Home", homeX + 10, homeY - 4);
 
   if (g_issTrackValid && g_issTrackCount > 1) {
-    uint16_t colorTrack = screen.color565(255, 170, 60);
+    // Past segment (before "now") drawn dim, future segment drawn at
+    // full brightness, so it's visually clear which part of the line is
+    // where the ISS has already been versus where it's headed.
+    uint16_t colorTrackPast = screen.color565(120, 85, 30);
+    uint16_t colorTrackFuture = screen.color565(255, 170, 60);
     int prevX = 0, prevY = 0;
     bool havePrev = false;
     for (int i = 0; i < g_issTrackCount; i++) {
       int px = MAP_X + (int)((g_issTrack[i].lon + 180) / 360.0f * MAP_W);
       int py = MAP_Y + (int)((90 - g_issTrack[i].lat) / 180.0f * MAP_H);
       if (havePrev && abs(px - prevX) < MAP_W / 2) {
-        screen.drawLine(prevX, prevY, px, py, colorTrack);
+        uint16_t segColor = (i <= ISS_TRACK_NOW_INDEX) ? colorTrackPast : colorTrackFuture;
+        screen.drawLine(prevX, prevY, px, py, segColor);
       }
       prevX = px;
       prevY = py;
@@ -1717,11 +1722,22 @@ static void draw_iss() {
         char passTimeBuf[16];
         formatPassDate(p.startUnix, passDateBuf, sizeof(passDateBuf));
         formatPassTime(p.startUnix, passTimeBuf, sizeof(passTimeBuf));
-        snprintf(line, sizeof(line), "%-6s%-7sEl%-3d",
-                 passDateBuf,
-                 passTimeBuf,
-                 p.maxElevationDeg);
-        screen.setTextColor(colorText, colorBg);
+        // Low-elevation passes are barely visible from the ground (often
+        // lost behind horizon haze/trees) -- flag them so it's obvious at
+        // a glance which passes are actually worth going outside for.
+        bool isLowPass = p.maxElevationDeg < 10;
+        if (isLowPass) {
+          snprintf(line, sizeof(line), "%-6s%-7sEl%-3d(low)",
+                   passDateBuf,
+                   passTimeBuf,
+                   p.maxElevationDeg);
+        } else {
+          snprintf(line, sizeof(line), "%-6s%-7sEl%-3d",
+                   passDateBuf,
+                   passTimeBuf,
+                   p.maxElevationDeg);
+        }
+        screen.setTextColor(isLowPass ? colorDim : colorText, colorBg);
         screen.drawString(line, col3X, rowY);
         rowY += 24;
       }

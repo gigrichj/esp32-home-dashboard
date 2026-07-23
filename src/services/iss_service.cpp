@@ -245,9 +245,14 @@ static void computeGroundTrack() {
     return;
   }
 
+  // Spans both directions in time around "now" -- indices before
+  // ISS_TRACK_NOW_INDEX are the recent past, indices at/after it are the
+  // near future. offsetSteps is negative for past points, zero at "now",
+  // positive for future points.
   g_issTrackCount = 0;
   for (int i = 0; i < ISS_TRACK_POINTS; i++) {
-    unsigned long t = (unsigned long)nowUnix + (unsigned long)(i * TRACK_STEP_SECONDS);
+    long offsetSteps = (long)i - (long)ISS_TRACK_NOW_INDEX;
+    unsigned long t = (unsigned long)nowUnix + (unsigned long)(offsetSteps * TRACK_STEP_SECONDS);
     sat.findsat(t);
     g_issTrack[g_issTrackCount].lat = sat.satLat;
     g_issTrack[g_issTrackCount].lon = sat.satLon;
