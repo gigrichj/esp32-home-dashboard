@@ -170,7 +170,8 @@ static bool g_nightModeOn = false; // night (red-shifted) mode only ever changes
 // the condition remains true, so it doesn't nag on every redraw.
 static bool g_alertActive = false;
 static uint32_t g_alertShownAtMs = 0;
-static const uint32_t ALERT_DURATION_MS = 15000; // stays up 15s, or until tapped
+// Alert banner has no auto-timeout -- it stays up until explicitly
+// tapped to dismiss (see drawAlertBanner()/touch handler below).
 static char g_alertMessage[64] = "";
 static uint16_t g_alertColorOverride = 0; // set from colorSuccess/colorDanger at trigger time
 
@@ -2576,9 +2577,6 @@ static void checkAlertTriggers() {
   g_prevAnyEmergency = anyEmergencyNow;
   g_alertStatePrimed = true;
 
-  if (g_alertActive && millis() - g_alertShownAtMs > ALERT_DURATION_MS) {
-    g_alertActive = false;
-  }
 }
 
 // Drawn last, on top of everything else (including the header), so it's
