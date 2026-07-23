@@ -162,6 +162,24 @@ static const uint32_t AUTO_CYCLE_INTERVAL_MS = 15000; // page advance cadence on
 static bool g_nightModeOn = false; // night (red-shifted) mode only ever changes via long-press --
                                     // no automatic sunset/sunrise trigger.
 
+// Alert takeover banner -- overlays the current page (rather than being
+// its own tab) when a real threshold trips: tonight's astro verdict
+// swings to GOOD, storm risk crosses into High Risk, or an emergency
+// squawk appears among nearby aircraft. Fires once at the MOMENT of
+// change (comparing against last frame's state), not continuously while
+// the condition remains true, so it doesn't nag on every redraw.
+static bool g_alertActive = false;
+static uint32_t g_alertShownAtMs = 0;
+static const uint32_t ALERT_DURATION_MS = 15000; // stays up 15s, or until tapped
+static char g_alertMessage[64] = "";
+static uint16_t g_alertColorOverride = 0; // set from colorSuccess/colorDanger at trigger time
+
+static bool g_prevAstroWasGood = false;
+static bool g_prevStormWasHigh = false;
+static bool g_prevAnyEmergency = false;
+static bool g_alertStatePrimed = false; // avoids firing a false alert on the very first frame,
+                                        // before we have a real "previous" state to compare against
+
 static String formatCurrentDateTime() {
   time_t now = time(nullptr);
   if (now < 100000) return String("Time syncing...");
@@ -2423,6 +2441,77 @@ static bool computeNightModeActive() {
 
 static bool g_nightModeActive = false; // updated once per frame below
 
+// Checks the three alert conditions against last frame's state, firing
+// the banner exactly once at the moment any of them newly becomes true.
+static void checkAlertTriggers() {
+  bool astroIsGood = false;
+  int tonightIdx = findTonightAstroIndex();
+  if (tonightIdx >= 0) {
+    float badness = 0;
+    astro_tonight_verdict(g_astroForecast[tonightIdx].cloudcover, g_astroForecast[tonightIdx].seeing,
+                           g_astroForecast[tonightIdx].transparency, g_moonIllumPercent, &badness);
+    astroIsGood = badness < 0.25f; // same GOOD threshold used elsewhere on the Astro/Dashboard pages
+  }
+
+  bool stormIsHigh = false;
+  if (tonightIdx >= 0) {
+    stormIsHigh = g_astroForecast[tonightIdx].liftedindex <= -8; // matches astro_instability_label's "High Risk"
+  }
+
+  bool anyEmergencyNow = false;
+  for (int i = 0; i < g_aircraftCount; i++) {
+    if (isEmergencySquawk(g_aircraft[i].squawk)) { anyEmergencyNow = true; break; }
+  }
+
+  if (g_alertStatePrimed) {
+    if (anyEmergencyNow && !g_prevAnyEmergency) {
+      g_alertActive = true;
+      g_alertShownAtMs = millis();
+      g_alertColorOverride = colorDanger;
+      snprintf(g_alertMessage, sizeof(g_alertMessage), "EMERGENCY SQUAWK DETECTED NEARBY");
+    } else if (stormIsHigh && !g_prevStormWasHigh) {
+      g_alertActive = true;
+      g_alertShownAtMs = millis();
+      g_alertColorOverride = colorDanger;
+      snprintf(g_alertMessage, sizeof(g_alertMessage), "ASTRO STORM RISK: HIGH RISK TONIGHT");
+    } else if (astroIsGood && !g_prevAstroWasGood) {
+      g_alertActive = true;
+      g_alertShownAtMs = millis();
+      g_alertColorOverride = colorSuccess;
+      snprintf(g_alertMessage, sizeof(g_alertMessage), "ASTRO CONDITIONS NOW GOOD TONIGHT");
+    }
+  }
+
+  g_prevAstroWasGood = astroIsGood;
+  g_prevStormWasHigh = stormIsHigh;
+  g_prevAnyEmergency = anyEmergencyNow;
+  g_alertStatePrimed = true;
+
+  if (g_alertActive && millis() - g_alertShownAtMs > ALERT_DURATION_MS) {
+    g_alertActive = false;
+  }
+}
+
+// Drawn last, on top of everything else (including the header), so it's
+// a true takeover regardless of which page is showing or whether the
+// page is locked.
+static void drawAlertBanner() {
+  if (!g_alertActive) return;
+  int bannerH = 50;
+  screen.fillRect(0, 0, WIDTH, bannerH, colorBg);
+  screen.drawLine(0, bannerH - 3, WIDTH, bannerH - 3, g_alertColorOverride);
+  screen.drawLine(0, bannerH - 2, WIDTH, bannerH - 2, g_alertColorOverride);
+  screen.drawLine(0, bannerH - 1, WIDTH, bannerH - 1, g_alertColorOverride);
+  screen.setTextSize(2);
+  screen.setTextColor(g_alertColorOverride, colorBg);
+  screen.setTextDatum(textdatum_t::middle_center);
+  screen.drawString(g_alertMessage, WIDTH / 2, bannerH / 2 - 6);
+  screen.setTextSize(1);
+  screen.setTextColor(colorDim, colorBg);
+  screen.drawString("tap to dismiss", WIDTH / 2, bannerH / 2 + 14);
+  screen.setTextDatum(textdatum_t::top_left);
+}
+
 void screen_manager_draw() {
   g_nightModeActive = computeNightModeActive();
   colorBg = g_nightModeActive ? colorBgNight : colorBgDay;
@@ -2474,6 +2563,9 @@ void screen_manager_draw() {
     screen.setTextDatum(textdatum_t::top_right);
     screen.drawString("LOCKED", WIDTH - 6, HEIGHT - 28);
   }
+
+  checkAlertTriggers();
+  drawAlertBanner();
 }
 
 static const int DEBUG_TAB_INDEX = 5;
@@ -2505,6 +2597,14 @@ void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
       if (y < touchMinY) touchMinY = y;
       if (y > touchMaxY) touchMaxY = y;
     }
+  }
+  if (!touched && touchWasDown && g_alertActive) {
+    // Any tap while the banner is up just dismisses it -- swallowed here
+    // before swipe/longpress/tab-advance logic ever runs, regardless of
+    // gesture shape, so dismissing never doubles as page navigation.
+    g_alertActive = false;
+    touchWasDown = touched;
+    return;
   }
   if (!touched && touchWasDown) {
     uint32_t held = now - touchDownMs;
