@@ -229,7 +229,16 @@ static void fetchUvIndex() {
 
 void weather_service_update() {
   if (!wifi_manager_is_connected()) return;
+  // 3 heavy HTTPS/JSON calls in a row were stacking with zero breathing
+  // room between them -- same root cause as the original cross-service
+  // flicker bug (heavy fetches disrupting the RGB panel's DMA timing),
+  // just self-contained inside this one function instead of across
+  // separate services, so networkTask's heavyFetchThisCycle guard never
+  // saw it. Same vTaskDelay(200) "let the display catch its breath"
+  // pattern used elsewhere (air quality, astro) added between each call.
   fetchCurrentConditions();
+  vTaskDelay(pdMS_TO_TICKS(200));
   fetchForecast();
+  vTaskDelay(pdMS_TO_TICKS(200));
   fetchUvIndex();
 }
