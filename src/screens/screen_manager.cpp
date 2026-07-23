@@ -1421,12 +1421,13 @@ static void draw_weather() {
     int barAreaY = precipTopY + 20;
     int barAreaH = 17;
     int barBaselineY = barAreaY + barAreaH;
-    // The end-caps extend down past the bar's own baseline to meet the
-    // forecast-row divider line further below (drawn at stripY - 11,
+    // The end-caps hang down from this top (baseline) line only, meeting
+    // the forecast-row divider line further below (drawn at stripY - 14,
     // where stripY = 425 -- kept as a literal here since stripY isn't
-    // declared until after this block), so the strip reads as one
-    // connected frame instead of two disjoint horizontal lines.
-    int frameBottomY = 414;
+    // declared until after this block). Previously the end-caps also ran
+    // upward from barAreaY into the bar-fill area above the baseline,
+    // which read as two stray extra verticals above the top line.
+    int frameBottomY = 411;
 
     if (g_precipHourlyValid && g_precipHourlyCount > 0) {
       int n = g_precipHourlyCount;
@@ -1441,10 +1442,11 @@ static void draw_weather() {
         }
       }
       screen.drawLine(stripX, barBaselineY, stripX + precipStripW, barBaselineY, colorDim);
-      // End-caps now run from the top of the bar area down to the
-      // forecast divider line below, bridging the two into one frame.
-      screen.drawLine(stripX, barAreaY, stripX, frameBottomY, colorDim);
-      screen.drawLine(stripX + precipStripW, barAreaY, stripX + precipStripW, frameBottomY, colorDim);
+      // End-caps start exactly at the baseline (top line) and run down
+      // to meet the forecast divider -- no longer extending upward into
+      // the bar-fill area above the baseline.
+      screen.drawLine(stripX, barBaselineY, stripX, frameBottomY, colorDim);
+      screen.drawLine(stripX + precipStripW, barBaselineY, stripX + precipStripW, frameBottomY, colorDim);
 
       // Compact hour-of-day tick labels every 4 hours -- labeling all 24
       // would be too dense at this width and this font's minimum size.
@@ -1474,7 +1476,10 @@ static void draw_weather() {
   }
 
   int stripY = 425;
-  screen.drawLine(20, stripY - 11, WIDTH - 20, stripY - 11, colorDim);
+  // Raised 3px (was stripY - 11) per follow-up feedback -- forecast
+  // icons/text below are unaffected since they're still positioned off
+  // of stripY itself, not this divider line's offset.
+  screen.drawLine(20, stripY - 14, WIDTH - 20, stripY - 14, colorDim);
 
   int colW = (WIDTH - 40) / 5;
   screen.setTextDatum(textdatum_t::middle_center);
