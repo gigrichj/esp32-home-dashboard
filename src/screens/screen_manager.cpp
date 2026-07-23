@@ -2076,7 +2076,10 @@ static void draw_astro() {
                  bestDateBuf,
                  bestTimeBuf);
         screen.setTextColor(bestColor, colorBg);
-        screen.drawString(bestLine, 560, 79);
+        // Middle column, same row as the two titles either side of it --
+        // was at y=79 before, directly overlapping the new Bortle
+        // gradient bar added just above.
+        screen.drawString(bestLine, 290, 55);
       }
     }
 
@@ -2153,8 +2156,15 @@ static void draw_astro() {
 
   screen.setTextSize(2);
   screen.setTextColor(colorAccent, colorBg);
-  screen.drawString("MOON", col1X, row2Y);
-  screen.drawLine(col1X, row2Y + 20, col1X + 48, row2Y + 20, colorAccent);
+  // New-moon countdown folded right into the title, in parens, instead
+  // of a separate line below -- more directly useful for planning a
+  // dark-sky shoot than the illumination % alone, without needing extra
+  // vertical space.
+  char moonTitle[40];
+  snprintf(moonTitle, sizeof(moonTitle), "MOON (New moon in %.0f days)", g_daysUntilNewMoon);
+  screen.drawString(moonTitle, col1X, row2Y);
+  int moonTitleWidth = (int)strlen(moonTitle) * 12;
+  screen.drawLine(col1X, row2Y + 20, col1X + moonTitleWidth, row2Y + 20, colorAccent);
 
   screen.setTextSize(2);
   screen.setTextColor(colorText, colorBg);
@@ -2164,17 +2174,6 @@ static void draw_astro() {
   screen.setTextSize(2);
   screen.setTextColor(colorDim, colorBg);
   screen.drawString(moonPct, col1X, row2Y + 62);
-
-  {
-    // Next new moon countdown -- more directly useful for planning a dark-sky
-    // shoot than the current illumination percentage alone.
-    char newMoonLine[32];
-    snprintf(newMoonLine, sizeof(newMoonLine), "New moon in %.0f days", g_daysUntilNewMoon);
-    screen.setTextSize(1);
-    screen.setTextColor(colorDim, colorBg);
-    screen.drawString(newMoonLine, col1X, row2Y + 86);
-    screen.setTextSize(2);
-  }
 
   {
     int moonCx = col1X + 353, moonCy = row2Y + 40, moonR = 32;
