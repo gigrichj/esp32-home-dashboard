@@ -584,13 +584,18 @@ static void draw_aviation() {
   // Drawn before the aircraft blips so it sits underneath them.
   {
     uint32_t t = millis();
-    static const uint32_t SWEEP_PERIOD_MS = 4000;
+    static const uint32_t SWEEP_PERIOD_MS = 14000; // slowed from 4000 -- a full spin every 4s
+                                                    // read as too fast/frantic for a radar sweep
     float sweepAngle = (float)(t % SWEEP_PERIOD_MS) / (float)SWEEP_PERIOD_MS * 2.0f * PI;
     uint16_t sweepColorMain = colorSuccess;
-    uint16_t sweepColorTrail = colorDim;
-    float trailOffsets[2] = { 0.12f, 0.24f };
-    for (int i = 0; i < 2; i++) {
-      float ang = sweepAngle - trailOffsets[i];
+    // Trail rendered as a single very dim line rather than two -- with only
+    // 3 total shades available (no alpha blending on this display), two
+    // separate trail lines both landed close to colorDim and read as "two
+    // extra white lines" instead of a fading tail.
+    uint16_t sweepColorTrail = screen.color565(20, 30, 25);
+    float trailOffset = 0.16f;
+    {
+      float ang = sweepAngle - trailOffset;
       int ex = RADAR_CX + (int)(sinf(ang) * RADAR_RADIUS);
       int ey = RADAR_CY - (int)(cosf(ang) * RADAR_RADIUS);
       screen.drawLine(RADAR_CX, RADAR_CY, ex, ey, sweepColorTrail);
@@ -1975,12 +1980,34 @@ static void draw_astro() {
   int colW = (WIDTH - 40 - stripStartX) / 6;
   int startIdx = tonightIdx >= 0 ? tonightIdx : 0;
 
-  // Which forecast index is the single best night-time window overall --
-  // reused here (findBestNightIndex already runs once up in the Tonight's
-  // Verdict block) so the matching column in this strip can be called out,
-  // instead of making someone eyeball six columns of colored blocks.
-  float bestBadnessForStrip = 0;
-  int bestIdxForStrip = findBestNightIndex(&bestBadnessForStrip);
+  // Which forecast index is the single best night-time window overall.
+  // The real best night (from findBestNightIndex, searching the full ~48h
+  // forecast) is often NOT one of the 6 columns shown here -- e.g. if
+  // tonight is poor but tomorrow night is great, the true best index falls
+  // outside this strip and would never get highlighted. So: prefer the
+  // global best index when it's actually visible in this strip, otherwise
+  // fall back to whichever of the 6 visible columns is best, so there's
+  // always a highlighted column on screen.
+  int bestIdxForStrip = -1;
+  {
+    float globalBestBadness = 0;
+    int globalBestIdx = findBestNightIndex(&globalBestBadness);
+    bool globalBestVisible = globalBestIdx >= startIdx && globalBestIdx < startIdx + 6;
+    if (globalBestVisible) {
+      bestIdxForStrip = globalBestIdx;
+    } else {
+      float bestVisibleBadness = 2.0f;
+      for (int i = 0; i < 6 && (startIdx + i) < g_astroForecastCount; i++) {
+        AstroForecastPoint& pt = g_astroForecast[startIdx + i];
+        float badness = 0;
+        astro_tonight_verdict(pt.cloudcover, pt.seeing, pt.transparency, g_moonIllumPercent, &badness);
+        if (badness < bestVisibleBadness) {
+          bestVisibleBadness = badness;
+          bestIdxForStrip = startIdx + i;
+        }
+      }
+    }
+  }
 
   for (int i = 0; i < 6 && (startIdx + i) < g_astroForecastCount; i++) {
     AstroForecastPoint& pt = g_astroForecast[startIdx + i];
