@@ -222,7 +222,7 @@ static void drawHeader() {
 }
 
 static void drawCloudIcon(int cx, int cy, int r, uint16_t color); // defined further down
-static void drawWeatherBackground(int weatherId, bool isNight); // defined further down, used here
+static void drawWeatherBackground(int weatherId, bool isNight, int sunCyOffset = 0, bool showSunIcon = true); // defined further down, used here
 
 static void drawDashboardBackground() {
   uint32_t t = millis();
@@ -237,7 +237,9 @@ static void drawDashboardBackground() {
     if (nowTime > 100000 && g_weather.sunriseUnix > 0 && g_weather.sunsetUnix > 0) {
       isNight = (uint32_t)nowTime < g_weather.sunriseUnix || (uint32_t)nowTime > g_weather.sunsetUnix;
     }
-    drawWeatherBackground(g_weather.weatherId, isNight);
+    // Sun nudged down ~1/2in (40px, this project's established px-per-
+    // half-inch estimate) from its default position, per request.
+    drawWeatherBackground(g_weather.weatherId, isNight, 40, true);
   }
 
   // A little airplane silhouette continuously crossing the lower part of
@@ -1038,7 +1040,7 @@ static void formatHHMM(uint32_t unixTime, char* out, size_t outLen) {
 // drawn first so all the real weather info renders on top of it.
 // Everything is time-driven off millis(), so it animates for free just
 // by being redrawn every frame - no state needs to be stored.
-static void drawWeatherBackground(int weatherId, bool isNight) {
+static void drawWeatherBackground(int weatherId, bool isNight, int sunCyOffset, bool showSunIcon) {
   uint32_t t = millis();
 
   if (weatherId >= 200 && weatherId < 300) {
@@ -1081,10 +1083,15 @@ static void drawWeatherBackground(int weatherId, bool isNight) {
           screen.drawPixel(sx, sy, screen.color565(50, 55, 65));
         }
       }
-    } else {
-      // Clear day: gently pulsing sun with rays, tucked in the corner
+    } else if (showSunIcon) {
+      // Clear day: gently pulsing sun with rays, tucked in the corner.
+      // sunCyOffset lets individual pages nudge its vertical position
+      // (the Dashboard moves it down ~1/2in to clear other elements)
+      // without affecting other callers; showSunIcon lets a page that
+      // already shows its own foreground sun icon (the Weather page)
+      // skip this faded background one entirely.
       uint16_t sunColor = screen.color565(50, 45, 25);
-      int cx = WIDTH - 90, cy = 80;
+      int cx = WIDTH - 90, cy = 80 + sunCyOffset;
       float pulse = 10.0f + sinf((float)t / 900.0f) * 3.0f;
       for (int i = 0; i < 8; i++) {
         float ang = i * (PI / 4.0f) + (float)t / 4000.0f;
@@ -1130,7 +1137,10 @@ static void draw_weather() {
   if (now > 100000 && g_weather.sunriseUnix > 0 && g_weather.sunsetUnix > 0) {
     isNight = (uint32_t)now < g_weather.sunriseUnix || (uint32_t)now > g_weather.sunsetUnix;
   }
-  drawWeatherBackground(g_weather.weatherId, isNight);
+  // The Weather page already shows its own bright sun icon (below, via
+  // drawWeatherIcon) top-left -- the faded background sun in the corner
+  // was redundant/distracting here, so it's suppressed on this page only.
+  drawWeatherBackground(g_weather.weatherId, isNight, 0, false);
 
   drawWeatherIcon(80, 100, 40, g_weather.weatherId, colorText);
 
@@ -1395,16 +1405,18 @@ static void draw_weather() {
     // hourly data source already used for the UV index (see
     // fetchHourlyPrecip() in weather_service.cpp) -- gives a glance at
     // rain chances through the day/night ahead, versus the single
-    // "right now" PRECIP gauge drawn above.
-    int stripX = 20, precipTopY = 328, precipStripW = WIDTH - 40;
+    // "right now" PRECIP gauge drawn above. precipTopY=352 clears the
+    // Sunset row (drawn at y=320, ~16px tall) in the left column below it
+    // -- an earlier value of 328 overlapped it.
+    int stripX = 20, precipTopY = 352, precipStripW = WIDTH - 40;
     screen.setTextSize(2);
     screen.setTextColor(colorAccent, colorBg);
     screen.setTextDatum(textdatum_t::top_left);
     screen.drawString("24HR PRECIP", stripX, precipTopY);
-    screen.drawLine(stripX, precipTopY + 20, stripX + 170, precipTopY + 20, colorAccent);
+    screen.drawLine(stripX, precipTopY + 18, stripX + 170, precipTopY + 18, colorAccent);
 
-    int barAreaY = precipTopY + 30;
-    int barAreaH = 24;
+    int barAreaY = precipTopY + 26;
+    int barAreaH = 18;
     int barBaselineY = barAreaY + barAreaH;
 
     if (g_precipHourlyValid && g_precipHourlyCount > 0) {
@@ -1420,6 +1432,10 @@ static void draw_weather() {
         }
       }
       screen.drawLine(stripX, barBaselineY, stripX + precipStripW, barBaselineY, colorDim);
+      // Close both ends of the strip with vertical end-caps, so it reads
+      // as a bounded chart rather than bars trailing off the edges.
+      screen.drawLine(stripX, barAreaY, stripX, barBaselineY, colorDim);
+      screen.drawLine(stripX + precipStripW, barAreaY, stripX + precipStripW, barBaselineY, colorDim);
 
       // Compact hour-of-day tick labels every 4 hours -- labeling all 24
       // would be too dense at this width and this font's minimum size.
@@ -1432,7 +1448,10 @@ static void draw_weather() {
         if (h12 == 0) h12 = 12;
         char hourBuf[8];
         snprintf(hourBuf, sizeof(hourBuf), "%d%s", h12, ti->tm_hour < 12 ? "A" : "P");
-        screen.drawString(hourBuf, stripX + i * slotW, barBaselineY + 4);
+        // The leftmost label sits flush against the new end-cap line --
+        // nudge it 1px right so it doesn't crowd/touch the border.
+        int lx = stripX + i * slotW + (i == 0 ? 1 : 0);
+        screen.drawString(hourBuf, lx, barBaselineY + 3);
       }
     } else {
       screen.setTextSize(2);
@@ -1445,7 +1464,7 @@ static void draw_weather() {
     screen.setTextColor(colorText, colorBg);
   }
 
-  int stripY = 409;
+  int stripY = 425;
   screen.drawLine(20, stripY - 11, WIDTH - 20, stripY - 11, colorDim);
 
   int colW = (WIDTH - 40) / 5;
@@ -1457,11 +1476,11 @@ static void draw_weather() {
     screen.setTextColor(colorText, colorBg);
     screen.drawString(g_forecast[i].dayLabel, cx, stripY + 2);
 
-    drawWeatherIcon(cx, stripY + 30, 14, g_forecast[i].weatherId, colorText);
+    drawWeatherIcon(cx, stripY + 24, 12, g_forecast[i].weatherId, colorText);
 
     char hilo[24];
     snprintf(hilo, sizeof(hilo), "%.0f / %.0f", g_forecast[i].highF, g_forecast[i].lowF);
-    screen.drawString(hilo, cx, stripY + 54);
+    screen.drawString(hilo, cx, stripY + 44);
   }
   screen.setTextDatum(textdatum_t::top_left);
 }
