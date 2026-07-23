@@ -159,6 +159,7 @@ void networkTask(void* param) {
 
   for (;;) {
     wifi_manager_loop();
+    debug_controls_update_min_heap();
     setupModeActive = wifi_manager_in_setup_mode();
 
     if (setupModeActive) {
@@ -271,6 +272,7 @@ void networkTask(void* param) {
 
 void setup() {
   Serial.begin(115200);
+  debug_controls_record_reset_reason(); // capture ASAP, before anything else can reset the board again
   uint32_t serialStart = millis();
   while (!Serial && millis() - serialStart < 3000) {
     delay(20);

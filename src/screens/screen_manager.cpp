@@ -2034,6 +2034,20 @@ static void drawDebugLegend() {
 static void draw_debug() {
   drawDebugBadge();
   drawDebugLegend();
+
+  // Real crash diagnostics -- reset reason and min-heap watermark, so
+  // next time there's a crash it can be read directly off the screen
+  // instead of guessed at.
+  screen.setTextSize(1);
+  screen.setTextDatum(textdatum_t::top_left);
+  screen.setTextColor(colorDim, colorBg);
+  char resetLine[48];
+  snprintf(resetLine, sizeof(resetLine), "LAST RESET: %s", g_resetReasonStr);
+  screen.drawString(resetLine, 20, 145);
+
+  char heapLine[48];
+  snprintf(heapLine, sizeof(heapLine), "MIN FREE HEAP: %u KB", (unsigned)(g_minFreeHeapSeen / 1024));
+  screen.drawString(heapLine, 20, 163);
 }
 
 // Finds the first astro forecast point at or after tonight's sunset --
