@@ -7,6 +7,7 @@
 #include "../services/aviation_service.h"
 #include "../services/air_quality_service.h"
 #include "../services/astro_seeing_service.h"
+#include "../services/trend_history_service.h"
 #include "secrets.h"
 #include "../debug_log.h"
 #include "../debug_controls.h"
@@ -17,7 +18,7 @@
 using namespace PanelDisplay;
 
 static const char* TAB_NAMES[] = {
-  "DASHBOARD", "AVIATION", "ASTRO", "ISS", "WEATHER", "DEBUG"
+  "DASHBOARD", "AVIATION", "ASTRO", "ISS", "WEATHER", "DEBUG", "TRENDS"
 };
 static const int TAB_COUNT = sizeof(TAB_NAMES) / sizeof(TAB_NAMES[0]);
 
@@ -2218,6 +2219,132 @@ static void draw_astro() {
   screen.setTextDatum(textdatum_t::top_left);
 }
 
+// Draws one sparkline panel: a title, a simple min/max-scaled line plot
+// across all valid samples, and the current/latest value called out in
+// the corner. `getValue` returns the metric for a given sample index, or
+// false if that sample has no data for this metric (e.g. before the
+// astro forecast first loaded) -- gaps are simply skipped rather than
+// plotted as zero, so a temporarily-missing feed doesn't fake a crash to
+// zero on the chart.
+static void drawTrendPanel(int x, int y, int w, int h, const char* title,
+                            bool (*getValue)(int idx, float* outValue), uint16_t lineColor) {
+  screen.setTextSize(2);
+  screen.setTextColor(colorAccent, colorBg);
+  screen.setTextDatum(textdatum_t::top_left);
+  screen.drawString(title, x, y);
+  int titleWidth = (int)strlen(title) * 12;
+  screen.drawLine(x, y + 20, x + titleWidth, y + 20, colorAccent);
+
+  int plotY = y + 30;
+  int plotH = h - 30;
+  screen.drawRect(x, plotY, w, plotH, colorDim);
+
+  if (g_trendSampleCount < 2) {
+    screen.setTextSize(2);
+    screen.setTextColor(colorDim, colorBg);
+    screen.setTextDatum(textdatum_t::middle_center);
+    screen.drawString("Collecting data...", x + w / 2, plotY + plotH / 2);
+    screen.setTextDatum(textdatum_t::top_left);
+    return;
+  }
+
+  // Oldest-to-newest sample order in the ring buffer: g_trendSampleCount
+  // may be less than TREND_MAX_SAMPLES (still filling up for the first
+  // 24h), in which case index 0 is the oldest and g_trendNextWriteIdx is
+  // meaningless; once full, the oldest sample is at g_trendNextWriteIdx.
+  int oldestIdx = (g_trendSampleCount < TREND_MAX_SAMPLES) ? 0 : g_trendNextWriteIdx;
+
+  float minV = 1e9f, maxV = -1e9f;
+  bool anyValid = false;
+  for (int i = 0; i < g_trendSampleCount; i++) {
+    int idx = (oldestIdx + i) % TREND_MAX_SAMPLES;
+    float v;
+    if (getValue(idx, &v)) {
+      if (v < minV) minV = v;
+      if (v > maxV) maxV = v;
+      anyValid = true;
+    }
+  }
+  if (!anyValid) {
+    screen.setTextSize(2);
+    screen.setTextColor(colorDim, colorBg);
+    screen.setTextDatum(textdatum_t::middle_center);
+    screen.drawString("No data yet", x + w / 2, plotY + plotH / 2);
+    screen.setTextDatum(textdatum_t::top_left);
+    return;
+  }
+  if (maxV - minV < 0.001f) { minV -= 1.0f; maxV += 1.0f; } // avoid a flat divide-by-zero line
+
+  int prevPx = 0, prevPy = 0;
+  bool havePrev = false;
+  float lastValidValue = 0;
+  for (int i = 0; i < g_trendSampleCount; i++) {
+    int idx = (oldestIdx + i) % TREND_MAX_SAMPLES;
+    float v;
+    if (!getValue(idx, &v)) {
+      havePrev = false; // gap in data -- break the line rather than bridging it
+      continue;
+    }
+    lastValidValue = v;
+    int px = x + (int)((float)i / (float)(g_trendSampleCount - 1) * (w - 1));
+    float frac = (v - minV) / (maxV - minV);
+    int py = plotY + plotH - 1 - (int)(frac * (plotH - 1));
+    if (havePrev) {
+      screen.drawLine(prevPx, prevPy, px, py, lineColor);
+    }
+    prevPx = px; prevPy = py; havePrev = true;
+  }
+
+  screen.setTextSize(1);
+  screen.setTextColor(colorText, colorBg);
+  screen.setTextDatum(textdatum_t::top_right);
+  char nowLabel[16];
+  snprintf(nowLabel, sizeof(nowLabel), "%.0f", lastValidValue);
+  screen.drawString(nowLabel, x + w - 4, y + 2);
+  screen.setTextDatum(textdatum_t::top_left);
+}
+
+static bool trendGetTemp(int idx, float* outValue) {
+  if (g_trendSamples[idx].tempF == 0) return false;
+  *outValue = g_trendSamples[idx].tempF;
+  return true;
+}
+static bool trendGetAqi(int idx, float* outValue) {
+  if (g_trendSamples[idx].aqi == 0) return false;
+  *outValue = (float)g_trendSamples[idx].aqi;
+  return true;
+}
+static bool trendGetAircraft(int idx, float* outValue) {
+  *outValue = (float)g_trendSamples[idx].aircraftCount;
+  return true; // 0 is a legitimate value here (genuinely no aircraft nearby)
+}
+static bool trendGetAstro(int idx, float* outValue) {
+  if (g_trendSamples[idx].astroBadness < 0) return false;
+  *outValue = g_trendSamples[idx].astroBadness * 100.0f; // 0..100 reads better than 0..1
+  return true;
+}
+
+static void draw_trends() {
+  screen.setTextDatum(textdatum_t::top_left);
+
+  screen.setTextSize(2);
+  screen.setTextColor(colorText, colorBg);
+  char header[48];
+  int hoursCovered = (g_trendSampleCount * (int)(TREND_SAMPLE_INTERVAL_MS / 1000)) / 3600;
+  snprintf(header, sizeof(header), "Last ~%d hours (%d samples)", hoursCovered, g_trendSampleCount);
+  screen.drawString(header, 20, 50);
+
+  int panelW = (WIDTH - 60) / 2;
+  int panelH = 170;
+  int col1X = 20, col2X = 20 + panelW + 20;
+  int row1Y = 85, row2Y = row1Y + panelH + 20;
+
+  drawTrendPanel(col1X, row1Y, panelW, panelH, "TEMP (F)", trendGetTemp, colorAccent);
+  drawTrendPanel(col2X, row1Y, panelW, panelH, "AIR QUALITY (AQI)", trendGetAqi, screen.color565(230, 130, 40));
+  drawTrendPanel(col1X, row2Y, panelW, panelH, "AIRCRAFT NEARBY", trendGetAircraft, screen.color565(90, 200, 255));
+  drawTrendPanel(col2X, row2Y, panelW, panelH, "ASTRO BADNESS (0=best)", trendGetAstro, screen.color565(170, 120, 210));
+}
+
 static void draw_placeholder(const char* label) {
   screen.setTextSize(2);
   screen.setTextColor(colorDim, colorBg);
@@ -2296,6 +2423,7 @@ void screen_manager_draw() {
     case 3: draw_iss(); break;
     case 4: draw_weather(); break;
     case 5: draw_debug(); break;
+    case 6: draw_trends(); break;
   }
 
   screen.setTextSize(1);
