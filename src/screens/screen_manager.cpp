@@ -1415,9 +1415,18 @@ static void draw_weather() {
     screen.drawString("24HR PRECIP", stripX, precipTopY);
     screen.drawLine(stripX, precipTopY + 18, stripX + 170, precipTopY + 18, colorAccent);
 
-    int barAreaY = precipTopY + 26;
-    int barAreaH = 18;
+    // Tightened the gap after the label/underline (was +26 with an 18px
+    // tall bar area; now +20 with 17px tall, which also nudges the bar's
+    // own baseline up 1px per follow-up feedback).
+    int barAreaY = precipTopY + 20;
+    int barAreaH = 17;
     int barBaselineY = barAreaY + barAreaH;
+    // The end-caps extend down past the bar's own baseline to meet the
+    // forecast-row divider line further below (drawn at stripY - 11,
+    // where stripY = 425 -- kept as a literal here since stripY isn't
+    // declared until after this block), so the strip reads as one
+    // connected frame instead of two disjoint horizontal lines.
+    int frameBottomY = 414;
 
     if (g_precipHourlyValid && g_precipHourlyCount > 0) {
       int n = g_precipHourlyCount;
@@ -1432,10 +1441,10 @@ static void draw_weather() {
         }
       }
       screen.drawLine(stripX, barBaselineY, stripX + precipStripW, barBaselineY, colorDim);
-      // Close both ends of the strip with vertical end-caps, so it reads
-      // as a bounded chart rather than bars trailing off the edges.
-      screen.drawLine(stripX, barAreaY, stripX, barBaselineY, colorDim);
-      screen.drawLine(stripX + precipStripW, barAreaY, stripX + precipStripW, barBaselineY, colorDim);
+      // End-caps now run from the top of the bar area down to the
+      // forecast divider line below, bridging the two into one frame.
+      screen.drawLine(stripX, barAreaY, stripX, frameBottomY, colorDim);
+      screen.drawLine(stripX + precipStripW, barAreaY, stripX + precipStripW, frameBottomY, colorDim);
 
       // Compact hour-of-day tick labels every 4 hours -- labeling all 24
       // would be too dense at this width and this font's minimum size.
