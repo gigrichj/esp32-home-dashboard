@@ -170,6 +170,8 @@ static String formatCurrentDateTime() {
   return String(buf);
 }
 
+static const int ISS_TAB_INDEX = 3;
+
 static void drawHeader() {
   screen.fillRect(0, 0, WIDTH, 40, colorAccent);
   screen.setTextSize(2);
@@ -177,6 +179,13 @@ static void drawHeader() {
   screen.setTextDatum(textdatum_t::top_left);
   if (currentTab == 0) {
     screen.drawString("DASHBOARD - LORTON,VA", 10, 12);
+  } else if (currentTab == ISS_TAB_INDEX) {
+    // Home coordinates alongside the title, same pattern as the
+    // Dashboard's "- LORTON,VA" suffix -- useful reference since this
+    // page is all about position relative to home.
+    char issTitle[40];
+    snprintf(issTitle, sizeof(issTitle), "ISS - %.4f, %.4f", (double)HOME_LAT, (double)HOME_LON);
+    screen.drawString(issTitle, 10, 12);
   } else {
     screen.drawString(TAB_NAMES[currentTab], 10, 12);
   }
@@ -1133,8 +1142,8 @@ static void draw_weather() {
     // Precipitation gauge: a 270-degree arc (gap at the bottom), approximated
     // with short line segments since this display library doesn't expose a
     // drawArc primitive. A blue segment fills in up to the current percent.
-    int gaugeCx = 434, gaugeCy = 146, gaugeR = 18; // moved up another ~1/4in (24px) from the
-                                                     // previous position, per follow-up request.
+    int gaugeCx = 434, gaugeCy = 122, gaugeR = 18; // moved up another ~1/4in (24px) again,
+                                                     // per follow-up request.
     float startDeg = -135.0f, sweepDeg = 270.0f;
     uint16_t trackColor = colorDim;
     uint16_t fillColor = screen.color565(70, 150, 220);
@@ -1185,7 +1194,7 @@ static void draw_weather() {
 
   {
     // Wind compass: direction needle plus sustained | gust speeds below.
-    int windCx = 434, windCy = 276, windR = 18; // moved up in lockstep with the precip gauge
+    int windCx = 434, windCy = 252, windR = 18; // moved up in lockstep with the precip gauge
                                                  // above (same 24px shift), keeping the vertical
                                                  // gap between the two unchanged.
     screen.drawCircle(windCx, windCy, windR, colorDim);

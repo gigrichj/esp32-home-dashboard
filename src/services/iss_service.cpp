@@ -317,7 +317,14 @@ void iss_service_update() {
         if (g_issPassCount >= ISS_MAX_PASSES) break;
         g_issPasses[g_issPassCount].startUnix       = p["startUTC"] | 0;
         g_issPasses[g_issPassCount].endUnix         = p["endUTC"]   | 0;
-        g_issPasses[g_issPassCount].maxElevationDeg = p["maxEl"]    | 0;
+        // N2YO returns maxEl as a float (e.g. 23.08), but the struct field
+        // is an int -- requesting it directly with an int default (`| 0`)
+        // was silently returning the default every time instead of
+        // converting, since the JSON value's actual stored type didn't
+        // match the requested type. Reading as a float first (matching
+        // its real JSON type) and rounding into the int field fixes it.
+        float maxElF = p["maxEl"] | 0.0f;
+        g_issPasses[g_issPassCount].maxElevationDeg = (int)(maxElF + 0.5f);
         g_issPasses[g_issPassCount].magnitude       = p["mag"]      | 99.0f;
         {
           const char* az = p["maxAzCompass"] | "";
