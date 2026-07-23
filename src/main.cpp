@@ -36,14 +36,24 @@ static const uint32_t ASTRO_RETRY_MS       = 60UL * 1000UL; // 60s retry cadence
 // full slow interval even after a failed fetch, so a transient miss on
 // first boot could take a full 10-25 minutes to recover from instead of
 // about a minute.
-static const uint32_t WEATHER_RETRY_MS      = 60UL * 1000UL;
-static const uint32_t AIR_QUALITY_RETRY_MS  = 60UL * 1000UL;
+//
+// IMPORTANT: these all started at the same 60s value as the pre-existing
+// ASTRO_RETRY_MS above, which meant that right after boot -- before any
+// of them had succeeded -- all 4 fast-retry timers (astro, weather, air
+// quality, precip) became "due" at roughly the same wall-clock moment
+// and kept re-aligning every 60s after that, stacking multiple heavy
+// HTTPS fetches into the same loop iteration. That's the exact pattern
+// that caused the original flicker bug, just now happening reliably
+// every ~60s during early boot instead of by rare coincidence. Staggered
+// here the same way the slow POLL_MS intervals are deliberately offset.
+static const uint32_t WEATHER_RETRY_MS      = 75UL * 1000UL;
+static const uint32_t AIR_QUALITY_RETRY_MS  = 90UL * 1000UL;
 // The 24hr precip forecast is fetched as part of weather_service_update(),
 // but given its own independent retry schedule here rather than forcing
 // the other 3 weather fetches (current conditions/forecast/UV) to also
 // re-run more often -- retrying all 4 stacked HTTPS calls on a fast
 // cadence risks the same flicker issue already fixed by spacing them out.
-static const uint32_t PRECIP_RETRY_MS       = 60UL * 1000UL;
+static const uint32_t PRECIP_RETRY_MS       = 105UL * 1000UL;
 
 // Caps the fast retry above -- after this many failed fast-cadence
 // attempts (~5 minutes at 60s each), fall back to the normal slow
