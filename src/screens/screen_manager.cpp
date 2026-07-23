@@ -81,23 +81,16 @@ static uint16_t touchDownY = 0;
 static uint16_t touchMinX = 0;                  // smallest X seen so far this gesture (left excursion)
 static uint16_t touchMaxX = 0;                  // largest X seen so far this gesture (right excursion)
 
-static bool g_screenFrozen = false;             // when true, screen_manager_draw() skips redrawing
-                                                 // entirely (see top of that function) -- whatever
-                                                 // was on screen at the moment of freezing just stays,
-                                                 // useful for locking a page steady mid-observation.
-static uint32_t lastTapUpMs = 0;                // release time of the most recent single tap
-static uint16_t lastTapUpX = 0, lastTapUpY = 0; // release position of the most recent single tap
-static const uint32_t DOUBLE_TAP_MAX_GAP_MS = 400;  // 2nd tap must land within this long after the 1st
-static const int DOUBLE_TAP_MAX_DIST_PX = 50;       // and within this many px of the 1st tap's position
-
-static uint32_t lastFreezeToggleMs = 0;         // when the freeze state last flipped
-static const uint32_t FREEZE_TOGGLE_COOLDOWN_MS = 600; // swallow all tap gestures for this long
-                                                        // afterward -- capacitive touch contact
-                                                        // bounce can report one physical tap as two
-                                                        // quick blips, which could otherwise chain
-                                                        // into a second accidental toggle (or a
-                                                        // stray single-tap tab change) immediately
-                                                        // after a real double-tap.
+static bool g_pageLocked = false;               // when true, navigation (swipe, tap-to-advance,
+                                                 // idle auto-cycle) is suppressed -- the current
+                                                 // page keeps drawing and updating live data
+                                                 // normally, it just won't change tabs until
+                                                 // toggled again with a top-to-bottom swipe.
+static uint16_t touchMinY = 0;                  // smallest Y seen so far this gesture (upward excursion)
+static uint16_t touchMaxY = 0;                  // largest Y seen so far this gesture (downward excursion)
+static const int VERTICAL_SWIPE_MIN_PX = 40;    // minimum downward excursion to count as a
+                                                 // top-to-bottom swipe, same peak-excursion approach
+                                                 // used for the horizontal swipe (see SWIPE_MIN_PX).
 static const int SWIPE_MIN_PX = 40;             // minimum excursion (in either direction from the
                                                  // touch-down point) to count as a swipe. Measured as
                                                  // peak excursion during the gesture rather than net
@@ -113,7 +106,8 @@ static uint32_t lastAutoAdvanceMs = 0;
 static const uint32_t IDLE_TIMEOUT_MS = 30000;        // no touch for this long -> start auto-cycling pages
 static const uint32_t AUTO_CYCLE_INTERVAL_MS = 15000; // page advance cadence once idle
 
-static int nightModeOverride = 0; // 0 = auto (follow sunset/sunrise), 1 = forced on, 2 = forced off
+static bool g_nightModeOn = false; // night (red-shifted) mode only ever changes via long-press --
+                                    // no automatic sunset/sunrise trigger.
 
 static String formatCurrentDateTime() {
   time_t now = time(nullptr);
@@ -2129,36 +2123,16 @@ void screen_manager_init() {
   lastAutoAdvanceMs = millis();
 }
 
-// Decides whether night (red-shifted) mode should be active right now.
-// override 0 = follow real sunset/sunrise via g_weather; 1 = forced on;
-// 2 = forced off. A long-press anywhere cycles the override in
-// screen_manager_handle_touch().
+// Night (red-shifted) mode is purely manual -- a long-press anywhere
+// toggles g_nightModeOn directly in screen_manager_handle_touch(). No
+// automatic sunset/sunrise detection.
 static bool computeNightModeActive() {
-  if (nightModeOverride == 1) return true;
-  if (nightModeOverride == 2) return false;
-  if (g_weather.valid && g_weather.sunriseUnix > 0 && g_weather.sunsetUnix > 0) {
-    time_t now = time(nullptr);
-    if (now > 100000) {
-      return (uint32_t)now < g_weather.sunriseUnix || (uint32_t)now > g_weather.sunsetUnix;
-    }
-  }
-  return false;
+  return g_nightModeOn;
 }
 
 static bool g_nightModeActive = false; // updated once per frame below
 
 void screen_manager_draw() {
-  if (g_screenFrozen) {
-    // Deliberately do nothing else -- leave the screen exactly as it was
-    // the instant it was frozen. Just a small badge so it's clear this is
-    // an intentional pause and not the device having hung.
-    screen.setTextSize(1);
-    screen.setTextColor(colorDanger, colorBg);
-    screen.setTextDatum(textdatum_t::top_right);
-    screen.drawString("FROZEN", WIDTH - 6, HEIGHT - 28);
-    return;
-  }
-
   g_nightModeActive = computeNightModeActive();
   colorBg = g_nightModeActive ? colorBgNight : colorBgDay;
   colorText = g_nightModeActive ? colorTextNight : colorTextDay;
@@ -2172,7 +2146,7 @@ void screen_manager_draw() {
   // Any touch (handled in screen_manager_handle_touch) resets the idle
   // clock, so this stops immediately as soon as someone interacts.
   uint32_t nowMs = millis();
-  if (nowMs - lastInteractionMs > IDLE_TIMEOUT_MS) {
+  if (!g_pageLocked && nowMs - lastInteractionMs > IDLE_TIMEOUT_MS) {
     if (nowMs - lastAutoAdvanceMs > AUTO_CYCLE_INTERVAL_MS) {
       currentTab = (currentTab + 1) % TAB_COUNT;
       lastAutoAdvanceMs = nowMs;
@@ -2201,6 +2175,13 @@ void screen_manager_draw() {
     screen.setTextDatum(textdatum_t::top_left);
     screen.drawString("NIGHT", 10, HEIGHT - 14);
   }
+
+  if (g_pageLocked) {
+    screen.setTextSize(1);
+    screen.setTextColor(colorDanger, colorBg);
+    screen.setTextDatum(textdatum_t::top_right);
+    screen.drawString("LOCKED", WIDTH - 6, HEIGHT - 28);
+  }
 }
 
 static const int DEBUG_TAB_INDEX = 5;
@@ -2224,101 +2205,98 @@ void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
       touchDownY = y;
       touchMinX = x;
       touchMaxX = x;
+      touchMinY = y;
+      touchMaxY = y;
     } else {
       if (x < touchMinX) touchMinX = x;
       if (x > touchMaxX) touchMaxX = x;
+      if (y < touchMinY) touchMinY = y;
+      if (y > touchMaxY) touchMaxY = y;
     }
   }
   if (!touched && touchWasDown) {
     uint32_t held = now - touchDownMs;
-    int dy = (int)lastTouchY - (int)touchDownY;
     int leftExcursion = (int)touchDownX - (int)touchMinX;   // how far left of start the finger reached
     int rightExcursion = (int)touchMaxX - (int)touchDownX;  // how far right of start the finger reached
-    bool movedLeftEnough = leftExcursion >= SWIPE_MIN_PX;
-    bool movedRightEnough = rightExcursion >= SWIPE_MIN_PX;
-    bool isSwipe = (movedLeftEnough || movedRightEnough) &&
-                   max(leftExcursion, rightExcursion) > abs(dy);
+    int downExcursion = (int)touchMaxY - (int)touchDownY;   // how far below start the finger reached
+    int upExcursion = (int)touchDownY - (int)touchMinY;     // how far above start the finger reached
+    int horizontalPeak = max(leftExcursion, rightExcursion);
 
-    if (isSwipe && !g_screenFrozen) {
-      // Horizontal swipe pages left/right. Whichever direction had the
-      // larger excursion wins, in case both got a little jitter --
-      // moving left advances forward, matching the usual photo-gallery
-      // convention.
-      if (leftExcursion > rightExcursion) {
-        currentTab = (currentTab + 1) % TAB_COUNT;
-      } else {
-        currentTab = (currentTab - 1 + TAB_COUNT) % TAB_COUNT;
+    bool isVerticalSwipeDown = downExcursion >= VERTICAL_SWIPE_MIN_PX &&
+                               downExcursion > horizontalPeak &&
+                               downExcursion > upExcursion;
+    bool isHorizontalSwipe = !isVerticalSwipeDown &&
+                             horizontalPeak >= SWIPE_MIN_PX &&
+                             horizontalPeak > downExcursion &&
+                             horizontalPeak > upExcursion;
+
+    if (isVerticalSwipeDown) {
+      // Top-to-bottom swipe toggles the page lock -- the current page
+      // keeps drawing and updating live data normally, it just stops
+      // advancing to the next tab (via swipe, tap-to-advance, or idle
+      // auto-cycle) until swiped down again.
+      g_pageLocked = !g_pageLocked;
+    } else if (isHorizontalSwipe) {
+      // Horizontal swipe pages left/right, suppressed while page-locked --
+      // the whole point of the lock is to stay put until it's explicitly
+      // unlocked. Whichever direction had the larger excursion wins, in
+      // case both got a little jitter -- moving left advances forward,
+      // matching the usual photo-gallery convention.
+      if (!g_pageLocked) {
+        if (leftExcursion > rightExcursion) {
+          currentTab = (currentTab + 1) % TAB_COUNT;
+        } else {
+          currentTab = (currentTab - 1 + TAB_COUNT) % TAB_COUNT;
+        }
       }
-    } else if (held >= LONGPRESS_MIN_MS && !g_screenFrozen) {
-      // Long press anywhere cycles night mode: auto -> forced on ->
-      // forced off -> back to auto.
-      nightModeOverride = (nightModeOverride + 1) % 3;
-    } else if (held >= TAP_MIN_MS && held <= TAP_MAX_MS && now - lastFreezeToggleMs > FREEZE_TOGGLE_COOLDOWN_MS) {
-      // Double-tap detection runs regardless of frozen state -- it's the
-      // one gesture that always works, since it's the only way to
-      // unfreeze. Two quick taps close together in both time and position
-      // toggle the freeze; anything else falls through to normal handling
-      // (which is itself skipped entirely while frozen). The cooldown
-      // guard above blocks this whole block for a short window right
-      // after any toggle, so contact-bounce noise from the same physical
-      // gesture can't register as extra taps and chain into another
-      // accidental toggle or a stray tab change.
-      uint32_t sinceLastTap = now - lastTapUpMs;
-      int tapDx = (int)lastTouchX - (int)lastTapUpX;
-      int tapDy = (int)lastTouchY - (int)lastTapUpY;
-      bool isDoubleTap = lastTapUpMs != 0 && sinceLastTap <= DOUBLE_TAP_MAX_GAP_MS &&
-                         abs(tapDx) <= DOUBLE_TAP_MAX_DIST_PX && abs(tapDy) <= DOUBLE_TAP_MAX_DIST_PX;
+    } else if (held >= LONGPRESS_MIN_MS) {
+      // Long press anywhere toggles night mode on/off directly -- no
+      // automatic sunset/sunrise trigger. Not page navigation, so this
+      // still works even while page-locked.
+      g_nightModeOn = !g_nightModeOn;
+    } else if (held >= TAP_MIN_MS && held <= TAP_MAX_MS) {
+      // Everything below still runs even while page-locked -- aircraft
+      // selection and the Debug page's hidden buttons aren't page
+      // navigation, so there's no reason to block them. Only the final
+      // tap-to-advance fallback at the bottom is suppressed.
+      bool hitNextButton = currentTab == DEBUG_TAB_INDEX &&
+                            lastTouchX >= 600 && lastTouchX <= 780 &&
+                            lastTouchY >= 400 && lastTouchY <= 460;
+      bool hitPollButton = currentTab == DEBUG_TAB_INDEX &&
+                            lastTouchX >= 230 && lastTouchX <= 410 &&
+                            lastTouchY >= 310 && lastTouchY <= 370;
 
-      if (isDoubleTap) {
-        g_screenFrozen = !g_screenFrozen;
-        lastTapUpMs = 0; // consumed, so a 3rd tap doesn't chain into another toggle
-        lastFreezeToggleMs = now;
-      } else {
-        lastTapUpMs = now;
-        lastTapUpX = lastTouchX;
-        lastTapUpY = lastTouchY;
-
-        if (!g_screenFrozen) {
-          bool hitNextButton = currentTab == DEBUG_TAB_INDEX &&
-                                lastTouchX >= 600 && lastTouchX <= 780 &&
-                                lastTouchY >= 400 && lastTouchY <= 460;
-          bool hitPollButton = currentTab == DEBUG_TAB_INDEX &&
-                                lastTouchX >= 230 && lastTouchX <= 410 &&
-                                lastTouchY >= 310 && lastTouchY <= 370;
-
-          bool handledAviation = false;
-          if (currentTab == AVIATION_TAB_INDEX) {
-            if (g_selectedAircraftIndex >= 0) {
-              // Card is showing - only the BACK button does anything here.
-              bool hitBack = lastTouchX >= 530 && lastTouchX <= 630 &&
-                             lastTouchY >= 420 && lastTouchY <= 460;
-              if (hitBack) {
-                g_selectedAircraftIndex = -1;
-              }
+      bool handledAviation = false;
+      if (currentTab == AVIATION_TAB_INDEX) {
+        if (g_selectedAircraftIndex >= 0) {
+          // Card is showing - only the BACK button does anything here.
+          bool hitBack = lastTouchX >= 530 && lastTouchX <= 630 &&
+                         lastTouchY >= 420 && lastTouchY <= 460;
+          if (hitBack) {
+            g_selectedAircraftIndex = -1;
+          }
+          handledAviation = true;
+        } else {
+          // List is showing - check each row's recorded hit box.
+          for (int i = 0; i < g_listRowCount; i++) {
+            if (lastTouchY >= g_listRowY0[i] && lastTouchY <= g_listRowY1[i] &&
+                lastTouchX >= 530 && lastTouchX <= 780) {
+              int aircraftIdx = g_listRowAircraftIdx[i];
+              g_selectedAircraftIndex = aircraftIdx;
+              aviation_request_detail(g_aircraft[aircraftIdx].icao, g_aircraft[aircraftIdx].callsign);
               handledAviation = true;
-            } else {
-              // List is showing - check each row's recorded hit box.
-              for (int i = 0; i < g_listRowCount; i++) {
-                if (lastTouchY >= g_listRowY0[i] && lastTouchY <= g_listRowY1[i] &&
-                    lastTouchX >= 530 && lastTouchX <= 780) {
-                  int aircraftIdx = g_listRowAircraftIdx[i];
-                  g_selectedAircraftIndex = aircraftIdx;
-                  aviation_request_detail(g_aircraft[aircraftIdx].icao, g_aircraft[aircraftIdx].callsign);
-                  handledAviation = true;
-                  break;
-                }
-              }
+              break;
             }
           }
-
-          if (hitNextButton) {
-            PanelDisplay::cycleBounceBufferAndRestart();
-          } else if (hitPollButton) {
-            cycleAviationPollInterval();
-          } else if (!handledAviation) {
-            currentTab = (currentTab + 1) % TAB_COUNT;
-          }
         }
+      }
+
+      if (hitNextButton) {
+        PanelDisplay::cycleBounceBufferAndRestart();
+      } else if (hitPollButton) {
+        cycleAviationPollInterval();
+      } else if (!handledAviation && !g_pageLocked) {
+        currentTab = (currentTab + 1) % TAB_COUNT;
       }
     }
   }
