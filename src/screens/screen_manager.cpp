@@ -1769,6 +1769,25 @@ static void drawDebugBadge() {
   uint16_t galaxyColor = screen.color565(170, 120, 210);   // violet
   uint16_t galaxyCoreColor = screen.color565(230, 210, 255);
 
+  // Real system-health metrics feeding this animation's timing below --
+  // same visual as before, but now doubling as a living system monitor
+  // rather than pure decoration. No RTT tracking exists anywhere in this
+  // project, so WiFi signal strength (already used for the Dashboard's
+  // signal-bar icon) stands in as the network-health proxy instead.
+  size_t freeHeap = esp_get_free_heap_size();
+  size_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+  float fragRatio = (freeHeap > 0) ? (float)largestBlock / (float)freeHeap : 1.0f; // 1.0 = unfragmented
+  int rssi = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : -100;
+
+  // Galaxy spin: healthier (less fragmented) heap spins faster.
+  uint32_t galaxyPeriodMs = (uint32_t)constrain(14000.0f - fragRatio * 10000.0f, 4000.0f, 14000.0f);
+  // ISS orbit: more free heap overall spins faster.
+  float heapFrac = constrain((float)((int)freeHeap - 50000) / (float)(250000 - 50000), 0.0f, 1.0f);
+  uint32_t orbitPeriodMs = (uint32_t)(12000.0f - heapFrac * 9000.0f);
+  // Plane speed: stronger WiFi signal flies faster (lower divisor = faster).
+  float rssiFrac = constrain((float)(rssi + 90) / 60.0f, 0.0f, 1.0f); // -90(0) .. -30(1)
+  uint32_t planeDivisor = (uint32_t)(34.0f - rssiFrac * 20.0f); // 34 (weak) .. 14 (strong)
+
   // Shield outline, thicker stroke.
   float prevX = 0, prevY = 0;
   bool havePrev = false;
@@ -1804,7 +1823,7 @@ static void drawDebugBadge() {
   {
     int galaxyCx = cx, galaxyCy = shieldTopCy - shieldR / 2 + 8;
     uint32_t t = millis();
-    float baseAngle = (float)(t % 9000) / 9000.0f * 2.0f * PI;
+    float baseAngle = (float)(t % galaxyPeriodMs) / (float)galaxyPeriodMs * 2.0f * PI;
     for (int i = 0; i < 10; i++) {
       float armAngle = baseAngle + (float)i * (2.0f * PI / 10.0f);
       float armR = 6.0f + (float)i * 1.8f;
@@ -1820,7 +1839,7 @@ static void drawDebugBadge() {
   int orbitR = 58;
   drawThickCircle(cx, compassCy, orbitR, compassColor);
   uint32_t t = millis();
-  float orbitAngle = (float)(t % 6000) / 6000.0f * 2.0f * PI;
+  float orbitAngle = (float)(t % orbitPeriodMs) / (float)orbitPeriodMs * 2.0f * PI;
   int satX = cx + (int)(cosf(orbitAngle) * orbitR);
   int satY = compassCy + (int)(sinf(orbitAngle) * orbitR);
   screen.fillRect(satX - 3, satY - 3, 6, 6, issColor);
@@ -1837,7 +1856,7 @@ static void drawDebugBadge() {
     static int planeY = -1;
     static int lastLap = -1;
     int span = WIDTH + 80;
-    uint32_t cycle = t / 22;
+    uint32_t cycle = t / planeDivisor;
     int x = (int)(cycle % (uint32_t)span) - 40;
     int lap = (int)(cycle / (uint32_t)span);
     if (lap != lastLap || planeY < 0) {
