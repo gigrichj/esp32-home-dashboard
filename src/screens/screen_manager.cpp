@@ -14,6 +14,7 @@
 #include <math.h>
 #include <time.h>
 #include <WiFi.h>
+#include "../services/wifi_manager.h"
 
 using namespace PanelDisplay;
 
@@ -360,7 +361,7 @@ static void draw_dashboard() {
       // roughly follow common phone/router conventions: > -55 excellent,
       // > -65 good, > -75 fair, otherwise weak (still shows 1 bar so it
       // doesn't look broken/blank at low-but-connected signal).
-      int rssi = WiFi.RSSI();
+      int rssi = g_wifiRssi; // cached on the network task, not read live here
       int litBars = (rssi > -55) ? 4 : (rssi > -65) ? 3 : (rssi > -75) ? 2 : 1;
 
       int lineWidth = (int)strlen(line) * 6; // ~6px/char at text size 1
@@ -1887,7 +1888,7 @@ static void drawDebugBadge() {
   size_t freeHeap = esp_get_free_heap_size();
   size_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
   float fragRatio = (freeHeap > 0) ? (float)largestBlock / (float)freeHeap : 1.0f; // 1.0 = unfragmented
-  int rssi = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : -100;
+  int rssi = g_wifiRssi; // cached on the network task, not read live here
 
   // Galaxy spin: healthier (less fragmented) heap spins faster.
   uint32_t galaxyPeriodMs = (uint32_t)constrain(14000.0f - fragRatio * 10000.0f, 4000.0f, 14000.0f);

@@ -20,6 +20,10 @@ static const uint32_t CONNECT_TIMEOUT_MS = 15000;
 static String lastAttemptedSsid = "";
 static int lastStatusCode = -1;
 
+int g_wifiRssi = -100;
+static uint32_t lastRssiUpdateMs = 0;
+static const uint32_t RSSI_UPDATE_INTERVAL_MS = 1000;
+
 static String htmlWrap(const String& title, const String& body) {
   String page = "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'>";
   page += "<title>" + title + "</title><style>";
@@ -160,6 +164,15 @@ void wifi_manager_loop() {
       lastReconnectAttempt = now;
       Serial.println("[WiFi] Reconnecting...");
       WiFi.reconnect();
+    }
+    g_wifiRssi = -100;
+  } else {
+    // Cached here (Core 0, networkTask) instead of being read directly
+    // from the draw path -- see the comment on g_wifiRssi's declaration.
+    uint32_t now = millis();
+    if (now - lastRssiUpdateMs > RSSI_UPDATE_INTERVAL_MS) {
+      lastRssiUpdateMs = now;
+      g_wifiRssi = WiFi.RSSI();
     }
   }
 }
