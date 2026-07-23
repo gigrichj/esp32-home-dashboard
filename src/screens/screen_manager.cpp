@@ -704,8 +704,8 @@ static void draw_aviation() {
     uint16_t planeColor = isEmergency ? colorDanger : colorForAltitude(a.altitudeFt);
     int dotRadius = dotRadiusForAltitude(a.altitudeFt);
     screen.fillCircle(px, py, dotRadius, planeColor);
-    int tickLen = constrain(a.altitudeFt / 1000, 2, 14);
-    screen.drawLine(px, py + 5, px, py + 5 + tickLen, planeColor);
+    // Altitude tick removed -- redundant with dot size/color, which
+    // already encodes altitude band (see colorForAltitude/dotRadiusForAltitude).
 
     // Heading vector: a short line showing which way the aircraft is
     // actually pointed (trackDeg), independent of the altitude tick above.
