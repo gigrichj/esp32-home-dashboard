@@ -3,6 +3,7 @@
 #include "secrets.h"
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include <WiFi.h>
 #include <time.h>
 #include <math.h>
 
