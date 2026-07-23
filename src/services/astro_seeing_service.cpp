@@ -182,6 +182,13 @@ static bool fetch7Timer() {
                           // 302 redirect (likely to a mirror server) --
                           // HTTPClient doesn't follow redirects by default.
   http.addHeader("User-Agent", "ESP32-Home-Dashboard/1.0");
+  // Same useHTTP10 fix as every other manual-read-loop JSON fetch in this
+  // project -- this one had never been converted, and was seen returning
+  // a raw unparsed chunked-transfer-encoding header ("14ed" hex chunk
+  // size) wrapped around otherwise-valid JSON, the same silent
+  // DeserializationError::InvalidInput signature hit before with
+  // Open-Meteo, ISS TLE, and UV index.
+  http.useHTTP10(true);
   int code = http.GET();
   g_astroLastHttpCode = code;
 

@@ -182,8 +182,6 @@ void networkTask(void* param) {
       mqtt_service_begin();
     }
 
-    mqtt_service_loop();
-
     uint32_t now = millis();
 
     // Set whenever a heavy Weather/Air Quality/Astro fetch runs this cycle,
@@ -275,6 +273,20 @@ void networkTask(void* param) {
     // Cheap no-op most iterations -- internally gated to a 5-minute
     // interval, so this doesn't need heavyFetchThisCycle coordination.
     trend_history_update();
+
+    // Moved here (was unconditional, right at the top of the loop) and
+    // gated by !heavyFetchThisCycle -- mqtt_service_loop() was calling
+    // mqttClient.connect() every time its 5s internal retry interval
+    // elapsed, completely uncoordinated with every other heavy operation
+    // in this loop. Serial logs showed it failing with "Connection reset
+    // by peer" on a steady ~5s beat for the entire session, meaning it
+    // was very likely colliding with Weather/Astro/Aviation/ISS fetches
+    // repeatedly -- a plausible source of the recurring display glitch,
+    // by the same "two heavy network operations landing in one cycle"
+    // mechanism already documented for the other services above.
+    if (!heavyFetchThisCycle) {
+      mqtt_service_loop();
+    }
 
     vTaskDelay(pdMS_TO_TICKS(10));
   }
