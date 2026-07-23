@@ -45,6 +45,16 @@ static const uint32_t AIR_QUALITY_RETRY_MS  = 60UL * 1000UL;
 // cadence risks the same flicker issue already fixed by spacing them out.
 static const uint32_t PRECIP_RETRY_MS       = 60UL * 1000UL;
 
+// Caps the fast retry above -- after this many failed fast-cadence
+// attempts (~5 minutes at 60s each), fall back to the normal slow
+// interval even if still not loaded. A persistently-failing endpoint
+// (e.g. a TLS-handshake timeout, HTTP code -11) was being retried every
+// 60s indefinitely, and repeated failed-handshake attempts are suspected
+// to leak heap on this platform -- consistent with a crash observed
+// after about 7 minutes of uptime once this fast-retry pattern was
+// added, with Air Quality's endpoint timing out on every attempt.
+static const int MAX_FAST_RETRIES = 5;
+
 static const uint32_t ISS_POLL_MS        = 60UL * 1000UL;
 static const uint32_t DRAW_INTERVAL_MS   = 200UL;
 
@@ -143,6 +153,9 @@ void networkTask(void* param) {
   bool astroDataLoaded = false;
   bool weatherDataLoaded = false;
   bool airQualityDataLoaded = false;
+  int weatherRetryCount = 0;
+  int airQualityRetryCount = 0;
+  int precipRetryCount = 0;
 
   for (;;) {
     wifi_manager_loop();
@@ -170,13 +183,16 @@ void networkTask(void* param) {
     // reboot) whenever its poll happened to coincide with Astro's.
     bool heavyFetchThisCycle = false;
 
-    uint32_t weatherInterval = weatherDataLoaded ? WEATHER_POLL_MS : WEATHER_RETRY_MS;
+    uint32_t weatherInterval = (weatherDataLoaded || weatherRetryCount >= MAX_FAST_RETRIES) ? WEATHER_POLL_MS : WEATHER_RETRY_MS;
     if (now - lastWeather > weatherInterval) {
       lastWeather = now;
       debug_log("weather fetch start");
       weather_service_update();
       if (g_weather.valid) {
         weatherDataLoaded = true;
+        weatherRetryCount = 0;
+      } else if (!weatherDataLoaded) {
+        weatherRetryCount++;
       }
       debug_log("weather fetch done");
       heavyFetchThisCycle = true;
@@ -185,13 +201,16 @@ void networkTask(void* param) {
     // rather than piggybacking on the weather fetch -- doing all 3 HTTPS
     // calls back-to-back was heavy enough on PSRAM/TLS to disrupt the RGB
     // panel's DMA timing and cause flicker (confirmed by isolation test).
-    uint32_t airQualityInterval = airQualityDataLoaded ? AIR_QUALITY_POLL_MS : AIR_QUALITY_RETRY_MS;
+    uint32_t airQualityInterval = (airQualityDataLoaded || airQualityRetryCount >= MAX_FAST_RETRIES) ? AIR_QUALITY_POLL_MS : AIR_QUALITY_RETRY_MS;
     if (now - lastAirQuality > airQualityInterval) {
       lastAirQuality = now;
       debug_log("air quality fetch start");
       air_quality_service_update();
       if (g_airQuality.valid) {
         airQualityDataLoaded = true;
+        airQualityRetryCount = 0;
+      } else if (!airQualityDataLoaded) {
+        airQualityRetryCount++;
       }
       debug_log("air quality fetch done");
       vTaskDelay(pdMS_TO_TICKS(200)); // let the display catch its breath
@@ -213,10 +232,16 @@ void networkTask(void* param) {
     // above once it's loaded, but gets its own independent fast retry
     // here if it hasn't succeeded yet -- a single extra lightweight fetch
     // is safe to retry often, unlike re-running the full 4-call bundle.
-    if (!g_precipHourlyValid && !heavyFetchThisCycle && now - lastPrecipRetry > PRECIP_RETRY_MS) {
+    if (!g_precipHourlyValid && !heavyFetchThisCycle && precipRetryCount < MAX_FAST_RETRIES &&
+        now - lastPrecipRetry > PRECIP_RETRY_MS) {
       lastPrecipRetry = now;
       debug_log("precip retry fetch start");
       weather_service_update_precip_only();
+      if (g_precipHourlyValid) {
+        precipRetryCount = 0;
+      } else {
+        precipRetryCount++;
+      }
       debug_log("precip retry fetch done");
       heavyFetchThisCycle = true;
     }
