@@ -31,6 +31,10 @@ extern String g_astroLastFailureReason;
 // call needed, accurate to well within a day.
 extern float g_moonPhaseFraction;   // 0=new, 0.5=full, 1=new again
 extern float g_moonIllumPercent;    // 0-100
+extern float g_daysUntilNewMoon;    // days until the next new moon -- darker skies
+                                    // matter more for astrophotography than the
+                                    // exact current phase, so this is more directly
+                                    // useful for planning than illumination % alone.
 extern String g_moonPhaseLabel;
 
 // Fetches the 7Timer! ASTRO forecast (free, no API key) and recalculates

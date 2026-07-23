@@ -2039,6 +2039,25 @@ static void draw_astro() {
     screen.drawString(bortleLine, 560, 55);
 
     {
+      // Small Bortle gradient bar (1-9 dark-sky scale) with a pointer,
+      // so the number means something at a glance instead of requiring
+      // the viewer to already know the scale. Green (dark) -> red (bright
+      // city sky), same multi-stop gradient approach used for AQI/UV on
+      // the Weather page.
+      static const uint8_t bortleStops[5][3] = {
+        {80, 200, 120}, {160, 200, 60}, {230, 200, 40}, {230, 130, 40}, {220, 60, 60}
+      };
+      int barX = 560, barY = 78, barW = 132, barH = 8;
+      for (int px = 0; px < barW; px += 2) {
+        float frac = (float)px / (float)(barW - 1);
+        screen.fillRect(barX + px, barY, 2, barH, multiStopGradient(frac, bortleStops, 5));
+      }
+      float bortleFrac = constrain((HOME_BORTLE_CLASS - 1.0f) / 8.0f, 0.0f, 1.0f);
+      int bortlePointerX = barX + (int)(bortleFrac * (barW - 1));
+      screen.fillTriangle(bortlePointerX - 4, barY - 5, bortlePointerX + 4, barY - 5, bortlePointerX, barY - 1, colorText);
+    }
+
+    {
       float bestBadness = 0;
       int bestIdx = findBestNightIndex(&bestBadness);
       if (bestIdx >= 0) {
@@ -2145,6 +2164,17 @@ static void draw_astro() {
   screen.setTextSize(2);
   screen.setTextColor(colorDim, colorBg);
   screen.drawString(moonPct, col1X, row2Y + 62);
+
+  {
+    // Next new moon countdown -- more directly useful for planning a dark-sky
+    // shoot than the current illumination percentage alone.
+    char newMoonLine[32];
+    snprintf(newMoonLine, sizeof(newMoonLine), "New moon in %.0f days", g_daysUntilNewMoon);
+    screen.setTextSize(1);
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString(newMoonLine, col1X, row2Y + 86);
+    screen.setTextSize(2);
+  }
 
   {
     int moonCx = col1X + 353, moonCy = row2Y + 40, moonR = 32;

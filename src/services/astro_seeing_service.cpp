@@ -15,6 +15,7 @@ String g_astroLastFailureReason = "";
 
 float g_moonPhaseFraction = 0;
 float g_moonIllumPercent = 0;
+float g_daysUntilNewMoon = 0;
 String g_moonPhaseLabel = "--";
 
 // Wording now mirrors the on-screen GOOD/FAIR/POOR/BAD color key exactly --
@@ -101,6 +102,9 @@ static void computeMoonPhase(uint32_t nowUnix) {
 
   g_moonPhaseFraction = (float)frac;
   g_moonIllumPercent = (float)illum;
+  // Same phaseDays/synodicDays values already computed above -- next new
+  // moon is however many days remain until phaseDays wraps back to 0.
+  g_daysUntilNewMoon = (float)(synodicDays - phaseDays);
 
   if (frac < 0.03 || frac > 0.97)      g_moonPhaseLabel = "New Moon";
   else if (frac < 0.22)                g_moonPhaseLabel = "Waxing Crescent";
