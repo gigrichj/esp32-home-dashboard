@@ -1133,10 +1133,8 @@ static void draw_weather() {
     // Precipitation gauge: a 270-degree arc (gap at the bottom), approximated
     // with short line segments since this display library doesn't expose a
     // drawArc primitive. A blue segment fills in up to the current percent.
-    int gaugeCx = 434, gaugeCy = 170, gaugeR = 18; // nudged right ~2 chars and up ~1/4in from the
-                                                     // first pass at this column, plus more vertical
-                                                     // room below (see the label/number y-offsets
-                                                     // further down) and before the wind compass.
+    int gaugeCx = 434, gaugeCy = 146, gaugeR = 18; // moved up another ~1/4in (24px) from the
+                                                     // previous position, per follow-up request.
     float startDeg = -135.0f, sweepDeg = 270.0f;
     uint16_t trackColor = colorDim;
     uint16_t fillColor = screen.color565(70, 150, 220);
@@ -1187,10 +1185,9 @@ static void draw_weather() {
 
   {
     // Wind compass: direction needle plus sustained | gust speeds below.
-    int windCx = 434, windCy = 300, windR = 18; // same column as the precip gauge above, with
-                                                 // extra vertical gap between the two (was too
-                                                 // tight, precip's number/percent text nearly
-                                                 // touched this circle) -- see gaugeCx comment above.
+    int windCx = 434, windCy = 276, windR = 18; // moved up in lockstep with the precip gauge
+                                                 // above (same 24px shift), keeping the vertical
+                                                 // gap between the two unchanged.
     screen.drawCircle(windCx, windCy, windR, colorDim);
 
     for (int deg = 0; deg < 360; deg += 30) {
@@ -1631,6 +1628,22 @@ static void draw_iss() {
     screen.setTextColor(colorDim, colorBg);
     screen.drawString("DATE  START  EL", col3X, rowY);
     rowY += 24;
+
+    // Diagnostics for the visualpasses fetch (separate from the main
+    // /positions/ fetch's HTTP code shown elsewhere on this page) --
+    // this endpoint was found silently returning maxEl=0 for every pass;
+    // showing its actual HTTP code and parse status here makes any
+    // future silent failure visible instead of just an unexplained 0.
+    {
+      char passesDiag[40];
+      snprintf(passesDiag, sizeof(passesDiag), "Passes HTTP %d%s",
+               g_issPassesLastHttpCode, g_issPassesParseFailed ? " (parse err)" : "");
+      screen.setTextSize(1);
+      screen.setTextColor(colorDim, colorBg);
+      screen.drawString(passesDiag, col3X, rowY);
+      rowY += 16;
+      screen.setTextSize(2);
+    }
 
     int shownPasses = min(g_issPassCount, 3);
     if (shownPasses == 0) {
