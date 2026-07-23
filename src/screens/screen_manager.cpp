@@ -1274,6 +1274,13 @@ static void drawIssIcon(int cx, int cy, uint16_t color) {
   screen.fillRect(cx - 3, cy - 3, 6, 6, color);
   screen.fillRect(cx - 15, cy - 2, 9, 4, color);
   screen.fillRect(cx + 6, cy - 2, 9, 4, color);
+
+  // A pulsing halo ring around the real (live) position -- makes clear
+  // this is the "right now" marker versus the static ground-track line
+  // drawn behind it, without inventing any predicted future path.
+  float pulsePhase = (float)(millis() % 2000) / 2000.0f; // 0..1 over 2s
+  int haloR = 9 + (int)(pulsePhase * 6.0f);               // grows from 9 to 15px
+  screen.drawCircle(cx, cy, haloR, color);
 }
 
 static void draw_iss() {
