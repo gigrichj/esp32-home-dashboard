@@ -578,6 +578,28 @@ static void draw_aviation() {
   screen.drawString("E", RADAR_CX + RADAR_RADIUS + 12, RADAR_CY);
   screen.drawString("W", RADAR_CX - RADAR_RADIUS - 12, RADAR_CY);
 
+  // Classic rotating radar sweep -- a bright leading line plus two dimmer
+  // trailing lines behind it, to fake a fading sweep without needing an
+  // actual alpha-blended arc (this display library has no fill-alpha).
+  // Drawn before the aircraft blips so it sits underneath them.
+  {
+    uint32_t t = millis();
+    static const uint32_t SWEEP_PERIOD_MS = 4000;
+    float sweepAngle = (float)(t % SWEEP_PERIOD_MS) / (float)SWEEP_PERIOD_MS * 2.0f * PI;
+    uint16_t sweepColorMain = colorSuccess;
+    uint16_t sweepColorTrail = colorDim;
+    float trailOffsets[2] = { 0.12f, 0.24f };
+    for (int i = 0; i < 2; i++) {
+      float ang = sweepAngle - trailOffsets[i];
+      int ex = RADAR_CX + (int)(sinf(ang) * RADAR_RADIUS);
+      int ey = RADAR_CY - (int)(cosf(ang) * RADAR_RADIUS);
+      screen.drawLine(RADAR_CX, RADAR_CY, ex, ey, sweepColorTrail);
+    }
+    int sx = RADAR_CX + (int)(sinf(sweepAngle) * RADAR_RADIUS);
+    int sy = RADAR_CY - (int)(cosf(sweepAngle) * RADAR_RADIUS);
+    screen.drawLine(RADAR_CX, RADAR_CY, sx, sy, sweepColorMain);
+  }
+
   int closestIdx = -1;
   float closestDist = 1e9f;
   bool anyEmergency = false;
@@ -605,6 +627,17 @@ static void draw_aviation() {
     screen.fillCircle(px, py, dotRadius, planeColor);
     int tickLen = constrain(a.altitudeFt / 1000, 2, 14);
     screen.drawLine(px, py + 5, px, py + 5 + tickLen, planeColor);
+
+    // Heading vector: a short line showing which way the aircraft is
+    // actually pointed (trackDeg), independent of the altitude tick above.
+    // Same compass-to-screen convention as the bearing-from-home plotting.
+    {
+      float headingRad = a.trackDeg * (PI / 180.0f);
+      int headingLen = 13;
+      int hx = px + (int)(sinf(headingRad) * headingLen);
+      int hy = py - (int)(cosf(headingRad) * headingLen);
+      screen.drawLine(px, py, hx, hy, planeColor);
+    }
 
     if (i == closestIdx) {
       screen.drawCircle(px, py, dotRadius + 4, colorAccent);
@@ -1700,6 +1733,30 @@ static void draw_astro() {
   astro_recompute_moon_phase();
   int tonightIdx = findTonightAstroIndex();
 
+  // Twinkling starfield, drawn first so all the real text/panels render on
+  // top of it. Density and twinkle speed scale with tonight's combined
+  // seeing+transparency score (both use the same 1-8 scale, 8 = best) --
+  // sharper actual conditions means more visible stars twinkling faster,
+  // a small but honest echo of what the sky is actually doing tonight.
+  {
+    int qualitySum = 8; // neutral default when no data yet
+    if (tonightIdx >= 0) {
+      qualitySum = g_astroForecast[tonightIdx].seeing + g_astroForecast[tonightIdx].transparency;
+    }
+    int starCount = constrain(qualitySum * 2, 10, 32);       // more stars when conditions are better
+    uint32_t twinkleDivisor = constrain(500 - qualitySum * 20, 150, 500); // smaller = faster twinkle
+    uint32_t t = millis();
+    uint16_t starColor = screen.color565(70, 75, 90);
+    for (int i = 0; i < starCount; i++) {
+      int sx = (i * 137) % WIDTH;
+      int sy = 45 + (i * 53) % 260;
+      bool twinkle = ((t / twinkleDivisor + (uint32_t)i) % 5) != 0;
+      if (twinkle) {
+        screen.drawPixel(sx, sy, starColor);
+      }
+    }
+  }
+
   if (tonightIdx < 0) {
     screen.setTextSize(2);
     screen.setTextColor(colorDim, colorBg);
@@ -1917,6 +1974,14 @@ static void draw_astro() {
   int stripStartX = 70;
   int colW = (WIDTH - 40 - stripStartX) / 6;
   int startIdx = tonightIdx >= 0 ? tonightIdx : 0;
+
+  // Which forecast index is the single best night-time window overall --
+  // reused here (findBestNightIndex already runs once up in the Tonight's
+  // Verdict block) so the matching column in this strip can be called out,
+  // instead of making someone eyeball six columns of colored blocks.
+  float bestBadnessForStrip = 0;
+  int bestIdxForStrip = findBestNightIndex(&bestBadnessForStrip);
+
   for (int i = 0; i < 6 && (startIdx + i) < g_astroForecastCount; i++) {
     AstroForecastPoint& pt = g_astroForecast[startIdx + i];
     int cx = stripStartX + colW * i + colW / 2;
@@ -1935,6 +2000,17 @@ static void draw_astro() {
     screen.fillRect(cx - 20, stripY, 40, 16, astroSeverityColor(pt.seeing, 8));
     screen.fillRect(cx - 20, stripY + 22, 40, 16, astroSeverityColor(pt.transparency, 8));
     screen.fillRect(cx - 20, stripY + 44, 40, 16, astroSeverityColor(pt.cloudcover, 9));
+
+    if (startIdx + i == bestIdxForStrip) {
+      // Border drawn with 4 lines (not drawRect) to match every other
+      // outline in this file, which builds rectangles the same way.
+      int bx0 = cx - 24, bx1 = cx + 24;
+      int by0 = stripY - 20, by1 = stripY + 60;
+      screen.drawLine(bx0, by0, bx1, by0, colorAccent);
+      screen.drawLine(bx0, by1, bx1, by1, colorAccent);
+      screen.drawLine(bx0, by0, bx0, by1, colorAccent);
+      screen.drawLine(bx1, by0, bx1, by1, colorAccent);
+    }
   }
 
   // Color key: explains the green-to-red severity scale shared by the
