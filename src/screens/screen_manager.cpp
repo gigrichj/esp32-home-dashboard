@@ -203,7 +203,10 @@ static void drawHeader() {
     // Dashboard's "- LORTON,VA" suffix -- useful reference since this
     // page is all about position relative to home.
     char issTitle[56];
-    snprintf(issTitle, sizeof(issTitle), "ISS - LORTON,VA - %.4f, %.4f", (double)HOME_LAT, (double)HOME_LON);
+    // Parens around the coordinate pair -- without them, a negative
+    // longitude right after the "-" separator read ambiguously (looked
+    // like two dashes in a row rather than a separator + a negative sign).
+    snprintf(issTitle, sizeof(issTitle), "ISS - LORTON,VA (%.4f, %.4f)", (double)HOME_LAT, (double)HOME_LON);
     screen.drawString(issTitle, 10, 12);
   } else {
     screen.drawString(TAB_NAMES[currentTab], 10, 12);
@@ -1529,7 +1532,9 @@ static void draw_iss() {
   screen.setTextSize(1);
   screen.setTextColor(colorIss, colorBg);
   char posLabel[32];
-  snprintf(posLabel, sizeof(posLabel), "%.2f, %.2f", g_iss.lat, g_iss.lon);
+  // Same parens treatment as the header -- makes a negative longitude
+  // read unambiguously rather than looking like a stray dash.
+  snprintf(posLabel, sizeof(posLabel), "(%.2f, %.2f)", g_iss.lat, g_iss.lon);
   int posLabelX = issX + 16;
   if (posLabelX + 80 > MAP_X + MAP_W) posLabelX = issX - 96; // flip left near the edge
   screen.drawString(posLabel, posLabelX, issY - 6);
