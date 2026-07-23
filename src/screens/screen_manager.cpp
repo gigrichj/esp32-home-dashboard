@@ -398,6 +398,17 @@ static void draw_dashboard() {
   }
   y += 34;
 
+  if (g_weather.uvValid) {
+    char uvLine[64];
+    snprintf(uvLine, sizeof(uvLine), "UV Index: %s (%.0f)", uvIndexLabel(g_weather.uvIndex), g_weather.uvIndex);
+    screen.setTextColor(uvIndexColor(g_weather.uvIndex), colorBg);
+    screen.drawString(uvLine, leftX, y);
+    screen.setTextColor(colorText, colorBg);
+  } else {
+    screen.drawString("UV Index: --", leftX, y);
+  }
+  y += 34;
+
   {
     // Cross-page teaser: countdown to the next sunrise/sunset, so the
     // dashboard hints at the weather page's data without duplicating it.
