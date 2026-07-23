@@ -183,8 +183,8 @@ static void drawHeader() {
     // Home coordinates alongside the title, same pattern as the
     // Dashboard's "- LORTON,VA" suffix -- useful reference since this
     // page is all about position relative to home.
-    char issTitle[40];
-    snprintf(issTitle, sizeof(issTitle), "ISS - %.4f, %.4f", (double)HOME_LAT, (double)HOME_LON);
+    char issTitle[56];
+    snprintf(issTitle, sizeof(issTitle), "ISS - LORTON,VA - %.4f, %.4f", (double)HOME_LAT, (double)HOME_LON);
     screen.drawString(issTitle, 10, 12);
   } else {
     screen.drawString(TAB_NAMES[currentTab], 10, 12);

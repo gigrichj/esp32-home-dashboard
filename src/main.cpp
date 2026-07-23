@@ -9,6 +9,7 @@
 #include "services/astro_seeing_service.h"
 #include "services/aviation_service.h"
 #include "services/iss_service.h"
+#include "services/trend_history_service.h"
 #include "screens/screen_manager.h"
 #include "debug_log.h"
 #include "debug_controls.h"
@@ -198,6 +199,9 @@ void networkTask(void* param) {
       debug_log("iss fetch done");
     }
 
+    // Cheap no-op most iterations -- internally gated to a 5-minute
+    // interval, so this doesn't need heavyFetchThisCycle coordination.
+    trend_history_update();
 
     vTaskDelay(pdMS_TO_TICKS(10));
   }
