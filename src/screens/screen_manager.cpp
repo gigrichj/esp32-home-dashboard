@@ -2040,8 +2040,11 @@ static void draw_astro() {
     if (startIdx + i == bestIdxForStrip) {
       // Border drawn with 4 lines (not drawRect) to match every other
       // outline in this file, which builds rectangles the same way.
+      // Top edge sits just above the SEE row rather than up at the time
+      // label -- the box previously started at stripY-20, which cut
+      // straight through the time text sitting at stripY-16.
       int bx0 = cx - 24, bx1 = cx + 24;
-      int by0 = stripY - 20, by1 = stripY + 60;
+      int by0 = stripY - 4, by1 = stripY + 60;
       screen.drawLine(bx0, by0, bx1, by0, colorAccent);
       screen.drawLine(bx0, by1, bx1, by1, colorAccent);
       screen.drawLine(bx0, by0, bx0, by1, colorAccent);
