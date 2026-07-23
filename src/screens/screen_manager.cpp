@@ -2380,7 +2380,9 @@ static void draw_trends() {
   screen.setTextColor(colorText, colorBg);
   char header[48];
   int hoursCovered = (g_trendSampleCount * (int)(TREND_SAMPLE_INTERVAL_MS / 1000)) / 3600;
-  snprintf(header, sizeof(header), "Last ~%d hours (%d samples)", hoursCovered, g_trendSampleCount);
+  // No tilde -- this custom bitmap font's charset doesn't include "~"
+  // (renders as a placeholder glyph, looked like a stray question mark).
+  snprintf(header, sizeof(header), "Last %d hours (%d samples)", hoursCovered, g_trendSampleCount);
   screen.drawString(header, 20, 50);
 
   int panelW = (WIDTH - 60) / 2;
