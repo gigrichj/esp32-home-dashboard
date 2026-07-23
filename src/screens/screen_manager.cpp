@@ -2585,11 +2585,21 @@ static void draw_trends() {
 
   screen.setTextSize(2);
   screen.setTextColor(colorText, colorBg);
-  char header[48];
+  char header[64];
+  // Two distinct things shown side by side: real device uptime (down to
+  // the minute, from millis()), and how much history the trend graphs
+  // below actually cover (samples * 5min interval -- naturally caps at
+  // 24h once the ring buffer fills, since older samples roll off). These
+  // two only diverge once uptime exceeds 24h; until then they track
+  // together since a reboot/crash resets both at once.
+  uint32_t upTotalMin = millis() / 60000UL;
+  uint32_t upHours = upTotalMin / 60;
+  uint32_t upMins = upTotalMin % 60;
   int hoursCovered = (g_trendSampleCount * (int)(TREND_SAMPLE_INTERVAL_MS / 1000)) / 3600;
   // No tilde -- this custom bitmap font's charset doesn't include "~"
   // (renders as a placeholder glyph, looked like a stray question mark).
-  snprintf(header, sizeof(header), "Last %d hours (%d samples)", hoursCovered, g_trendSampleCount);
+  snprintf(header, sizeof(header), "Up %lu hrs %lu min / Data: %d samples (~%d hrs)",
+           (unsigned long)upHours, (unsigned long)upMins, g_trendSampleCount, hoursCovered);
   screen.drawString(header, 20, 50);
 
   int panelW = (WIDTH - 60) / 2;
