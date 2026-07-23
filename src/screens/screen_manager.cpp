@@ -2598,7 +2598,7 @@ static void draw_trends() {
   int hoursCovered = (g_trendSampleCount * (int)(TREND_SAMPLE_INTERVAL_MS / 1000)) / 3600;
   // No tilde -- this custom bitmap font's charset doesn't include "~"
   // (renders as a placeholder glyph, looked like a stray question mark).
-  snprintf(header, sizeof(header), "Up %lu hrs %lu min / Data: %d samples (~%d hrs)",
+  snprintf(header, sizeof(header), "Up %lu hrs %lu min / Data: %d samples (%d hrs)",
            (unsigned long)upHours, (unsigned long)upMins, g_trendSampleCount, hoursCovered);
   screen.drawString(header, 20, 50);
 
