@@ -321,6 +321,8 @@ static void draw_dashboard() {
 
   // WiFi status - small, tucked in the top-right corner instead of the
   // main list, so it doesn't compete for attention with the real data.
+  // A small signal-strength bar icon sits just to the left of the text,
+  // giving an at-a-glance read without needing to parse the dBm number.
   screen.setTextSize(1);
   screen.setTextDatum(textdatum_t::top_right);
   if (WiFi.status() == WL_CONNECTED) {
@@ -328,6 +330,28 @@ static void draw_dashboard() {
     snprintf(line, sizeof(line), "WiFi: %s (%s)", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
     screen.setTextColor(colorSuccess, colorBg);
     screen.drawString(line, WIDTH - 10, 50);
+
+    {
+      // 4-bar signal icon, classic ascending-height bars. RSSI thresholds
+      // roughly follow common phone/router conventions: > -55 excellent,
+      // > -65 good, > -75 fair, otherwise weak (still shows 1 bar so it
+      // doesn't look broken/blank at low-but-connected signal).
+      int rssi = WiFi.RSSI();
+      int litBars = (rssi > -55) ? 4 : (rssi > -65) ? 3 : (rssi > -75) ? 2 : 1;
+
+      int lineWidth = (int)strlen(line) * 6; // ~6px/char at text size 1
+      int iconBarW = 4, iconGap = 2;
+      int iconTotalW = iconBarW * 4 + iconGap * 3;
+      int iconRight = WIDTH - 10 - lineWidth - 10; // 10px gap before the text
+      int iconBaseY = 58; // bars grow upward from this baseline
+
+      for (int b = 0; b < 4; b++) {
+        int barH = 3 + b * 3; // ascending heights: 3,6,9,12px
+        int bx = iconRight - iconTotalW + b * (iconBarW + iconGap);
+        uint16_t barColor = (b < litBars) ? colorSuccess : colorDim;
+        screen.fillRect(bx, iconBaseY - barH, iconBarW, barH, barColor);
+      }
+    }
   } else {
     char line[32];
     snprintf(line, sizeof(line), "WiFi: disconnected (%d)", (int)WiFi.status());
