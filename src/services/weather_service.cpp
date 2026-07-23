@@ -379,3 +379,13 @@ void weather_service_update() {
   vTaskDelay(pdMS_TO_TICKS(200));
   fetchHourlyPrecip();
 }
+
+// Standalone precip fetch, for main.cpp's independent fast-retry schedule
+// (see PRECIP_RETRY_MS there) -- kept separate from weather_service_update()
+// above so retrying a precip-specific failure doesn't also force the other
+// 3 heavier fetches (current conditions/forecast/UV) to re-run more often
+// than their normal cadence.
+void weather_service_update_precip_only() {
+  if (!wifi_manager_is_connected()) return;
+  fetchHourlyPrecip();
+}

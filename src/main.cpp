@@ -30,6 +30,21 @@ static const uint32_t ASTRO_RETRY_MS       = 60UL * 1000UL; // 60s retry cadence
                                                                      // then settles to ASTRO_POLL_MS --
                                                                      // same pattern used for ISS crew count.
 
+// Same "retry fast until first success, then settle into the normal
+// cadence" pattern extended to Weather and Air Quality (previously only
+// Astro/ISS crew count/TLE had it) -- these two were retrying at their
+// full slow interval even after a failed fetch, so a transient miss on
+// first boot could take a full 10-25 minutes to recover from instead of
+// about a minute.
+static const uint32_t WEATHER_RETRY_MS      = 60UL * 1000UL;
+static const uint32_t AIR_QUALITY_RETRY_MS  = 60UL * 1000UL;
+// The 24hr precip forecast is fetched as part of weather_service_update(),
+// but given its own independent retry schedule here rather than forcing
+// the other 3 weather fetches (current conditions/forecast/UV) to also
+// re-run more often -- retrying all 4 stacked HTTPS calls on a fast
+// cadence risks the same flicker issue already fixed by spacing them out.
+static const uint32_t PRECIP_RETRY_MS       = 60UL * 1000UL;
+
 static const uint32_t ISS_POLL_MS        = 60UL * 1000UL;
 static const uint32_t DRAW_INTERVAL_MS   = 200UL;
 
@@ -124,7 +139,10 @@ void uiTask(void* param) {
 
 void networkTask(void* param) {
   uint32_t lastWeather = 0, lastAviation = 0, lastIss = 0, lastAirQuality = 0, lastAstro = 0;
+  uint32_t lastPrecipRetry = 0;
   bool astroDataLoaded = false;
+  bool weatherDataLoaded = false;
+  bool airQualityDataLoaded = false;
 
   for (;;) {
     wifi_manager_loop();
@@ -152,10 +170,14 @@ void networkTask(void* param) {
     // reboot) whenever its poll happened to coincide with Astro's.
     bool heavyFetchThisCycle = false;
 
-    if (now - lastWeather > WEATHER_POLL_MS) {
+    uint32_t weatherInterval = weatherDataLoaded ? WEATHER_POLL_MS : WEATHER_RETRY_MS;
+    if (now - lastWeather > weatherInterval) {
       lastWeather = now;
       debug_log("weather fetch start");
       weather_service_update();
+      if (g_weather.valid) {
+        weatherDataLoaded = true;
+      }
       debug_log("weather fetch done");
       heavyFetchThisCycle = true;
     }
@@ -163,10 +185,14 @@ void networkTask(void* param) {
     // rather than piggybacking on the weather fetch -- doing all 3 HTTPS
     // calls back-to-back was heavy enough on PSRAM/TLS to disrupt the RGB
     // panel's DMA timing and cause flicker (confirmed by isolation test).
-    if (now - lastAirQuality > AIR_QUALITY_POLL_MS) {
+    uint32_t airQualityInterval = airQualityDataLoaded ? AIR_QUALITY_POLL_MS : AIR_QUALITY_RETRY_MS;
+    if (now - lastAirQuality > airQualityInterval) {
       lastAirQuality = now;
       debug_log("air quality fetch start");
       air_quality_service_update();
+      if (g_airQuality.valid) {
+        airQualityDataLoaded = true;
+      }
       debug_log("air quality fetch done");
       vTaskDelay(pdMS_TO_TICKS(200)); // let the display catch its breath
       heavyFetchThisCycle = true;
@@ -181,6 +207,17 @@ void networkTask(void* param) {
       }
       debug_log("astro fetch done");
       vTaskDelay(pdMS_TO_TICKS(200)); // let the display catch its breath
+      heavyFetchThisCycle = true;
+    }
+    // The 24hr precip forecast rides along with the main weather bundle
+    // above once it's loaded, but gets its own independent fast retry
+    // here if it hasn't succeeded yet -- a single extra lightweight fetch
+    // is safe to retry often, unlike re-running the full 4-call bundle.
+    if (!g_precipHourlyValid && !heavyFetchThisCycle && now - lastPrecipRetry > PRECIP_RETRY_MS) {
+      lastPrecipRetry = now;
+      debug_log("precip retry fetch start");
+      weather_service_update_precip_only();
+      debug_log("precip retry fetch done");
       heavyFetchThisCycle = true;
     }
     if (!heavyFetchThisCycle && now - lastAviation > g_aviationPollMs) {

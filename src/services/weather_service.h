@@ -59,3 +59,9 @@ extern WeatherData g_weather;
 
 // Fetches current conditions + a 5-day forecast from OpenWeatherMap.
 void weather_service_update();
+
+// Fetches just the 24-hour precip forecast on its own, independent of
+// the rest of the bundle above -- lets main.cpp retry it on a faster
+// schedule if it fails without re-triggering the heavier current-
+// conditions/forecast/UV fetches too.
+void weather_service_update_precip_only();
