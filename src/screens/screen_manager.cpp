@@ -55,6 +55,58 @@ static uint16_t airQualityColor(int aqi) {
     default: return screen.color565(120, 130, 140);
   }
 }
+
+// Interpolates across a list of RGB stops, evenly spaced across frac 0..1.
+// Used to draw continuous gradient bars (rather than flat segments) for
+// both the AQI and UV Index readouts below.
+static uint16_t multiStopGradient(float frac, const uint8_t stops[][3], int stopCount) {
+  frac = constrain(frac, 0.0f, 1.0f);
+  float segF = frac * (float)(stopCount - 1);
+  int seg = (int)segF;
+  if (seg >= stopCount - 1) seg = stopCount - 2;
+  float localT = segF - (float)seg;
+  uint8_t r = stops[seg][0] + (uint8_t)(((int)stops[seg + 1][0] - (int)stops[seg][0]) * localT);
+  uint8_t g = stops[seg][1] + (uint8_t)(((int)stops[seg + 1][1] - (int)stops[seg][1]) * localT);
+  uint8_t b = stops[seg][2] + (uint8_t)(((int)stops[seg + 1][2] - (int)stops[seg][2]) * localT);
+  return screen.color565(r, g, b);
+}
+
+// Same 5 colors as airQualityColor() above, but continuous rather than
+// stepped, so the gradient bar reads as a smooth scale with a pointer
+// marking the exact value instead of N-of-5 lit boxes.
+static uint16_t aqiGradientColor(float frac) {
+  static const uint8_t stops[5][3] = {
+    {80, 200, 120}, {160, 200, 60}, {230, 200, 40}, {230, 130, 40}, {220, 60, 60}
+  };
+  return multiStopGradient(frac, stops, 5);
+}
+
+// Standard UV Index color scale: Low(0-2)/Moderate(3-5)/High(6-7)/
+// Very High(8-10)/Extreme(11+), same green-through-purple convention
+// used by most weather services.
+static uint16_t uvGradientColor(float frac) {
+  static const uint8_t stops[5][3] = {
+    {80, 200, 120}, {230, 200, 40}, {230, 130, 40}, {220, 60, 60}, {150, 80, 220}
+  };
+  return multiStopGradient(frac, stops, 5);
+}
+
+static uint16_t uvIndexColor(float uv) {
+  if (uv < 3)  return screen.color565(80, 200, 120);
+  if (uv < 6)  return screen.color565(230, 200, 40);
+  if (uv < 8)  return screen.color565(230, 130, 40);
+  if (uv < 11) return screen.color565(220, 60, 60);
+  return screen.color565(150, 80, 220);
+}
+
+static const char* uvIndexLabel(float uv) {
+  if (uv < 3)  return "Low";
+  if (uv < 6)  return "Moderate";
+  if (uv < 8)  return "High";
+  if (uv < 11) return "Very High";
+  return "Extreme";
+}
+
 static int currentTab = 0;
 
 static uint16_t colorBg;
@@ -1202,12 +1254,17 @@ static void draw_weather() {
       screen.drawString(air_quality_label(g_airQuality.aqi), aqX + 60, aqY + 16);
       aqY += 60;
 
-      int barW = 200, barH = 14, segGap = 4;
-      int segW = barW / 5;
-      for (int s = 0; s < 5; s++) {
-        uint16_t drawColor = (s < g_airQuality.aqi) ? airQualityColor(s + 1) : colorDim;
-        screen.fillRect(aqX + s * segW, aqY, segW - segGap, barH, drawColor);
+      // Continuous gradient bar with a pointer marking exactly where
+      // today's AQI falls, rather than 5 flat lit/unlit segments -- the
+      // number now means something at a glance against the full scale.
+      int barW = 200, barH = 14;
+      for (int px = 0; px < barW; px += 2) {
+        float frac = (float)px / (float)(barW - 1);
+        screen.fillRect(aqX + px, aqY, 2, barH, aqiGradientColor(frac));
       }
+      float aqiFrac = constrain((float)(g_airQuality.aqi - 1) / 4.0f, 0.0f, 1.0f);
+      int aqiPointerX = aqX + (int)(aqiFrac * (barW - 1));
+      screen.fillTriangle(aqiPointerX - 5, aqY - 6, aqiPointerX + 5, aqY - 6, aqiPointerX, aqY - 1, colorText);
       aqY += barH + 24;
     } else {
       screen.setTextSize(2);
@@ -1216,6 +1273,47 @@ static void draw_weather() {
       aqY += 30;
       char errLine[32];
       snprintf(errLine, sizeof(errLine), "HTTP %d", g_airQuality.lastHttpCode);
+      screen.drawString(errLine, aqX, aqY);
+      aqY += 30;
+    }
+
+    // UV INDEX -- same block layout as Air Quality above, sourced from
+    // Open-Meteo (see fetchUvIndex() in weather_service.cpp), since
+    // OpenWeatherMap's free tier doesn't include UV data.
+    screen.setTextSize(2);
+    screen.setTextColor(colorAccent, colorBg);
+    screen.drawString("UV INDEX", aqX, aqY);
+    screen.drawLine(aqX, aqY + 20, aqX + 96, aqY + 20, colorAccent);
+    aqY += 48;
+
+    if (g_weather.uvValid) {
+      uint16_t uvColor = uvIndexColor(g_weather.uvIndex);
+      screen.setTextSize(4);
+      screen.setTextColor(uvColor, colorBg);
+      char uvNum[8];
+      snprintf(uvNum, sizeof(uvNum), "%.0f", g_weather.uvIndex);
+      screen.drawString(uvNum, aqX, aqY);
+
+      screen.setTextSize(2);
+      screen.setTextColor(colorText, colorBg);
+      screen.drawString(uvIndexLabel(g_weather.uvIndex), aqX + 60, aqY + 16);
+      aqY += 60;
+
+      int uvBarW = 200, uvBarH = 14;
+      for (int px = 0; px < uvBarW; px += 2) {
+        float frac = (float)px / (float)(uvBarW - 1);
+        screen.fillRect(aqX + px, aqY, 2, uvBarH, uvGradientColor(frac));
+      }
+      float uvFrac = constrain(g_weather.uvIndex / 11.0f, 0.0f, 1.0f);
+      int uvPointerX = aqX + (int)(uvFrac * (uvBarW - 1));
+      screen.fillTriangle(uvPointerX - 5, aqY - 6, uvPointerX + 5, aqY - 6, uvPointerX, aqY - 1, colorText);
+    } else {
+      screen.setTextSize(2);
+      screen.setTextColor(colorDim, colorBg);
+      screen.drawString("--", aqX, aqY);
+      aqY += 30;
+      char errLine[32];
+      snprintf(errLine, sizeof(errLine), "HTTP %d", g_weather.uvLastHttpCode);
       screen.drawString(errLine, aqX, aqY);
     }
     screen.setTextSize(2);

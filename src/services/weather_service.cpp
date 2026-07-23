@@ -166,8 +166,70 @@ static void fetchForecast() {
   }
 }
 
+// UV index isn't on OpenWeatherMap's free tier, so it's fetched from
+// Open-Meteo instead (already used as the Astro page's 7Timer fallback
+// source). Pulls today's hourly uv_index array and picks whichever hour
+// is closest to right now, which is simpler and just as accurate as
+// trying to interpolate between two hours for a slowly-changing value.
+static void fetchUvIndex() {
+  HTTPClient http;
+  char url[256];
+  snprintf(url, sizeof(url),
+    "https://api.open-meteo.com/v1/forecast?latitude=%f&longitude=%f&hourly=uv_index&forecast_days=1&timezone=UTC",
+    (double)HOME_LAT, (double)HOME_LON);
+
+  http.begin(url);
+  // Open-Meteo has been observed serving chunked transfer encoding on
+  // larger JSON responses (see astro_seeing_service.cpp's v141/v148 notes)
+  // -- forcing HTTP/1.0 gets a plain Content-Length body instead, which is
+  // what plain http.getString() below expects.
+  http.useHTTP10(true);
+  int code = http.GET();
+  g_weather.uvLastHttpCode = code;
+  if (code == 200) {
+    String payload = http.getString();
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, payload);
+    if (!err) {
+      JsonArray times = doc["hourly"]["time"].as<JsonArray>();
+      JsonArray uvValues = doc["hourly"]["uv_index"].as<JsonArray>();
+      time_t now = time(nullptr);
+      int bestIdx = -1;
+      long bestDist = LONG_MAX;
+      int i = 0;
+      for (JsonVariant tEntry : times) {
+        // Open-Meteo times come back as "YYYY-MM-DDTHH:MM" in UTC (matches
+        // the timezone=UTC param above) -- parse just the hour-of-day part
+        // and compare against the current UTC hour, which is enough
+        // resolution for a value that only changes hour-to-hour anyway.
+        String tStr = tEntry.as<String>();
+        if (tStr.length() >= 13) {
+          int entryHour = tStr.substring(11, 13).toInt();
+          struct tm* utcNow = gmtime(&now);
+          long dist = labs((long)entryHour - (long)utcNow->tm_hour);
+          if (dist < bestDist) {
+            bestDist = dist;
+            bestIdx = i;
+          }
+        }
+        i++;
+      }
+      if (bestIdx >= 0 && bestIdx < (int)uvValues.size()) {
+        g_weather.uvIndex = uvValues[bestIdx] | 0.0f;
+        g_weather.uvValid = true;
+      }
+    } else {
+      Serial.printf("[Weather] UV JSON parse error: %s\n", err.c_str());
+    }
+  } else {
+    Serial.printf("[Weather] UV HTTP %d\n", code);
+  }
+  http.end();
+}
+
 void weather_service_update() {
   if (!wifi_manager_is_connected()) return;
   fetchCurrentConditions();
   fetchForecast();
+  fetchUvIndex();
 }

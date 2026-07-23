@@ -19,6 +19,13 @@ struct WeatherData {
   bool valid = false;
   int lastHttpCode = -999; // shown on-screen if fetch never succeeds
   String debugSunLine = ""; // TEMP DEBUG (v113): font-safe sunrise/sunset trace
+
+  // UV index -- not available on OpenWeatherMap's free tier (paid One Call
+  // API only), so fetched separately from Open-Meteo (same source already
+  // used as the Astro page's 7Timer fallback).
+  float uvIndex = 0;
+  bool uvValid = false;
+  int uvLastHttpCode = -999;
 };
 
 struct ForecastDay {
