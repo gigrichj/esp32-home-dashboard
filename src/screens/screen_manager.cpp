@@ -1133,7 +1133,11 @@ static void draw_weather() {
     // Precipitation gauge: a 270-degree arc (gap at the bottom), approximated
     // with short line segments since this display library doesn't expose a
     // drawArc primitive. A blue segment fills in up to the current percent.
-    int gaugeCx = 560, gaugeCy = 228, gaugeR = 22; // shifted left 15px to center the precip+wind pair under the 5 AQI bars (which span x=520-720)
+    int gaugeCx = 410, gaugeCy = 200, gaugeR = 18; // moved into its own column in the gap between
+                                                     // the left stat list (ends ~x=360) and the
+                                                     // AQI/UV column (starts x=520) -- the AQI/UV
+                                                     // block grew taller once UV Index was added and
+                                                     // started overlapping this pair's old position.
     float startDeg = -135.0f, sweepDeg = 270.0f;
     uint16_t trackColor = colorDim;
     uint16_t fillColor = screen.color565(70, 150, 220);
@@ -1184,7 +1188,10 @@ static void draw_weather() {
 
   {
     // Wind compass: direction needle plus sustained | gust speeds below.
-    int windCx = 680, windCy = 228, windR = 22; // shifted left 15px, see gaugeCx comment above
+    int windCx = 410, windCy = 288, windR = 18; // stacked directly below the precip gauge in the
+                                                 // same column (rather than side-by-side), so both
+                                                 // fit cleanly in the gap without crowding the
+                                                 // taller AQI/UV block -- see gaugeCx comment above.
     screen.drawCircle(windCx, windCy, windR, colorDim);
 
     for (int deg = 0; deg < 360; deg += 30) {
