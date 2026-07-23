@@ -2251,7 +2251,13 @@ static void drawTrendPanel(int x, int y, int w, int h, const char* title,
 
   int plotY = y + 30;
   int plotH = h - 30;
-  screen.drawRect(x, plotY, w, plotH, colorDim);
+  // Built from 4 lines rather than drawRect(), which this display's
+  // Canvas class doesn't implement -- same pattern used for every other
+  // rectangle outline in this file (e.g. the Astro best-window border).
+  screen.drawLine(x, plotY, x + w, plotY, colorDim);
+  screen.drawLine(x, plotY + plotH, x + w, plotY + plotH, colorDim);
+  screen.drawLine(x, plotY, x, plotY + plotH, colorDim);
+  screen.drawLine(x + w, plotY, x + w, plotY + plotH, colorDim);
 
   if (g_trendSampleCount < 2) {
     screen.setTextSize(2);
