@@ -49,6 +49,8 @@ struct ForecastDay {
   float highF = -999.0f;
   float lowF = 999.0f;
   int weatherId = 0;
+  int precipChance = 0;      // 0-100, max "pop" seen across that day's
+                              // 3-hour OWM forecast entries
 };
 
 static const int FORECAST_DAYS = 5;

@@ -123,6 +123,7 @@ static void fetchForecast() {
     float lowF = 999.0f;
     int weatherId = 0;
     int bestHourDist = 999;
+    int maxPop = 0; // 0-100, peak rain chance across the day's 3-hour entries
     char label[4] = "";
   };
   static const int MAX_DAYS = 6;
@@ -152,6 +153,10 @@ static void fetchForecast() {
     if (tempF > days[idx].highF) days[idx].highF = tempF;
     if (tempF < days[idx].lowF)  days[idx].lowF  = tempF;
 
+    float entryPop = entry["pop"] | 0.0f;
+    int entryPopPercent = (int)(entryPop * 100.0f + 0.5f);
+    if (entryPopPercent > days[idx].maxPop) days[idx].maxPop = entryPopPercent;
+
     int hourDist = abs(tmInfo.tm_hour - 12);
     if (hourDist < days[idx].bestHourDist) {
       days[idx].bestHourDist = hourDist;
@@ -164,10 +169,11 @@ static void fetchForecast() {
   int startIdx = (dayCount > FORECAST_DAYS) ? 1 : 0;
   g_forecastCount = 0;
   for (int i = startIdx; i < dayCount && g_forecastCount < FORECAST_DAYS; i++) {
-    g_forecast[g_forecastCount].dayLabel  = String(days[i].label);
-    g_forecast[g_forecastCount].highF     = days[i].highF;
-    g_forecast[g_forecastCount].lowF      = days[i].lowF;
-    g_forecast[g_forecastCount].weatherId = days[i].weatherId;
+    g_forecast[g_forecastCount].dayLabel     = String(days[i].label);
+    g_forecast[g_forecastCount].highF        = days[i].highF;
+    g_forecast[g_forecastCount].lowF         = days[i].lowF;
+    g_forecast[g_forecastCount].weatherId    = days[i].weatherId;
+    g_forecast[g_forecastCount].precipChance = days[i].maxPop;
     g_forecastCount++;
   }
 }

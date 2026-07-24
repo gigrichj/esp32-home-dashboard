@@ -1569,8 +1569,15 @@ static void draw_weather() {
 
     drawWeatherIcon(cx, stripY + 24, 12, g_forecast[i].weatherId, colorText);
 
-    char hilo[24];
-    snprintf(hilo, sizeof(hilo), "%.0f / %.0f", g_forecast[i].highF, g_forecast[i].lowF);
+    char hilo[32];
+    // Font has no "%" glyph -- "R" suffix instead, same convention as
+    // "pct" used elsewhere in this project for percentages. Omitted
+    // entirely on dry days rather than cluttering the strip with "0R".
+    if (g_forecast[i].precipChance > 0) {
+      snprintf(hilo, sizeof(hilo), "%.0f/%.0f %dR", g_forecast[i].highF, g_forecast[i].lowF, g_forecast[i].precipChance);
+    } else {
+      snprintf(hilo, sizeof(hilo), "%.0f / %.0f", g_forecast[i].highF, g_forecast[i].lowF);
+    }
     screen.drawString(hilo, cx, stripY + 44);
   }
   screen.setTextDatum(textdatum_t::top_left);
