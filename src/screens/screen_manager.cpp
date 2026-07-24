@@ -189,6 +189,7 @@ static bool g_prevStormWasHigh = false;
 static bool g_prevAnyEmergency = false;
 static bool g_prevStarshipLaunchToday = false;
 static bool g_prevSuperHeavyLaunchToday = false;
+static bool g_prevIssGoodPassSoon = false;
 static bool g_alertStatePrimed = false; // avoids firing a false alert on the very first frame,
                                         // before we have a real "previous" state to compare against
 
@@ -234,6 +235,10 @@ static void drawHeader() {
 
 static void drawCloudIcon(int cx, int cy, int r, uint16_t color); // defined further down
 static void drawWeatherBackground(int weatherId, bool isNight, int sunCyOffset = 0, bool showSunIcon = true); // defined further down, used here
+static void enqueueAlert(const char* message, uint16_t color); // defined further down
+static void advanceAlertQueue(); // defined further down
+static bool isStarshipOrSuperHeavy(const String& rocketName); // defined further down
+static void drawRocketIcon(int cx, int cy, uint16_t color); // defined further down
 
 static void drawDashboardBackground() {
   uint32_t t = millis();
@@ -2756,6 +2761,45 @@ static void checkAlertTriggers() {
     if (isEmergencySquawk(g_aircraft[i].squawk)) { anyEmergencyNow = true; break; }
   }
 
+  // Good ISS pass coming up in ~30 minutes -- after sunset, clear skies
+  // (no cloud cover, no precip), and a high (>45deg) elevation pass, all
+  // checked against the astro forecast point closest to the pass's start
+  // time rather than right-now conditions, since the pass itself is still
+  // ~30 minutes out.
+  bool issGoodPassSoon = false;
+  if (g_issPassCount > 0 && g_weather.valid && g_astroForecastCount > 0) {
+    IssPass& nextIssPass = g_issPasses[0];
+    if (nextIssPass.maxElevationDeg > 45) {
+      uint32_t nowUnix = (uint32_t)time(nullptr);
+      if (nowUnix > 100000) {
+        uint32_t alertWindowStart = (nextIssPass.startUnix > 1800) ? (nextIssPass.startUnix - 1800) : 0;
+        bool inAlertWindow = (nowUnix >= alertWindowStart && nowUnix < nextIssPass.startUnix);
+        bool afterSunset = nowUnix >= g_weather.sunsetUnix;
+        if (inAlertWindow && afterSunset) {
+          // Closest forecast point (3-hour spacing) to the pass start time.
+          int forecastIdx = -1;
+          uint32_t bestDiff = 0xFFFFFFFF;
+          for (int i = 0; i < g_astroForecastCount; i++) {
+            uint32_t diff = (g_astroForecast[i].unixTime > nextIssPass.startUnix)
+                                ? (g_astroForecast[i].unixTime - nextIssPass.startUnix)
+                                : (nextIssPass.startUnix - g_astroForecast[i].unixTime);
+            if (diff < bestDiff) { bestDiff = diff; forecastIdx = i; }
+          }
+          if (forecastIdx >= 0) {
+            // cloudcover is a 1-9 index (1=clearest) -- treating <=2 as
+            // "no cloud coverage" rather than requiring the exact
+            // clearest bucket, which is rarely hit precisely.
+            bool clearWeather = g_astroForecast[forecastIdx].prectype.equalsIgnoreCase("none");
+            bool noCloudCover = g_astroForecast[forecastIdx].cloudcover <= 2;
+            if (clearWeather && noCloudCover) {
+              issGoodPassSoon = true;
+            }
+          }
+        }
+      }
+    }
+  }
+
   // Starship and Super Heavy launching today -- two distinct alerts, not
   // one combined "Starship/Super Heavy" message, compared by local
   // calendar date so each fires once as soon as it becomes "today".
@@ -2806,6 +2850,9 @@ static void checkAlertTriggers() {
     if (superHeavyLaunchToday && !g_prevSuperHeavyLaunchToday) {
       enqueueAlert("SUPER HEAVY LAUNCH TODAY", colorStarship);
     }
+    if (issGoodPassSoon && !g_prevIssGoodPassSoon) {
+      enqueueAlert("GOOD ISS PASS IN 30 MIN", colorSuccess);
+    }
     if (!astroIsGood && g_prevAstroWasGood && g_alertActive &&
         strcmp(g_alertMessage, "ASTRO CONDITIONS NOW GOOD TONIGHT") == 0) {
       // The banner only ever fired once on the moment of transition and
@@ -2828,6 +2875,7 @@ static void checkAlertTriggers() {
   g_prevAnyEmergency = anyEmergencyNow;
   g_prevStarshipLaunchToday = starshipLaunchToday;
   g_prevSuperHeavyLaunchToday = superHeavyLaunchToday;
+  g_prevIssGoodPassSoon = issGoodPassSoon;
   g_alertStatePrimed = true;
 
 }
@@ -2850,6 +2898,53 @@ static void drawAlertBanner() {
   screen.setTextColor(colorDim, colorBg);
   screen.drawString("tap to dismiss", WIDTH / 2, bannerH / 2 + 14);
   screen.setTextDatum(textdatum_t::top_left);
+}
+
+// Alert queue: if two+ conditions become newly-true in the same frame,
+// only the first one used to ever get shown -- the others' "previous
+// state" flags flipped to true anyway, so their transition was silently
+// lost and would never be shown, even later. Queuing instead of
+// dropping means nothing gets missed; each queued alert gets its turn
+// once the current one is dismissed (by tap, or an auto-clear like the
+// astro-good reversal).
+struct PendingAlert {
+  char message[64];
+  uint16_t color;
+};
+static const int ALERT_QUEUE_MAX = 6;
+static PendingAlert g_alertQueue[ALERT_QUEUE_MAX];
+static int g_alertQueueCount = 0;
+
+static void enqueueAlert(const char* message, uint16_t color) {
+  if (!g_alertActive) {
+    g_alertActive = true;
+    g_alertShownAtMs = millis();
+    g_alertColorOverride = color;
+    snprintf(g_alertMessage, sizeof(g_alertMessage), "%s", message);
+    return;
+  }
+  if (g_alertQueueCount < ALERT_QUEUE_MAX) {
+    snprintf(g_alertQueue[g_alertQueueCount].message, sizeof(g_alertQueue[g_alertQueueCount].message), "%s", message);
+    g_alertQueue[g_alertQueueCount].color = color;
+    g_alertQueueCount++;
+  }
+}
+
+// Advances to the next queued alert (if any) instead of just clearing --
+// called wherever the banner used to simply go blank.
+static void advanceAlertQueue() {
+  if (g_alertQueueCount > 0) {
+    g_alertActive = true;
+    g_alertShownAtMs = millis();
+    g_alertColorOverride = g_alertQueue[0].color;
+    snprintf(g_alertMessage, sizeof(g_alertMessage), "%s", g_alertQueue[0].message);
+    for (int i = 1; i < g_alertQueueCount; i++) {
+      g_alertQueue[i - 1] = g_alertQueue[i];
+    }
+    g_alertQueueCount--;
+  } else {
+    g_alertActive = false;
+  }
 }
 
 // True if this rocket is Starship or Super Heavy -- SpaceX's next-gen
