@@ -123,8 +123,9 @@ static uint16_t colorAccent;
 // screen_manager_draw() picks between these every frame and assigns the
 // active set to the colorBg/colorText/etc. statics above, so every
 // existing draw_* function keeps using those same names unchanged.
-static uint16_t colorBgDay, colorSuccessDay, colorDangerDay, colorTextDay, colorDimDay, colorAccentDay;
-static uint16_t colorBgNight, colorSuccessNight, colorDangerNight, colorTextNight, colorDimNight, colorAccentNight;
+static uint16_t colorBgDay, colorSuccessDay, colorDangerDay, colorTextDay, colorDimDay, colorAccentDay, colorStarshipDay;
+static uint16_t colorBgNight, colorSuccessNight, colorDangerNight, colorTextNight, colorDimNight, colorAccentNight, colorStarshipNight;
+static uint16_t colorStarship;
 
 static bool touchWasDown = false;
 static uint32_t touchDownMs = 0;
@@ -186,6 +187,8 @@ static uint16_t g_alertColorOverride = 0; // set from colorSuccess/colorDanger a
 static bool g_prevAstroWasGood = false;
 static bool g_prevStormWasHigh = false;
 static bool g_prevAnyEmergency = false;
+static bool g_prevStarshipLaunchToday = false;
+static bool g_prevSuperHeavyLaunchToday = false;
 static bool g_alertStatePrimed = false; // avoids firing a false alert on the very first frame,
                                         // before we have a real "previous" state to compare against
 
@@ -482,23 +485,46 @@ static void draw_dashboard() {
 
     if (g_spacexValid && g_spacexLaunchCount > 0) {
       SpacexLaunch& next = g_spacexLaunches[0];
-      time_t t = (time_t)next.netUnix;
-      struct tm* ti = localtime(&t);
-      char dateBuf[8], timeBuf[8];
-      strftime(dateBuf, sizeof(dateBuf), "%b%d", ti);
-      int h12 = ti->tm_hour % 12;
-      if (h12 == 0) h12 = 12;
-      snprintf(timeBuf, sizeof(timeBuf), "%d:%02d%s", h12, ti->tm_min, ti->tm_hour < 12 ? "A" : "P");
+      // Countdown format ("in Xh Ym"), matching the Sunset/Sunrise and
+      // ISS "next pass" teasers elsewhere on this page, instead of an
+      // absolute date/time -- consistent with the rest of the Dashboard.
+      uint32_t nowUnixL = (uint32_t)time(nullptr);
+      uint32_t secsUntilLaunch = (next.netUnix > nowUnixL) ? (next.netUnix - nowUnixL) : 0;
+      int launchHH = secsUntilLaunch / 3600;
+      int launchMM = (secsUntilLaunch % 3600) / 60;
 
-      const char* tzLabel = (ti->tm_isdst > 0) ? "EDT" : "EST";
-      screen.setTextColor(colorText, colorBg);
-      char launchLine1[48];
-      snprintf(launchLine1, sizeof(launchLine1), "Next: %s %s %s", dateBuf, timeBuf, tzLabel);
-      screen.drawString(launchLine1, leftX, y);
-      y += 30;
+      // Highlighted (success color) if launching within 24h, same
+      // "stands out at a glance" treatment as "ISS visible now!" above.
+      bool launchingSoon = secsUntilLaunch <= 24UL * 3600UL;
+      bool isStarship = isStarshipOrSuperHeavy(next.rocketName);
+
+      if (isStarship) {
+        // Starship/Super Heavy gets its own icon + bigger, distinctly
+        // colored treatment -- SpaceX's next-gen vehicle stands out from
+        // routine Falcon 9 flights at a glance.
+        drawRocketIcon(leftX, y - 4, colorStarship);
+        screen.setTextSize(3);
+        screen.setTextColor(colorStarship, colorBg);
+        screen.drawString(next.rocketName.c_str(), leftX + 28, y);
+        y += 34;
+
+        screen.setTextSize(2);
+        screen.setTextColor(colorDim, colorBg);
+        char countdownLine[32];
+        snprintf(countdownLine, sizeof(countdownLine), "in %dh %dm", launchHH, launchMM);
+        screen.drawString(countdownLine, leftX, y);
+        y += 30;
+      } else {
+        screen.setTextColor(launchingSoon ? colorSuccess : colorText, colorBg);
+        char launchLine1[48];
+        snprintf(launchLine1, sizeof(launchLine1), "Next: %s in %dh %dm",
+                 next.rocketName.c_str(), launchHH, launchMM);
+        screen.drawString(launchLine1, leftX, y);
+        y += 30;
+      }
 
       screen.setTextColor(colorDim, colorBg);
-      screen.drawString(next.rocketName.c_str(), leftX, y);
+      screen.drawString(next.missionName.c_str(), leftX, y);
     } else {
       screen.setTextColor(colorDim, colorBg);
       screen.drawString("No launches in 30 days", leftX, y);
@@ -2671,16 +2697,21 @@ void screen_manager_init() {
   colorAccentDay = screen.color565(70, 130, 220);
   colorSuccessDay = screen.color565(80, 200, 120);
   colorDangerDay = screen.color565(220, 80, 80);
+  colorStarshipDay = screen.color565(255, 165, 0); // orange/gold -- Starship/Super Heavy highlight
 
   // Night mode: shades of red only, to preserve night vision for
   // astrophotography. Meaning that used to come from hue (blue vs green
-  // vs orange) now comes from brightness instead.
+  // vs orange) now comes from brightness instead. Starship/Super Heavy's
+  // highlight keeps that rule (no true orange at night) -- it's a
+  // distinctly lighter/pinker red instead of a new hue, still readable
+  // as its own color against Accent/Success/Danger's darker reds.
   colorBgNight = screen.color565(10, 0, 0);
   colorTextNight = screen.color565(210, 40, 40);
   colorDimNight = screen.color565(90, 15, 15);
   colorAccentNight = screen.color565(160, 30, 30);
   colorSuccessNight = screen.color565(180, 50, 50);
   colorDangerNight = screen.color565(255, 60, 60);
+  colorStarshipNight = screen.color565(255, 130, 130);
 
   colorBg = colorBgDay;
   colorText = colorTextDay;
@@ -2688,6 +2719,7 @@ void screen_manager_init() {
   colorAccent = colorAccentDay;
   colorSuccess = colorSuccessDay;
   colorDanger = colorDangerDay;
+  colorStarship = colorStarshipDay;
 
   lastInteractionMs = millis();
   lastAutoAdvanceMs = millis();
@@ -2724,24 +2756,58 @@ static void checkAlertTriggers() {
     if (isEmergencySquawk(g_aircraft[i].squawk)) { anyEmergencyNow = true; break; }
   }
 
+  // Starship and Super Heavy launching today -- two distinct alerts, not
+  // one combined "Starship/Super Heavy" message, compared by local
+  // calendar date so each fires once as soon as it becomes "today".
+  // Super Heavy takes priority if a rocket name somehow contains both
+  // terms, so only one of the two ever fires for the same launch.
+  bool starshipLaunchToday = false;
+  bool superHeavyLaunchToday = false;
+  if (g_spacexValid && g_spacexLaunchCount > 0) {
+    String lowerRocketName = g_spacexLaunches[0].rocketName;
+    lowerRocketName.toLowerCase();
+    bool isSuperHeavy = lowerRocketName.indexOf("super heavy") >= 0;
+    bool isStarshipVehicle = lowerRocketName.indexOf("starship") >= 0;
+    time_t nowUnix = time(nullptr);
+    if (nowUnix > 100000 && (isSuperHeavy || isStarshipVehicle)) {
+      time_t launchUnix = (time_t)g_spacexLaunches[0].netUnix;
+      // Copy each result out immediately -- localtime() returns a pointer
+      // to a shared static buffer that the second call would overwrite.
+      struct tm nowTm = *localtime(&nowUnix);
+      struct tm launchTm = *localtime(&launchUnix);
+      bool isToday = (nowTm.tm_year == launchTm.tm_year && nowTm.tm_yday == launchTm.tm_yday);
+      if (isToday) {
+        if (isSuperHeavy) {
+          superHeavyLaunchToday = true;
+        } else {
+          starshipLaunchToday = true;
+        }
+      }
+    }
+  }
+
   if (g_alertStatePrimed) {
+    // Independent ifs, not else-if -- every condition that newly became
+    // true this frame gets queued, so simultaneous events (e.g. a storm
+    // warning and a Starship launch-day alert on the same frame) both
+    // get shown in turn instead of one silently overwriting the other.
     if (anyEmergencyNow && !g_prevAnyEmergency) {
-      g_alertActive = true;
-      g_alertShownAtMs = millis();
-      g_alertColorOverride = colorDanger;
-      snprintf(g_alertMessage, sizeof(g_alertMessage), "EMERGENCY SQUAWK DETECTED NEARBY");
-    } else if (stormIsHigh && !g_prevStormWasHigh) {
-      g_alertActive = true;
-      g_alertShownAtMs = millis();
-      g_alertColorOverride = colorDanger;
-      snprintf(g_alertMessage, sizeof(g_alertMessage), "ASTRO STORM RISK: HIGH RISK TONIGHT");
-    } else if (astroIsGood && !g_prevAstroWasGood) {
-      g_alertActive = true;
-      g_alertShownAtMs = millis();
-      g_alertColorOverride = colorSuccess;
-      snprintf(g_alertMessage, sizeof(g_alertMessage), "ASTRO CONDITIONS NOW GOOD TONIGHT");
-    } else if (!astroIsGood && g_prevAstroWasGood && g_alertActive &&
-               strcmp(g_alertMessage, "ASTRO CONDITIONS NOW GOOD TONIGHT") == 0) {
+      enqueueAlert("EMERGENCY SQUAWK DETECTED NEARBY", colorDanger);
+    }
+    if (stormIsHigh && !g_prevStormWasHigh) {
+      enqueueAlert("ASTRO STORM RISK: HIGH RISK TONIGHT", colorDanger);
+    }
+    if (astroIsGood && !g_prevAstroWasGood) {
+      enqueueAlert("ASTRO CONDITIONS NOW GOOD TONIGHT", colorSuccess);
+    }
+    if (starshipLaunchToday && !g_prevStarshipLaunchToday) {
+      enqueueAlert("STARSHIP LAUNCH TODAY", colorStarship);
+    }
+    if (superHeavyLaunchToday && !g_prevSuperHeavyLaunchToday) {
+      enqueueAlert("SUPER HEAVY LAUNCH TODAY", colorStarship);
+    }
+    if (!astroIsGood && g_prevAstroWasGood && g_alertActive &&
+        strcmp(g_alertMessage, "ASTRO CONDITIONS NOW GOOD TONIGHT") == 0) {
       // The banner only ever fired once on the moment of transition and
       // then sat frozen until tapped -- if a later Astro data refresh
       // brings the verdict back down (e.g. seeing worsens even though
@@ -2750,14 +2816,18 @@ static void checkAlertTriggers() {
       // page's own live verdict. Auto-clear specifically when the
       // condition it announced has reverted, rather than on any fixed
       // timer -- this is not the auto-timeout that was removed earlier,
-      // it only reacts to the underlying data actually changing.
-      g_alertActive = false;
+      // it only reacts to the underlying data actually changing. Now
+      // advances to the next queued alert (if any) instead of just
+      // going blank.
+      advanceAlertQueue();
     }
   }
 
   g_prevAstroWasGood = astroIsGood;
   g_prevStormWasHigh = stormIsHigh;
   g_prevAnyEmergency = anyEmergencyNow;
+  g_prevStarshipLaunchToday = starshipLaunchToday;
+  g_prevSuperHeavyLaunchToday = superHeavyLaunchToday;
   g_alertStatePrimed = true;
 
 }
@@ -2782,6 +2852,33 @@ static void drawAlertBanner() {
   screen.setTextDatum(textdatum_t::top_left);
 }
 
+// True if this rocket is Starship or Super Heavy -- SpaceX's next-gen
+// vehicle, worth calling out distinctly from routine Falcon 9 flights.
+static bool isStarshipOrSuperHeavy(const String& rocketName) {
+  String lower = rocketName;
+  lower.toLowerCase();
+  return lower.indexOf("starship") >= 0 || lower.indexOf("super heavy") >= 0;
+}
+
+// Compact rocket silhouette (nose cone + body + fins), built from the
+// same fillTriangle/fillRect primitives used throughout this project --
+// no custom bitmap needed. (cx, cy) anchors the top-left of a ~20x32
+// bounding box.
+static void drawRocketIcon(int cx, int cy, uint16_t color) {
+  int w = 20, h = 32;
+  int bodyW = 10;
+  int bodyX = cx + (w - bodyW) / 2;
+
+  // Nose cone (top third).
+  screen.fillTriangle(cx + w / 2, cy, bodyX, cy + h / 3, bodyX + bodyW, cy + h / 3, color);
+  // Body (middle half).
+  screen.fillRect(bodyX, cy + h / 3, bodyW, h / 2, color);
+  // Fins (bottom corners).
+  int finY = cy + h / 3 + h / 2;
+  screen.fillTriangle(bodyX, finY, bodyX - 6, finY + 8, bodyX, finY + 8, color);
+  screen.fillTriangle(bodyX + bodyW, finY, bodyX + bodyW + 6, finY + 8, bodyX + bodyW, finY + 8, color);
+}
+
 static void draw_spacex() {
   screen.setTextDatum(textdatum_t::top_left);
 
@@ -2802,58 +2899,158 @@ static void draw_spacex() {
     return;
   }
 
+  // ---------- Featured block: the next launch, with image + landing info ----------
+  SpacexLaunch& next = g_spacexLaunches[0];
   int y = 50;
-  int shown = min(g_spacexLaunchCount, 6); // fits the available vertical space
-  for (int i = 0; i < shown; i++) {
+
+  if (g_spacexImageValid && g_spacexImagePixels != nullptr) {
+    // Drawn at native decoded resolution -- no scaling applied (matches
+    // aviation_service.cpp's own photo feature, which does the same). If
+    // the source image is unusually large it may extend past this
+    // reserved area; revisit with a scale-down pass if that's common.
+    screen.drawRGBBitmap(560, y, g_spacexImagePixels, g_spacexImageWidth, g_spacexImageHeight);
+  }
+
+  time_t t = (time_t)next.netUnix;
+  struct tm* ti = localtime(&t);
+  char dateBuf[8], timeBuf[8];
+  strftime(dateBuf, sizeof(dateBuf), "%b%d", ti);
+  int h12 = ti->tm_hour % 12;
+  if (h12 == 0) h12 = 12;
+  snprintf(timeBuf, sizeof(timeBuf), "%d:%02d%s", h12, ti->tm_min, ti->tm_hour < 12 ? "A" : "P");
+
+  uint16_t statusColor = colorText;
+  if (next.statusName.equalsIgnoreCase("Go") || next.statusName.equalsIgnoreCase("Success")) {
+    statusColor = colorSuccess;
+  } else if (next.statusName.equalsIgnoreCase("TBD") || next.statusName.equalsIgnoreCase("Hold")) {
+    statusColor = colorDim;
+  } else if (next.statusName.equalsIgnoreCase("Failure")) {
+    statusColor = colorDanger;
+  }
+
+  // EST/EDT determined dynamically from tm_isdst (set correctly by
+  // configTzTime's "EST5EDT,M3.2.0,M11.1.0" rule in main.cpp) rather
+  // than hardcoded, so it's right whether DST is in effect or not.
+  const char* tzLabel = (ti->tm_isdst > 0) ? "EDT" : "EST";
+
+  screen.setTextSize(2);
+  screen.setTextColor(colorAccent, colorBg);
+  screen.drawString("NEXT LAUNCH", 20, y);
+  y += 26;
+
+  char line1[28];
+  snprintf(line1, sizeof(line1), "%s  %s %s", dateBuf, timeBuf, tzLabel);
+  screen.drawString(line1, 20, y);
+  screen.setTextColor(statusColor, colorBg);
+  screen.drawString(next.statusName.c_str(), 260, y);
+  y += 28;
+
+  bool nextIsStarship = isStarshipOrSuperHeavy(next.rocketName);
+  if (nextIsStarship) {
+    // Starship/Super Heavy gets its own icon + bigger, distinctly
+    // colored treatment here too, matching the Dashboard.
+    drawRocketIcon(20, y, colorStarship);
+    screen.setTextSize(3);
+    screen.setTextColor(colorStarship, colorBg);
+    screen.drawString(next.rocketName.c_str(), 48, y + 4);
+    y += 36;
+
+    screen.setTextSize(1);
+    screen.setTextColor(colorText, colorBg);
+    screen.drawString(next.missionName.c_str(), 20, y);
+    y += 18;
+  } else {
+    screen.setTextSize(1);
+    screen.setTextColor(colorText, colorBg);
+    char line2[80];
+    snprintf(line2, sizeof(line2), "%s - %s", next.rocketName.c_str(), next.missionName.c_str());
+    screen.drawString(line2, 20, y);
+    y += 18;
+  }
+
+  screen.setTextColor(colorDim, colorBg);
+  char line3[96];
+  snprintf(line3, sizeof(line3), "%s, %s", next.padName.c_str(), next.locationName.c_str());
+  screen.drawString(line3, 20, y);
+  y += 18;
+
+  // Booster landing info, if known -- absent for expendable missions or
+  // before the separate detail fetch has completed.
+  screen.setTextColor(colorDim, colorBg);
+  char landingLine[96];
+  if (!g_spacexLandingValid) {
+    snprintf(landingLine, sizeof(landingLine), "Landing info: pending");
+  } else if (!g_spacexLandingAttempt) {
+    snprintf(landingLine, sizeof(landingLine), "Landing: no attempt planned");
+  } else {
+    snprintf(landingLine, sizeof(landingLine), "Landing: %s (%s) - %s",
+             g_spacexLandingLocation.c_str(), g_spacexLandingAbbrev.c_str(), g_spacexLandingType.c_str());
+  }
+  screen.drawString(landingLine, 20, y);
+  y += 26;
+
+  screen.drawLine(20, y, WIDTH - 20, y, colorDim);
+  y += 12;
+
+  // ---------- Remaining upcoming launches, compact list ----------
+  int shown = min(g_spacexLaunchCount, 5); // index 0 already featured above
+  for (int i = 1; i < shown; i++) {
     SpacexLaunch& launch = g_spacexLaunches[i];
 
-    time_t t = (time_t)launch.netUnix;
-    struct tm* ti = localtime(&t);
-    char dateBuf[8], timeBuf[8];
-    strftime(dateBuf, sizeof(dateBuf), "%b%d", ti);
-    int h12 = ti->tm_hour % 12;
-    if (h12 == 0) h12 = 12;
-    snprintf(timeBuf, sizeof(timeBuf), "%d:%02d%s", h12, ti->tm_min, ti->tm_hour < 12 ? "A" : "P");
+    time_t lt = (time_t)launch.netUnix;
+    struct tm* lti = localtime(&lt);
+    char lDateBuf[8], lTimeBuf[8];
+    strftime(lDateBuf, sizeof(lDateBuf), "%b%d", lti);
+    int lh12 = lti->tm_hour % 12;
+    if (lh12 == 0) lh12 = 12;
+    snprintf(lTimeBuf, sizeof(lTimeBuf), "%d:%02d%s", lh12, lti->tm_min, lti->tm_hour < 12 ? "A" : "P");
 
-    uint16_t statusColor = colorText;
+    uint16_t lStatusColor = colorText;
     if (launch.statusName.equalsIgnoreCase("Go") || launch.statusName.equalsIgnoreCase("Success")) {
-      statusColor = colorSuccess;
+      lStatusColor = colorSuccess;
     } else if (launch.statusName.equalsIgnoreCase("TBD") || launch.statusName.equalsIgnoreCase("Hold")) {
-      statusColor = colorDim;
+      lStatusColor = colorDim;
     } else if (launch.statusName.equalsIgnoreCase("Failure")) {
-      statusColor = colorDanger;
+      lStatusColor = colorDanger;
     }
 
-    // EST/EDT determined dynamically from tm_isdst (set correctly by
-    // configTzTime's "EST5EDT,M3.2.0,M11.1.0" rule in main.cpp) rather
-    // than hardcoded, so it's right whether DST is in effect or not.
-    const char* tzLabel = (ti->tm_isdst > 0) ? "EDT" : "EST";
+    const char* lTzLabel = (lti->tm_isdst > 0) ? "EDT" : "EST";
 
     screen.setTextSize(2);
     screen.setTextColor(colorAccent, colorBg);
-    char line1[28];
-    snprintf(line1, sizeof(line1), "%s  %s %s", dateBuf, timeBuf, tzLabel);
-    screen.drawString(line1, 20, y);
+    char lLine1[28];
+    snprintf(lLine1, sizeof(lLine1), "%s  %s %s", lDateBuf, lTimeBuf, lTzLabel);
+    screen.drawString(lLine1, 20, y);
 
-    // Moved right (was 220) to make room for the added EST/EDT label above.
-    screen.setTextColor(statusColor, colorBg);
+    screen.setTextColor(lStatusColor, colorBg);
     screen.drawString(launch.statusName.c_str(), 260, y);
 
     screen.setTextSize(1);
     screen.setTextColor(colorText, colorBg);
-    char line2[80];
-    snprintf(line2, sizeof(line2), "%s - %s", launch.rocketName.c_str(), launch.missionName.c_str());
-    screen.drawString(line2, 20, y + 24);
+    char lLine2[80];
+    snprintf(lLine2, sizeof(lLine2), "%s - %s", launch.rocketName.c_str(), launch.missionName.c_str());
+    screen.drawString(lLine2, 20, y + 24);
 
     screen.setTextColor(colorDim, colorBg);
-    char line3[96];
-    snprintf(line3, sizeof(line3), "%s, %s", launch.padName.c_str(), launch.locationName.c_str());
-    screen.drawString(line3, 20, y + 40);
+    char lLine3[96];
+    snprintf(lLine3, sizeof(lLine3), "%s, %s", launch.padName.c_str(), launch.locationName.c_str());
+    screen.drawString(lLine3, 20, y + 40);
 
     y += 62;
     if (i < shown - 1) {
       screen.drawLine(20, y - 8, WIDTH - 20, y - 8, colorDim);
     }
+  }
+
+  // Legend for the Starship/Super Heavy icon used above -- bottom-right
+  // corner, out of the way of the launch list itself.
+  {
+    int legendIconX = WIDTH - 150;
+    int legendIconY = HEIGHT - 40;
+    drawRocketIcon(legendIconX, legendIconY, colorStarship);
+    screen.setTextSize(1);
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString("= Starship/Super Heavy", legendIconX + 26, legendIconY + 10);
   }
 }
 
@@ -2865,6 +3062,7 @@ void screen_manager_draw() {
   colorAccent = g_nightModeActive ? colorAccentNight : colorAccentDay;
   colorSuccess = g_nightModeActive ? colorSuccessNight : colorSuccessDay;
   colorDanger = g_nightModeActive ? colorDangerNight : colorDangerDay;
+  colorStarship = g_nightModeActive ? colorStarshipNight : colorStarshipDay;
 
   // Idle auto-cycle: once nobody has touched the screen for
   // IDLE_TIMEOUT_MS, advance to the next tab every AUTO_CYCLE_INTERVAL_MS.
@@ -2965,7 +3163,9 @@ void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
     // Any tap while the banner is up just dismisses it -- swallowed here
     // before swipe/longpress/tab-advance logic ever runs, regardless of
     // gesture shape, so dismissing never doubles as page navigation.
-    g_alertActive = false;
+    // Advances to the next queued alert (if any) rather than just
+    // clearing, so a dismiss never skips a still-pending alert.
+    advanceAlertQueue();
     touchWasDown = touched;
     return;
   }
@@ -3068,10 +3268,7 @@ void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
       } else if (hitPollButton) {
         cycleAviationPollInterval();
       } else if (hitAlertTestButton) {
-        g_alertActive = true;
-        g_alertShownAtMs = now;
-        g_alertColorOverride = colorDanger;
-        snprintf(g_alertMessage, sizeof(g_alertMessage), "TEST ALERT - HIDDEN DEBUG TRIGGER");
+        enqueueAlert("TEST ALERT - HIDDEN DEBUG TRIGGER", colorDanger);
       } else if (!handledAviation && !g_pageLocked) {
         currentTab = (currentTab + 1) % TAB_COUNT;
       }

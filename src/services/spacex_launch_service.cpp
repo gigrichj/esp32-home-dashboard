@@ -5,11 +5,47 @@
 #include <esp_heap_caps.h>
 #include <WiFi.h>
 #include <time.h>
+#include <JPEGDEC.h>
 
 SpacexLaunch g_spacexLaunches[SPACEX_MAX_LAUNCHES];
 int g_spacexLaunchCount = 0;
 bool g_spacexValid = false;
 int g_spacexLastHttpCode = -999;
+
+uint16_t* g_spacexImagePixels = nullptr;
+int g_spacexImageWidth = 0;
+int g_spacexImageHeight = 0;
+bool g_spacexImageValid = false;
+
+bool g_spacexLandingValid = false;
+bool g_spacexLandingAttempt = false;
+String g_spacexLandingLocation = "";
+String g_spacexLandingAbbrev = "";
+String g_spacexLandingType = "";
+
+// Same jpegDrawCallback/s_decodeTarget pattern as aviation_service.cpp's
+// fetchAndDecodePhoto() -- file-scoped statics here don't collide with
+// that file's own copy, so this is a straightforward duplication rather
+// than a shared/refactored helper.
+static uint16_t* s_decodeTarget = nullptr;
+static int s_decodeTargetW = 0;
+static int s_decodeTargetH = 0;
+
+static int jpegDrawCallback(JPEGDRAW *pDraw) {
+  if (s_decodeTarget == nullptr) return 0;
+  for (int row = 0; row < pDraw->iHeight; row++) {
+    int destY = pDraw->y + row;
+    if (destY < 0 || destY >= s_decodeTargetH) continue;
+    uint16_t *destRow = s_decodeTarget + (size_t)destY * s_decodeTargetW;
+    const uint16_t *srcRow = pDraw->pPixels + (size_t)row * pDraw->iWidth;
+    for (int col = 0; col < pDraw->iWidth; col++) {
+      int destX = pDraw->x + col;
+      if (destX < 0 || destX >= s_decodeTargetW) continue;
+      destRow[destX] = srcRow[col];
+    }
+  }
+  return 1;
+}
 
 // Same yield-safe manual read loop used throughout this project -- a
 // plain http.getString() risks the same FreeRTOS watchdog crash already
@@ -127,8 +163,154 @@ void spacex_launch_service_update() {
     out.padName = launch["pad"]["name"] | "";
     out.locationName = launch["pad"]["location"]["name"] | "";
     out.statusName = launch["status"]["name"] | "";
+    out.imageUrl = launch["image"] | "";
+    out.launchId = launch["id"] | "";
     out.netUnix = netUnix;
     g_spacexLaunchCount++;
   }
   g_spacexValid = true;
 }
+
+// Mirrors aviation_service.cpp's fetchAndDecodePhoto() pattern -- fetches
+// raw JPEG bytes directly into a PSRAM buffer (not through readHttpBodySafely,
+// since that returns a null-terminated String, not appropriate for binary
+// JPEG data) and decodes via JPEGDEC into an RGB565 pixel buffer.
+void spacex_fetch_next_image() {
+  if (!wifi_manager_is_connected()) return;
+  if (g_spacexLaunchCount == 0) return;
+  String url = g_spacexLaunches[0].imageUrl;
+  if (url.length() == 0) return;
+
+  HTTPClient http;
+  http.begin(url);
+  int code = http.GET();
+  if (code != 200) {
+    Serial.printf("[SpaceX] image fetch HTTP %d\n", code);
+    http.end();
+    return;
+  }
+
+  int len = http.getSize();
+  if (len <= 0 || len > 250000) {
+    Serial.printf("[SpaceX] image size invalid: %d\n", len);
+    http.end();
+    return;
+  }
+
+  uint8_t *jpegBuf = (uint8_t *)heap_caps_malloc(len, MALLOC_CAP_SPIRAM);
+  if (jpegBuf == nullptr) {
+    Serial.println("[SpaceX] image buffer alloc failed");
+    http.end();
+    return;
+  }
+
+  WiFiClient *stream = http.getStreamPtr();
+  size_t readTotal = 0;
+  uint32_t startMs = millis();
+  bool readError = false;
+  while (http.connected() && readTotal < (size_t)len && millis() - startMs < 15000) {
+    size_t avail = stream->available();
+    if (avail > 0) {
+      int toRead = (int)min((size_t)avail, (size_t)len - readTotal);
+      int r = stream->readBytes(jpegBuf + readTotal, toRead);
+      if (r <= 0) { readError = true; break; }
+      readTotal += r;
+    } else {
+      vTaskDelay(pdMS_TO_TICKS(5)); // yield -- same critical fix used throughout this project
+    }
+  }
+  http.end();
+
+  if (readError || readTotal == 0) {
+    Serial.println("[SpaceX] image payload read error");
+    free(jpegBuf);
+    return;
+  }
+
+  JPEGDEC jpeg;
+  if (jpeg.openRAM(jpegBuf, (int)readTotal, jpegDrawCallback)) {
+    int w = jpeg.getWidth();
+    int h = jpeg.getHeight();
+
+    if (g_spacexImagePixels != nullptr) {
+      free(g_spacexImagePixels);
+      g_spacexImagePixels = nullptr;
+      g_spacexImageValid = false;
+    }
+
+    uint16_t *photoBuf = (uint16_t *)heap_caps_malloc((size_t)w * h * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+    if (photoBuf != nullptr) {
+      s_decodeTarget = photoBuf;
+      s_decodeTargetW = w;
+      s_decodeTargetH = h;
+      jpeg.decode(0, 0, 0);
+      g_spacexImagePixels = photoBuf;
+      g_spacexImageWidth = w;
+      g_spacexImageHeight = h;
+      g_spacexImageValid = true;
+      Serial.printf("[SpaceX] image decoded %dx%d\n", w, h);
+    } else {
+      Serial.println("[SpaceX] image pixel buffer alloc failed");
+    }
+    jpeg.close();
+  } else {
+    Serial.println("[SpaceX] JPEG openRAM failed");
+  }
+
+  free(jpegBuf);
+}
+
+// Booster landing info for the next launch -- only available via LL2's
+// single-launch detail endpoint (not the list/upcoming endpoint used
+// above), which returns a much larger response (full agency/rocket/program
+// descriptions we don't need, alongside the landing info we do). Reuses
+// readHttpBodySafely() since this is JSON text, not binary like the image.
+void spacex_fetch_next_landing_info() {
+  if (!wifi_manager_is_connected()) return;
+  if (g_spacexLaunchCount == 0) return;
+  String launchId = g_spacexLaunches[0].launchId;
+  if (launchId.length() == 0) return;
+
+  HTTPClient http;
+  String url = "https://ll.thespacedevs.com/2.0.0/launch/" + launchId + "/";
+  http.begin(url);
+  http.useHTTP10(true);
+  int code = http.GET();
+  if (code != 200) {
+    Serial.printf("[SpaceX] landing detail HTTP %d\n", code);
+    http.end();
+    return;
+  }
+
+  String payload;
+  if (!readHttpBodySafely(http, payload, "SpaceX landing detail")) {
+    http.end();
+    return;
+  }
+  http.end();
+
+  JsonDocument doc;
+  DeserializationError err = deserializeJson(doc, payload);
+  if (err) {
+    Serial.printf("[SpaceX] landing detail JSON parse error: %s\n", err.c_str());
+    return;
+  }
+
+  // rocket.launcher_stage is an array; landing info (if any) lives on the
+  // first stage's entry. Absent entirely for launches with no landing
+  // attempt planned (e.g. expendable missions), hence the size() check.
+  JsonArray stages = doc["rocket"]["launcher_stage"].as<JsonArray>();
+  if (stages.size() == 0) {
+    g_spacexLandingAttempt = false;
+    g_spacexLandingValid = true;
+    return;
+  }
+
+  JsonObject landing = stages[0]["landing"];
+  g_spacexLandingAttempt = landing["attempt"] | false;
+  g_spacexLandingLocation = landing["location"]["name"] | "";
+  g_spacexLandingAbbrev = landing["location"]["abbrev"] | "";
+  g_spacexLandingType = landing["type"]["abbrev"] | "";
+  g_spacexLandingValid = true;
+}
+

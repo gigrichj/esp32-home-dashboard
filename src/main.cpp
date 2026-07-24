@@ -176,6 +176,10 @@ void networkTask(void* param) {
   bool weatherDataLoaded = false;
   bool spacexDataLoaded = false;
   int spacexRetryCount = 0;
+  String lastSpacexDetailLaunchId = ""; // tracks which launch's image +
+                                         // landing info we last fetched,
+                                         // so those extra heavy fetches
+                                         // only re-run when "next" changes.
   bool airQualityDataLoaded = false;
   int weatherRetryCount = 0;
   int airQualityRetryCount = 0;
@@ -298,6 +302,16 @@ void networkTask(void* param) {
       if (g_spacexValid) {
         spacexDataLoaded = true;
         spacexRetryCount = 0;
+        // Mission image + booster landing info only fetched when the
+        // "next" launch has actually changed -- both are heavier,
+        // separate fetches (image up to 250KB, landing detail is a much
+        // larger single-launch endpoint), no need to repeat them for the
+        // same launch every 4 hours.
+        if (g_spacexLaunchCount > 0 && g_spacexLaunches[0].launchId != lastSpacexDetailLaunchId) {
+          spacex_fetch_next_image();
+          spacex_fetch_next_landing_info();
+          lastSpacexDetailLaunchId = g_spacexLaunches[0].launchId;
+        }
       } else if (!spacexDataLoaded) {
         spacexRetryCount++;
       }
