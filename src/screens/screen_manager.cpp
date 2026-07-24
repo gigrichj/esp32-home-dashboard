@@ -3050,13 +3050,18 @@ static void draw_spacex() {
 
   bool nextIsStarship = isStarshipOrSuperHeavy(next.rocketName);
   if (nextIsStarship) {
-    // Starship/Super Heavy gets its own icon + bigger, distinctly
-    // colored treatment here too, matching the Dashboard.
-    drawRocketIcon(20, y, colorStarship);
+    // Badge moved to the right, independent of the left column's
+    // vertical flow -- matches the compact list's badge placement, and
+    // keeps the left column's line spacing the same as a non-Starship
+    // launch instead of pushing the mission name down an extra line.
+    String lowerRocket = next.rocketName;
+    lowerRocket.toLowerCase();
+    bool nextIsSuperHeavy = lowerRocket.indexOf("super heavy") >= 0;
+    const char* badgeLabel = nextIsSuperHeavy ? "SUPER HEAVY" : "STARSHIP";
+    drawRocketIcon(560, 40, colorStarship);
     screen.setTextSize(3);
     screen.setTextColor(colorStarship, colorBg);
-    screen.drawString(next.rocketName.c_str(), 48, y + 4);
-    y += 36;
+    screen.drawString(badgeLabel, 588, 44);
 
     screen.setTextSize(1);
     screen.setTextColor(colorText, colorBg);
