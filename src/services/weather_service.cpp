@@ -10,6 +10,7 @@
 WeatherData g_weather;
 ForecastDay g_forecast[FORECAST_DAYS];
 int g_forecastCount = 0;
+int g_forecastLastHttpCode = -999;
 
 HourlyPrecipPoint g_precipHourly[PRECIP_HOURLY_POINTS];
 int g_precipHourlyCount = 0;
@@ -86,8 +87,14 @@ static void fetchForecast() {
     "https://api.openweathermap.org/data/2.5/forecast?lat=%f&lon=%f&units=imperial&appid=%s",
     (double)HOME_LAT, (double)HOME_LON, OWM_API_KEY);
 
+  // Explicit 15s timeout -- same fix applied to SpaceX's fetches earlier;
+  // the default ~5s Arduino HTTPClient timeout was too short for this
+  // endpoint's payload size (5 days x 8 three-hour entries), causing the
+  // chronic "Forecast HTTP -11" timeouts that left the 5-day strip empty.
+  http.setTimeout(15000);
   http.begin(url);
   int code = http.GET();
+  g_forecastLastHttpCode = code;
   if (code != 200) {
     Serial.printf("[Weather] Forecast HTTP %d\n", code);
     http.end();
@@ -101,6 +108,7 @@ static void fetchForecast() {
   DeserializationError err = deserializeJson(doc, payload);
   if (err) {
     Serial.printf("[Weather] Forecast JSON parse error: %s\n", err.c_str());
+    g_forecastLastHttpCode = -1; // distinguish parse failure from a real HTTP code
     return;
   }
 

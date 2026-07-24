@@ -1579,6 +1579,17 @@ static void draw_weather() {
 
   int colW = (WIDTH - 40) / 5;
   screen.setTextDatum(textdatum_t::middle_center);
+  if (g_forecastCount == 0) {
+    // 5-day strip failed to load -- show the HTTP result instead of
+    // silently rendering nothing, same convention used elsewhere on this
+    // page (precip strip, UV, air quality) via a "HTTP %d" fallback.
+    screen.setTextSize(2);
+    screen.setTextColor(colorDim, colorBg);
+    char forecastErrLine[24];
+    snprintf(forecastErrLine, sizeof(forecastErrLine), "HTTP %d", g_forecastLastHttpCode);
+    screen.drawString(forecastErrLine, WIDTH / 2, stripY + 24);
+    screen.setTextColor(colorText, colorBg);
+  }
   for (int i = 0; i < g_forecastCount; i++) {
     int cx = 20 + colW * i + colW / 2;
 

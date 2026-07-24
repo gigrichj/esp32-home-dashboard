@@ -56,6 +56,7 @@ struct ForecastDay {
 static const int FORECAST_DAYS = 5;
 extern ForecastDay g_forecast[FORECAST_DAYS];
 extern int g_forecastCount;
+extern int g_forecastLastHttpCode; // shown on-screen if the 5-day strip is empty
 
 extern WeatherData g_weather;
 
