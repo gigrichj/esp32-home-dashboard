@@ -330,6 +330,18 @@ void Canvas::fillScreen(uint16_t color) {
     std::fill(_fb, _fb + static_cast<size_t>(WIDTH) * HEIGHT, color);
 }
 
+void Canvas::dimFrameBuffer() {
+    if (_fb == nullptr) return;
+    // Fast RGB565 exact-half trick: clear the LSB of each channel (R bit
+    // 11, G bit 5, B bit 0 -- mask 0x0821) before shifting the whole
+    // 16-bit word right by 1, so no bit crosses between channels. Cheap
+    // enough to run over the whole 800x480 buffer once per frame.
+    size_t pixels = static_cast<size_t>(WIDTH) * HEIGHT;
+    for (size_t i = 0; i < pixels; i++) {
+        _fb[i] = static_cast<uint16_t>((_fb[i] & 0xF7DEu) >> 1);
+    }
+}
+
 void Canvas::fillRect(int x, int y, int w, int h, uint16_t color) {
     if (_fb == nullptr || w <= 0 || h <= 0) return;
     int x0 = std::max(0, x);

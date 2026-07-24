@@ -31,6 +31,12 @@ public:
     uint16_t color565(uint8_t r, uint8_t g, uint8_t b) const;
     void fillScreen(uint16_t color);
     void fillRect(int x, int y, int w, int h, uint16_t color);
+    // Halves the brightness of every pixel currently in the draw buffer,
+    // in place. Call after all drawing for a frame is done, right before
+    // present() -- night-mode auto-dim uses this instead of true backlight
+    // PWM, since this board's backlight is on/off only (wired through the
+    // CH422G IO expander as a switch, not a PWM-capable line).
+    void dimFrameBuffer();
     void drawPixel(int x, int y, uint16_t color);
     void drawLine(int x0, int y0, int x1, int y1, uint16_t color);
     void drawWideLine(int x0, int y0, int x1, int y1, float width, uint16_t color);

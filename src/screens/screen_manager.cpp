@@ -136,6 +136,12 @@ static uint16_t touchDownY = 0;
 static uint16_t touchMinX = 0;                  // smallest X seen so far this gesture (left excursion)
 static uint16_t touchMaxX = 0;                  // largest X seen so far this gesture (right excursion)
 
+// Auto-dim: screen dims (see Canvas::dimFrameBuffer()) between 10pm and
+// 8am, unless a swipe-up gesture has woken it -- g_dimWakeUntilMs holds
+// the millis() deadline until which full brightness is forced regardless
+// of the time-of-day window.
+static uint32_t g_dimWakeUntilMs = 0;
+
 static bool g_pageLocked = false;               // when true, navigation (swipe, tap-to-advance,
                                                  // idle auto-cycle) is suppressed -- the current
                                                  // page keeps drawing and updating live data
@@ -2887,6 +2893,23 @@ void screen_manager_draw() {
 
   checkAlertTriggers();
   drawAlertBanner();
+
+  // Auto-dim: 10pm-8am, unless a swipe-up wake override is active. Dims
+  // the just-drawn frame in place, right before it's presented -- see
+  // Canvas::dimFrameBuffer() for why this is done at the buffer level
+  // instead of true backlight PWM (not available on this board's wiring).
+  {
+    time_t nowUnix = time(nullptr);
+    bool inDimWindow = false;
+    if (nowUnix > 100000) {
+      struct tm* ti = localtime(&nowUnix);
+      inDimWindow = (ti->tm_hour >= 22 || ti->tm_hour < 8);
+    }
+    bool wakeActive = millis() < g_dimWakeUntilMs;
+    if (inDimWindow && !wakeActive) {
+      screen.dimFrameBuffer();
+    }
+  }
 }
 
 static const int DEBUG_TAB_INDEX = 6;
@@ -2943,12 +2966,21 @@ void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
                              horizontalPeak > downExcursion &&
                              horizontalPeak > upExcursion;
 
+    bool isVerticalSwipeUp = upExcursion >= VERTICAL_SWIPE_MIN_PX &&
+                             upExcursion > horizontalPeak &&
+                             upExcursion > downExcursion;
+
     if (isVerticalSwipeDown) {
       // Top-to-bottom swipe toggles the page lock -- the current page
       // keeps drawing and updating live data normally, it just stops
       // advancing to the next tab (via swipe, tap-to-advance, or idle
       // auto-cycle) until swiped down again.
       g_pageLocked = !g_pageLocked;
+    } else if (isVerticalSwipeUp) {
+      // Bottom-to-top swipe wakes the screen from night auto-dim for 5
+      // minutes, regardless of page lock -- not page navigation, same
+      // category as the night-mode long-press.
+      g_dimWakeUntilMs = now + (5UL * 60UL * 1000UL);
     } else if (isHorizontalSwipe) {
       // Horizontal swipe pages left/right, suppressed while page-locked --
       // the whole point of the lock is to stay put until it's explicitly
