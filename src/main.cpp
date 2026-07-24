@@ -175,6 +175,7 @@ void networkTask(void* param) {
   bool astroDataLoaded = false;
   bool weatherDataLoaded = false;
   bool spacexDataLoaded = false;
+  int spacexRetryCount = 0;
   bool airQualityDataLoaded = false;
   int weatherRetryCount = 0;
   int airQualityRetryCount = 0;
@@ -284,13 +285,21 @@ void networkTask(void* param) {
     }
     // Not urgent -- deferred to the next cycle like Aviation/ISS rather
     // than forcing itself in alongside a heavy fetch already running.
-    uint32_t spacexInterval = spacexDataLoaded ? SPACEX_POLL_MS : SPACEX_RETRY_MS;
+    // Same MAX_FAST_RETRIES cap as Weather/Air Quality/Precip -- without
+    // this, a persistently-timing-out endpoint (like the -11 read
+    // timeouts seen on this and other external APIs) would get retried
+    // every 150s forever instead of backing off to the slow cadence.
+    uint32_t spacexInterval = (spacexDataLoaded || spacexRetryCount >= MAX_FAST_RETRIES)
+                                  ? SPACEX_POLL_MS : SPACEX_RETRY_MS;
     if (!heavyFetchThisCycle && now - lastSpacex > spacexInterval) {
       lastSpacex = now;
       debug_log("spacex fetch start");
       spacex_launch_service_update();
       if (g_spacexValid) {
         spacexDataLoaded = true;
+        spacexRetryCount = 0;
+      } else if (!spacexDataLoaded) {
+        spacexRetryCount++;
       }
       debug_log("spacex fetch done");
     }
