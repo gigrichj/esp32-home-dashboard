@@ -1501,46 +1501,53 @@ static void draw_weather() {
     // hourly data source already used for the UV index (see
     // fetchHourlyPrecip() in weather_service.cpp) -- gives a glance at
     // rain chances through the day/night ahead, versus the single
-    // "right now" PRECIP gauge drawn above. precipTopY=352 clears the
-    // Sunset row (drawn at y=320, ~16px tall) in the left column below it
-    // -- an earlier value of 328 overlapped it.
+    // "right now" PRECIP gauge drawn above.
+    //
+    // Follow-up: dropped the separate "24HR PRECIP" title row + its
+    // underline that used to sit above the box -- the label now lives
+    // inline, bottom-right of the box itself (same row as the hour tick
+    // labels). That reclaims the ~20px the title row used to take,
+    // handed straight to barAreaH so the bars read much more clearly.
     int stripX = 20, precipTopY = 352, precipStripW = WIDTH - 40;
     screen.setTextSize(2);
     screen.setTextColor(colorAccent, colorBg);
     screen.setTextDatum(textdatum_t::top_left);
-    screen.drawString("24HR PRECIP", stripX, precipTopY);
-    screen.drawLine(stripX, precipTopY + 18, stripX + 170, precipTopY + 18, colorAccent);
 
-    // Tightened the gap after the label/underline (was +26 with an 18px
-    // tall bar area; now +20 with 17px tall, which also nudges the bar's
-    // own baseline up 1px per follow-up feedback).
-    int barAreaY = precipTopY + 20;
-    int barAreaH = 17;
+    int barAreaY = precipTopY;
+    int barAreaH = 37; // was 17 -- grew by the ~20px freed from dropping the title row
     int barBaselineY = barAreaY + barAreaH;
     // The end-caps hang down from this top (baseline) line only, meeting
     // the forecast-row divider line further below (drawn at stripY - 14,
     // where stripY = 425 -- kept as a literal here since stripY isn't
-    // declared until after this block). Previously the end-caps also ran
-    // upward from barAreaY into the bar-fill area above the baseline,
-    // which read as two stray extra verticals above the top line.
+    // declared until after this block).
     int frameBottomY = 411;
 
     if (g_precipHourlyValid && g_precipHourlyCount > 0) {
       int n = g_precipHourlyCount;
       int slotW = precipStripW / n;
       uint16_t barColor = screen.color565(70, 150, 220);
+
+      // Faint background tint across the whole bar area so 0%-chance
+      // hours read as "checked, nothing expected" rather than looking
+      // identical to a strip that never loaded. Drawn first so bars/
+      // baseline/labels all sit on top of it.
+      uint16_t tintColor = screen.color565(30, 40, 55);
+      screen.fillRect(stripX + 1, barAreaY, precipStripW - 2, barAreaH, tintColor);
+
+      // Any nonzero chance gets at least this many pixels -- previously
+      // a low prob (5-10%) could round down to 0px against the 17px-tall
+      // bar area and vanish entirely against the flat baseline.
+      static const int MIN_VISIBLE_BAR_PX = 2;
       for (int i = 0; i < n; i++) {
         int prob = constrain(g_precipHourly[i].precipProb, 0, 100);
         int barH = (int)(barAreaH * (prob / 100.0f));
+        if (prob > 0 && barH < MIN_VISIBLE_BAR_PX) barH = MIN_VISIBLE_BAR_PX;
         int bx = stripX + i * slotW;
         if (barH > 0) {
           screen.fillRect(bx + 1, barBaselineY - barH, max(slotW - 2, 1), barH, barColor);
         }
       }
       screen.drawLine(stripX, barBaselineY, stripX + precipStripW, barBaselineY, colorDim);
-      // End-caps start exactly at the baseline (top line) and run down
-      // to meet the forecast divider -- no longer extending upward into
-      // the bar-fill area above the baseline.
       screen.drawLine(stripX, barBaselineY, stripX, frameBottomY, colorDim);
       screen.drawLine(stripX + precipStripW, barBaselineY, stripX + precipStripW, frameBottomY, colorDim);
 
@@ -1555,11 +1562,17 @@ static void draw_weather() {
         if (h12 == 0) h12 = 12;
         char hourBuf[8];
         snprintf(hourBuf, sizeof(hourBuf), "%d%s", h12, ti->tm_hour < 12 ? "A" : "P");
-        // The leftmost label sits flush against the new end-cap line --
-        // nudge it 1px right so it doesn't crowd/touch the border.
+        // The leftmost label sits flush against the end-cap line -- nudge
+        // it 1px right so it doesn't crowd/touch the border.
         int lx = stripX + i * slotW + (i == 0 ? 1 : 0);
         screen.drawString(hourBuf, lx, barBaselineY + 3);
       }
+
+      // Relocated label -- was a separate title+underline above the box,
+      // now sits bottom-right, same row/size as the hour ticks.
+      screen.setTextColor(colorAccent, colorBg);
+      int labelW = screen.textWidth("24HR PRECIP");
+      screen.drawString("24HR PRECIP", stripX + precipStripW - labelW - 2, barBaselineY + 3);
     } else {
       screen.setTextSize(2);
       screen.setTextColor(colorDim, colorBg);
