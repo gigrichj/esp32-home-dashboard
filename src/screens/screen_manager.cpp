@@ -642,7 +642,11 @@ static void draw_dashboard() {
 static const int RADAR_CX = 320;
 static const int RADAR_CY = 260;
 static const int RADAR_RADIUS = 190;
-static const float RADAR_MAX_RANGE_NM = 40.0f;
+// Matches the fetch radius (AVIATION_RANGE_NM in aviation_service.cpp,
+// reduced 40nm -> 20nm). Ring spacing, outer range label, and the
+// visible/aircraft filtering below all derive from this, so nothing
+// else needs to change.
+static const float RADAR_MAX_RANGE_NM = 20.0f;
 
 static int countVisibleAircraft() {
   int visible = 0;
