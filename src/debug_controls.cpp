@@ -1,7 +1,10 @@
 #include "debug_controls.h"
 #include <esp_system.h>
 
-uint32_t g_aviationPollMs = 15000;
+uint32_t g_aviationPollMs = 30000; // was 15000 -- aviation was polling far more often than any
+                                     // other heavy fetch in this project (Weather=10min, Air
+                                     // Quality=25min, SpaceX=4hr), likely contributing to display
+                                     // flicker from the sheer frequency of heavy WiFi activity.
 
 const char* g_resetReasonStr = "unknown";
 size_t g_minFreeHeapSeen = SIZE_MAX;
