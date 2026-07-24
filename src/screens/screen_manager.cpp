@@ -2427,7 +2427,20 @@ static void draw_astro() {
   if (tonightIdx >= 0) {
     int li = g_astroForecast[tonightIdx].liftedindex;
     screen.setTextSize(2);
-    screen.setTextColor(li > 0 ? colorSuccess : colorDanger, colorBg);
+    // Match the 4-tier legend colors below instead of the old
+    // Stable/everything-else binary coloring -- thresholds mirror
+    // astro_instability_label() exactly (astro_seeing_service.cpp).
+    uint16_t stormValueColor;
+    if (li > 0) {
+      stormValueColor = colorSuccess;
+    } else if (li > -4) {
+      stormValueColor = screen.color565(230, 200, 40);
+    } else if (li > -8) {
+      stormValueColor = screen.color565(230, 130, 40);
+    } else {
+      stormValueColor = colorDanger;
+    }
+    screen.setTextColor(stormValueColor, colorBg);
     screen.drawString(astro_instability_label(li), col3X, row2Y + 34);
 
     // Tiny legend under the value: all 4 possible Storm Risk levels,
