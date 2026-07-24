@@ -1569,10 +1569,11 @@ static void draw_weather() {
       }
 
       // Relocated label -- was a separate title+underline above the box,
-      // now sits bottom-right, same row/size as the hour ticks.
+      // now sits bottom-right, same row/size as the hour ticks. Nudged
+      // 2px lower than the hour-tick baseline per follow-up feedback.
       screen.setTextColor(colorAccent, colorBg);
       int labelW = screen.textWidth("24HR PRECIP");
-      screen.drawString("24HR PRECIP", stripX + precipStripW - labelW - 2, barBaselineY + 3);
+      screen.drawString("24HR PRECIP", stripX + precipStripW - labelW - 2, barBaselineY + 5);
     } else {
       screen.setTextSize(2);
       screen.setTextColor(colorDim, colorBg);
