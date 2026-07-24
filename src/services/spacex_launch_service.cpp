@@ -116,6 +116,10 @@ void spacex_launch_service_update() {
   // this host on this network, showing up as constant HTTP -11
   // (read timeout) with the SpaceX page stuck on "No launch data yet".
   http.setTimeout(15000);
+  // Some public APIs slow-walk or drop requests with no User-Agent at
+  // all (browsers always send a real one, which is why it worked fine
+  // in a browser test but timed out repeatedly from this device).
+  http.setUserAgent("esp32-home-dashboard/1.0");
   // Same useHTTP10 fix as every other manual-read-loop JSON fetch in this
   // project -- without it, a chunked-transfer-encoding response corrupts
   // the raw stream read.
@@ -189,6 +193,7 @@ void spacex_fetch_next_image() {
   HTTPClient http;
   http.begin(url);
   http.setTimeout(15000); // same fix as the list/landing fetches above
+  http.setUserAgent("esp32-home-dashboard/1.0");
   int code = http.GET();
   if (code != 200) {
     Serial.printf("[SpaceX] image fetch HTTP %d\n", code);
@@ -281,6 +286,7 @@ void spacex_fetch_next_landing_info() {
   String url = "https://ll.thespacedevs.com/2.0.0/launch/" + launchId + "/";
   http.begin(url);
   http.setTimeout(15000); // same fix as the list fetch above
+  http.setUserAgent("esp32-home-dashboard/1.0");
   http.useHTTP10(true);
   int code = http.GET();
   if (code != 200) {
