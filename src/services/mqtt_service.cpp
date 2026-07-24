@@ -21,10 +21,14 @@ void mqtt_service_begin() {
 // If the broker is unreachable/unconfigured, mqttClient.connect() was being
 // retried every single networkTask iteration (~10-30ms) with zero backoff --
 // hammering the network stack with rapid-fire connection resets whenever the
-// broker refused or reset the socket. Now retries are spaced at least 5s
-// apart, so a dead/misconfigured broker can no longer spin like that.
+// broker refused or reset the socket. Retries were then spaced at least 5s
+// apart -- but there's no real broker configured right now (MQTT_BROKER
+// falls back to a default that isn't even on this network's subnet), so
+// even a 5s retry was still constant, noisy "Connection reset by peer"
+// spam with zero chance of success. Raised to 30 minutes so it barely
+// ever tries -- the code stays intact for whenever a real broker is set up.
 static uint32_t lastMqttAttemptMs = 0;
-static const uint32_t MQTT_RETRY_INTERVAL_MS = 5000;
+static const uint32_t MQTT_RETRY_INTERVAL_MS = 30UL * 60UL * 1000UL;
 
 void mqtt_service_loop() {
   if (!mqttClient.connected()) {

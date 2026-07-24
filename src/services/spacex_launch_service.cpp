@@ -111,6 +111,11 @@ void spacex_launch_service_update() {
   HTTPClient http;
   const char* url = "https://ll.thespacedevs.com/2.0.0/launch/upcoming/?lsp__name=SpaceX&limit=15";
   http.begin(url);
+  // Same setTimeout fix as astro_seeing_service.cpp's 7Timer fetch --
+  // the default HTTPClient timeout (~5s) was apparently too short for
+  // this host on this network, showing up as constant HTTP -11
+  // (read timeout) with the SpaceX page stuck on "No launch data yet".
+  http.setTimeout(15000);
   // Same useHTTP10 fix as every other manual-read-loop JSON fetch in this
   // project -- without it, a chunked-transfer-encoding response corrupts
   // the raw stream read.
@@ -183,6 +188,7 @@ void spacex_fetch_next_image() {
 
   HTTPClient http;
   http.begin(url);
+  http.setTimeout(15000); // same fix as the list/landing fetches above
   int code = http.GET();
   if (code != 200) {
     Serial.printf("[SpaceX] image fetch HTTP %d\n", code);
@@ -274,6 +280,7 @@ void spacex_fetch_next_landing_info() {
   HTTPClient http;
   String url = "https://ll.thespacedevs.com/2.0.0/launch/" + launchId + "/";
   http.begin(url);
+  http.setTimeout(15000); // same fix as the list fetch above
   http.useHTTP10(true);
   int code = http.GET();
   if (code != 200) {
