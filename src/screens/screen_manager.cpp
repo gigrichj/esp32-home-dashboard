@@ -2374,9 +2374,17 @@ static void draw_astro() {
     screen.fillCircle(moonCx, moonCy, moonR, screen.color565(230, 230, 210));
     float shadowFrac = g_moonPhaseFraction;
     bool waxing = shadowFrac < 0.5f;
-    float distFrac = fabsf(shadowFrac - 0.5f) * 2.0f;
-    int shadowOffset = (int)(moonR * 2 * distFrac) - moonR;
-    int shadowCx = waxing ? moonCx - moonR - shadowOffset : moonCx + moonR + shadowOffset;
+    float distFromFull = fabsf(shadowFrac - 0.5f) * 2.0f; // 0 at full, 1 at new
+    // BUG FIX: the shadow-overlap amount was previously inverted -- it
+    // shrank toward "barely touching the disc" near BOTH new moon and
+    // full moon, so the moon rendered as nearly fully lit at both
+    // extremes instead of nearly fully dark at new moon. This overlap
+    // should shrink to 0 (shadow center = moon center, fully covered) as
+    // distFromFull -> 1 (new moon), and grow to 2*moonR (shadow moved
+    // completely off the disc, fully lit) as distFromFull -> 0 (full
+    // moon), matching the "X pct illuminated" text alongside it.
+    float offsetFromCenter = (1.0f - distFromFull) * 2.0f * moonR;
+    int shadowCx = waxing ? (int)(moonCx - offsetFromCenter) : (int)(moonCx + offsetFromCenter);
     screen.fillCircle(shadowCx, moonCy, moonR, colorBg);
   }
 
