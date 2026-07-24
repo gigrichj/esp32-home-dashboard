@@ -190,6 +190,8 @@ static bool g_prevAnyEmergency = false;
 static bool g_prevStarshipLaunchToday = false;
 static bool g_prevSuperHeavyLaunchToday = false;
 static bool g_prevIssGoodPassSoon = false;
+static bool g_prevStarshipLaunch30Min = false;
+static bool g_prevSuperHeavyLaunch30Min = false;
 static bool g_alertStatePrimed = false; // avoids firing a false alert on the very first frame,
                                         // before we have a real "previous" state to compare against
 
@@ -2839,6 +2841,33 @@ static void checkAlertTriggers() {
     }
   }
 
+  // Separate 30-minutes-before alert for Starship/Super Heavy, alongside
+  // the "launching today" alert above -- same Super-Heavy-priority rule
+  // if a name somehow contains both terms.
+  bool starshipLaunch30Min = false;
+  bool superHeavyLaunch30Min = false;
+  if (g_spacexValid && g_spacexLaunchCount > 0) {
+    String lowerRocketName30 = g_spacexLaunches[0].rocketName;
+    lowerRocketName30.toLowerCase();
+    bool isSuperHeavy30 = lowerRocketName30.indexOf("super heavy") >= 0;
+    bool isStarshipVehicle30 = lowerRocketName30.indexOf("starship") >= 0;
+    if (isSuperHeavy30 || isStarshipVehicle30) {
+      uint32_t nowUnix30 = (uint32_t)time(nullptr);
+      if (nowUnix30 > 100000) {
+        uint32_t launchUnix30 = g_spacexLaunches[0].netUnix;
+        uint32_t windowStart30 = (launchUnix30 > 1800) ? (launchUnix30 - 1800) : 0;
+        bool inWindow30 = (nowUnix30 >= windowStart30 && nowUnix30 < launchUnix30);
+        if (inWindow30) {
+          if (isSuperHeavy30) {
+            superHeavyLaunch30Min = true;
+          } else {
+            starshipLaunch30Min = true;
+          }
+        }
+      }
+    }
+  }
+
   if (g_alertStatePrimed) {
     // Independent ifs, not else-if -- every condition that newly became
     // true this frame gets queued, so simultaneous events (e.g. a storm
@@ -2861,6 +2890,12 @@ static void checkAlertTriggers() {
     }
     if (issGoodPassSoon && !g_prevIssGoodPassSoon) {
       enqueueAlert("GOOD ISS PASS IN 30 MIN", colorSuccess);
+    }
+    if (starshipLaunch30Min && !g_prevStarshipLaunch30Min) {
+      enqueueAlert("STARSHIP LAUNCH IN 30 MIN", colorStarship);
+    }
+    if (superHeavyLaunch30Min && !g_prevSuperHeavyLaunch30Min) {
+      enqueueAlert("SUPER HEAVY LAUNCH IN 30 MIN", colorStarship);
     }
     if (!astroIsGood && g_prevAstroWasGood && g_alertActive &&
         strcmp(g_alertMessage, "ASTRO CONDITIONS NOW GOOD TONIGHT") == 0) {
@@ -2885,6 +2920,8 @@ static void checkAlertTriggers() {
   g_prevStarshipLaunchToday = starshipLaunchToday;
   g_prevSuperHeavyLaunchToday = superHeavyLaunchToday;
   g_prevIssGoodPassSoon = issGoodPassSoon;
+  g_prevStarshipLaunch30Min = starshipLaunch30Min;
+  g_prevSuperHeavyLaunch30Min = superHeavyLaunch30Min;
   g_alertStatePrimed = true;
 
 }
