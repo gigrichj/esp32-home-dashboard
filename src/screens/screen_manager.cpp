@@ -3139,6 +3139,20 @@ static void draw_spacex() {
     snprintf(lLine3, sizeof(lLine3), "%s, %s", launch.padName.c_str(), launch.locationName.c_str());
     screen.drawString(lLine3, 20, y + 40);
 
+    // Starship/Super Heavy badge to the right of the row -- plenty of
+    // open space there, rather than folding the rocket name into the
+    // same left-hand text column as every other entry.
+    if (isStarshipOrSuperHeavy(launch.rocketName)) {
+      String lowerRocket = launch.rocketName;
+      lowerRocket.toLowerCase();
+      bool rowIsSuperHeavy = lowerRocket.indexOf("super heavy") >= 0;
+      const char* badgeLabel = rowIsSuperHeavy ? "SUPER HEAVY" : "STARSHIP";
+      drawRocketIcon(560, y, colorStarship);
+      screen.setTextSize(2);
+      screen.setTextColor(colorStarship, colorBg);
+      screen.drawString(badgeLabel, 588, y + 8);
+    }
+
     y += 62;
     if (i < shown - 1) {
       screen.drawLine(20, y - 8, WIDTH - 20, y - 8, colorDim);
@@ -3148,7 +3162,7 @@ static void draw_spacex() {
   // Legend for the Starship/Super Heavy icon used above -- bottom-right
   // corner, out of the way of the launch list itself.
   {
-    int legendIconX = WIDTH - 150;
+    int legendIconX = WIDTH - 180; // moved left ~1/4in -- was clipping off the right edge
     int legendIconY = HEIGHT - 40;
     drawRocketIcon(legendIconX, legendIconY, colorStarship);
     screen.setTextSize(1);
