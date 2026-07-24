@@ -209,6 +209,15 @@ static bool parseAircraftJson(const String& payload, const char* sourceName) {
 static bool fetchAircraftFromUrl(const char* url, const char* sourceName) {
   HTTPClient http;
   http.begin(url);
+  // Same useHTTP10 fix as every other manual-read-loop JSON fetch in this
+  // project -- this one had never been converted, and was seen returning
+  // a truncated/garbled payload (ArduinoJson "IncompleteInput") on busy
+  // airspace queries. Without this, a server using chunked transfer
+  // encoding leaves raw hex chunk-size markers interleaved in the byte
+  // stream, which corrupts the JSON mid-parse and also means
+  // http.getSize() below can't report a real Content-Length, forcing the
+  // (too-small-for-a-busy-area) buffer fallback.
+  http.useHTTP10(true);
   int code = http.GET();
   g_aviationStatus.lastHttpCode = code;
 
@@ -220,14 +229,19 @@ static bool fetchAircraftFromUrl(const char* url, const char* sourceName) {
   }
 
   int payloadLen = http.getSize();
-  if (payloadLen > 100000) {
+  if (payloadLen > 200000) {
     Serial.printf("[Aviation] %s payload implausibly large (%d bytes), skipping\n", sourceName, payloadLen);
     g_aviationStatus.lastError = String(sourceName) + " payload too large, skipped";
     http.end();
     return false;
   }
 
-  int bufSize = (payloadLen > 0) ? payloadLen + 1 : 65536;
+  // Fallback raised from 65536 to 131072 -- busy airspace (this project's
+  // deployment is near several major DC-area airports) can return well
+  // over 20 raw aircraft entries before our own MAX_TRACKED_AIRCRAFT cap
+  // is applied during parsing, and useHTTP10 not being set previously
+  // meant Content-Length often wasn't available, hitting this fallback.
+  int bufSize = (payloadLen > 0) ? payloadLen + 1 : 131072;
   char *rawBuf = (char *)heap_caps_malloc(bufSize, MALLOC_CAP_8BIT);
   if (rawBuf == nullptr) {
     Serial.printf("[Aviation] %s payload buffer alloc failed\n", sourceName);
