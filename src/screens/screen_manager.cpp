@@ -769,11 +769,12 @@ static void draw_aircraft_detail_card(int listX) {
 }
 
 static void draw_aviation() {
-  // TEMP DIAGNOSTIC: entire Aviation page disabled (no draw, no compute)
-  // to isolate whether it's contributing to the display flicker. Paired
-  // with AVIATION_FETCH_ENABLED = false in main.cpp, which stops the
-  // underlying network fetches. Flip both back once the test is done.
-  static const bool AVIATION_PAGE_ENABLED = false;
+  // TEMP DIAGNOSTIC, STAGE 2: page draw/compute re-enabled, but
+  // AVIATION_FETCH_ENABLED in main.cpp is still false, so this runs
+  // against an empty/stale aircraft list with zero network activity.
+  // If flicker returns now, it's the rendering/compute side, not fetch.
+  // If it stays clean, re-enable fetch next to confirm that's the cause.
+  static const bool AVIATION_PAGE_ENABLED = true;
   if (!AVIATION_PAGE_ENABLED) {
     screen.setTextSize(2);
     screen.setTextColor(colorDim, colorBg);
