@@ -322,6 +322,34 @@ static void drawDashboardBackground() {
       }
     }
   }
+
+  // A rocket silhouette crossing on its own lane, opposite direction from
+  // the plane below it -- same "ambient nod to a real page" treatment as
+  // the plane/ISS/galaxy above, this time for the SpaceX page. Nose
+  // points right (direction of travel), with a small flickering exhaust
+  // flame trailing behind so it reads as "launching/flying" rather than
+  // just drifting like the plane.
+  {
+    uint16_t rocketColor = screen.color565(200, 200, 210);
+    uint16_t flameColorA = screen.color565(255, 150, 60);
+    uint16_t flameColorB = screen.color565(255, 210, 90);
+    int span = WIDTH + 80;
+    int x = (int)((t / 22) % (uint32_t)span) - 40;
+    int y = 340;
+
+    // Fuselage + nose cone, pointing right.
+    screen.fillRect(x - 14, y - 3, 20, 6, rocketColor);
+    screen.fillTriangle(x + 6, y - 5, x + 6, y + 5, x + 16, y, rocketColor);
+
+    // Fins near the tail.
+    screen.fillTriangle(x - 14, y - 3, x - 20, y - 9, x - 14, y, rocketColor);
+    screen.fillTriangle(x - 14, y + 3, x - 20, y + 9, x - 14, y, rocketColor);
+
+    // Flickering exhaust flame -- alternates color each ~150ms so it
+    // reads as active thrust rather than a static decoration.
+    uint16_t flameColor = ((t / 150) % 2 == 0) ? flameColorA : flameColorB;
+    screen.fillTriangle(x - 14, y - 2, x - 14, y + 2, x - 22, y, flameColor);
+  }
 }
 
 static int countVisibleAircraft(); // defined further down, used in draw_dashboard()
@@ -533,6 +561,15 @@ static void draw_dashboard() {
 
       screen.setTextColor(colorDim, colorBg);
       screen.drawString(next.missionName.c_str(), leftX, y);
+
+      // Surface "In Flight" (a real Launch Library 2 status value once
+      // liftoff happens) here too -- previously only visible on the
+      // SpaceX page itself via next.statusName.
+      if (next.statusName.equalsIgnoreCase("In Flight")) {
+        y += 24;
+        screen.setTextColor(colorSuccess, colorBg);
+        screen.drawString("IN FLIGHT", leftX, y);
+      }
     } else {
       screen.setTextColor(colorDim, colorBg);
       screen.drawString("No launches in 30 days", leftX, y);
