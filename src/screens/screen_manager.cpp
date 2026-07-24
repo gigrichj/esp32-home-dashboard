@@ -490,9 +490,10 @@ static void draw_dashboard() {
       if (h12 == 0) h12 = 12;
       snprintf(timeBuf, sizeof(timeBuf), "%d:%02d%s", h12, ti->tm_min, ti->tm_hour < 12 ? "A" : "P");
 
+      const char* tzLabel = (ti->tm_isdst > 0) ? "EDT" : "EST";
       screen.setTextColor(colorText, colorBg);
       char launchLine1[48];
-      snprintf(launchLine1, sizeof(launchLine1), "Next: %s %s", dateBuf, timeBuf);
+      snprintf(launchLine1, sizeof(launchLine1), "Next: %s %s %s", dateBuf, timeBuf, tzLabel);
       screen.drawString(launchLine1, leftX, y);
       y += 30;
 
@@ -2823,14 +2824,20 @@ static void draw_spacex() {
       statusColor = colorDanger;
     }
 
+    // EST/EDT determined dynamically from tm_isdst (set correctly by
+    // configTzTime's "EST5EDT,M3.2.0,M11.1.0" rule in main.cpp) rather
+    // than hardcoded, so it's right whether DST is in effect or not.
+    const char* tzLabel = (ti->tm_isdst > 0) ? "EDT" : "EST";
+
     screen.setTextSize(2);
     screen.setTextColor(colorAccent, colorBg);
-    char line1[24];
-    snprintf(line1, sizeof(line1), "%s  %s", dateBuf, timeBuf);
+    char line1[28];
+    snprintf(line1, sizeof(line1), "%s  %s %s", dateBuf, timeBuf, tzLabel);
     screen.drawString(line1, 20, y);
 
+    // Moved right (was 220) to make room for the added EST/EDT label above.
     screen.setTextColor(statusColor, colorBg);
-    screen.drawString(launch.statusName.c_str(), 220, y);
+    screen.drawString(launch.statusName.c_str(), 260, y);
 
     screen.setTextSize(1);
     screen.setTextColor(colorText, colorBg);
