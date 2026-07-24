@@ -769,6 +769,20 @@ static void draw_aircraft_detail_card(int listX) {
 }
 
 static void draw_aviation() {
+  // TEMP DIAGNOSTIC: entire Aviation page disabled (no draw, no compute)
+  // to isolate whether it's contributing to the display flicker. Paired
+  // with AVIATION_FETCH_ENABLED = false in main.cpp, which stops the
+  // underlying network fetches. Flip both back once the test is done.
+  static const bool AVIATION_PAGE_ENABLED = false;
+  if (!AVIATION_PAGE_ENABLED) {
+    screen.setTextSize(2);
+    screen.setTextColor(colorDim, colorBg);
+    screen.setTextDatum(textdatum_t::middle_center);
+    screen.drawString("AVIATION DISABLED (DIAGNOSTIC TEST)", WIDTH / 2, HEIGHT / 2);
+    screen.setTextDatum(textdatum_t::top_left);
+    return;
+  }
+
   uint16_t colorGrid = screen.color565(40, 60, 55);
   uint16_t colorPlane = screen.color565(255, 70, 90);
   uint16_t colorLabel = screen.color565(200, 220, 210);

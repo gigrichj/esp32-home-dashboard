@@ -272,13 +272,18 @@ void networkTask(void* param) {
       debug_log("precip retry fetch done");
       heavyFetchThisCycle = true;
     }
-    if (!heavyFetchThisCycle && now - lastAviation > g_aviationPollMs) {
+    // TEMP DIAGNOSTIC: aviation fetch + detail loop fully disabled to
+    // isolate whether repeated adsb.fi timeouts/fallbacks correlate with
+    // the display flicker. Flip this back to true once the isolation
+    // test is done.
+    static const bool AVIATION_FETCH_ENABLED = false;
+    if (AVIATION_FETCH_ENABLED && !heavyFetchThisCycle && now - lastAviation > g_aviationPollMs) {
       lastAviation = now;
       debug_log("aviation fetch start");
       aviation_service_update();
       debug_log("aviation fetch done");
     }
-    if (!heavyFetchThisCycle) {
+    if (AVIATION_FETCH_ENABLED && !heavyFetchThisCycle) {
       aviation_service_detail_loop();
     }
     if (!heavyFetchThisCycle && now - lastIss > ISS_POLL_MS) {
