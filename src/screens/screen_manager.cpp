@@ -8,6 +8,7 @@
 #include "../services/air_quality_service.h"
 #include "../services/astro_seeing_service.h"
 #include "../services/trend_history_service.h"
+#include "../services/spacex_launch_service.h"
 #include "secrets.h"
 #include "../debug_log.h"
 #include "../debug_controls.h"
@@ -19,7 +20,7 @@
 using namespace PanelDisplay;
 
 static const char* TAB_NAMES[] = {
-  "DASHBOARD", "AVIATION", "ASTRO", "ISS", "WEATHER", "DEBUG", "TRENDS"
+  "DASHBOARD", "AVIATION", "ASTRO", "SPACEX", "ISS", "WEATHER", "DEBUG", "TRENDS"
 };
 static const int TAB_COUNT = sizeof(TAB_NAMES) / sizeof(TAB_NAMES[0]);
 
@@ -191,7 +192,7 @@ static String formatCurrentDateTime() {
   return String(buf);
 }
 
-static const int ISS_TAB_INDEX = 3;
+static const int ISS_TAB_INDEX = 4;
 
 static void drawHeader() {
   screen.fillRect(0, 0, WIDTH, 40, colorAccent);
@@ -460,6 +461,40 @@ static void draw_dashboard() {
       screen.setTextSize(2);
       screen.setTextColor(colorDim, colorBg);
       screen.drawString(teaser, leftX, y);
+    }
+  }
+  y += 40;
+
+  // LAUNCHES: next upcoming SpaceX launch, same cross-page-teaser
+  // pattern as the Sunset/Sunrise and ISS "next pass" lines above.
+  {
+    screen.setTextSize(2);
+    screen.setTextColor(colorAccent, colorBg);
+    screen.drawString("LAUNCHES", leftX, y);
+    screen.drawLine(leftX, y + 20, leftX + 110, y + 20, colorAccent);
+    y += 30;
+
+    if (g_spacexValid && g_spacexLaunchCount > 0) {
+      SpacexLaunch& next = g_spacexLaunches[0];
+      time_t t = (time_t)next.netUnix;
+      struct tm* ti = localtime(&t);
+      char dateBuf[8], timeBuf[8];
+      strftime(dateBuf, sizeof(dateBuf), "%b%d", ti);
+      int h12 = ti->tm_hour % 12;
+      if (h12 == 0) h12 = 12;
+      snprintf(timeBuf, sizeof(timeBuf), "%d:%02d%s", h12, ti->tm_min, ti->tm_hour < 12 ? "A" : "P");
+
+      screen.setTextColor(colorText, colorBg);
+      char launchLine1[48];
+      snprintf(launchLine1, sizeof(launchLine1), "Next: %s %s", dateBuf, timeBuf);
+      screen.drawString(launchLine1, leftX, y);
+      y += 30;
+
+      screen.setTextColor(colorDim, colorBg);
+      screen.drawString(next.rocketName.c_str(), leftX, y);
+    } else {
+      screen.setTextColor(colorDim, colorBg);
+      screen.drawString("No launches in 30 days", leftX, y);
     }
   }
   y += 40;
@@ -2728,6 +2763,75 @@ static void drawAlertBanner() {
   screen.setTextDatum(textdatum_t::top_left);
 }
 
+static void draw_spacex() {
+  screen.setTextDatum(textdatum_t::top_left);
+
+  if (!g_spacexValid) {
+    screen.setTextSize(2);
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString("No launch data yet", 20, 100);
+    char errLine[48];
+    snprintf(errLine, sizeof(errLine), "Last HTTP result: %d", g_spacexLastHttpCode);
+    screen.drawString(errLine, 20, 140);
+    return;
+  }
+
+  if (g_spacexLaunchCount == 0) {
+    screen.setTextSize(2);
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString("No SpaceX launches in the next 30 days", 20, 100);
+    return;
+  }
+
+  int y = 50;
+  int shown = min(g_spacexLaunchCount, 6); // fits the available vertical space
+  for (int i = 0; i < shown; i++) {
+    SpacexLaunch& launch = g_spacexLaunches[i];
+
+    time_t t = (time_t)launch.netUnix;
+    struct tm* ti = localtime(&t);
+    char dateBuf[8], timeBuf[8];
+    strftime(dateBuf, sizeof(dateBuf), "%b%d", ti);
+    int h12 = ti->tm_hour % 12;
+    if (h12 == 0) h12 = 12;
+    snprintf(timeBuf, sizeof(timeBuf), "%d:%02d%s", h12, ti->tm_min, ti->tm_hour < 12 ? "A" : "P");
+
+    uint16_t statusColor = colorText;
+    if (launch.statusName.equalsIgnoreCase("Go") || launch.statusName.equalsIgnoreCase("Success")) {
+      statusColor = colorSuccess;
+    } else if (launch.statusName.equalsIgnoreCase("TBD") || launch.statusName.equalsIgnoreCase("Hold")) {
+      statusColor = colorDim;
+    } else if (launch.statusName.equalsIgnoreCase("Failure")) {
+      statusColor = colorDanger;
+    }
+
+    screen.setTextSize(2);
+    screen.setTextColor(colorAccent, colorBg);
+    char line1[24];
+    snprintf(line1, sizeof(line1), "%s  %s", dateBuf, timeBuf);
+    screen.drawString(line1, 20, y);
+
+    screen.setTextColor(statusColor, colorBg);
+    screen.drawString(launch.statusName.c_str(), 220, y);
+
+    screen.setTextSize(1);
+    screen.setTextColor(colorText, colorBg);
+    char line2[80];
+    snprintf(line2, sizeof(line2), "%s - %s", launch.rocketName.c_str(), launch.missionName.c_str());
+    screen.drawString(line2, 20, y + 24);
+
+    screen.setTextColor(colorDim, colorBg);
+    char line3[96];
+    snprintf(line3, sizeof(line3), "%s, %s", launch.padName.c_str(), launch.locationName.c_str());
+    screen.drawString(line3, 20, y + 40);
+
+    y += 62;
+    if (i < shown - 1) {
+      screen.drawLine(20, y - 8, WIDTH - 20, y - 8, colorDim);
+    }
+  }
+}
+
 void screen_manager_draw() {
   g_nightModeActive = computeNightModeActive();
   colorBg = g_nightModeActive ? colorBgNight : colorBgDay;
@@ -2756,10 +2860,11 @@ void screen_manager_draw() {
     case 0: draw_dashboard(); break;
     case 1: draw_aviation(); break;
     case 2: draw_astro(); break;
-    case 3: draw_iss(); break;
-    case 4: draw_weather(); break;
-    case 5: draw_debug(); break;
-    case 6: draw_trends(); break;
+    case 3: draw_spacex(); break;
+    case 4: draw_iss(); break;
+    case 5: draw_weather(); break;
+    case 6: draw_debug(); break;
+    case 7: draw_trends(); break;
   }
 
   screen.setTextSize(1);
@@ -2784,7 +2889,7 @@ void screen_manager_draw() {
   drawAlertBanner();
 }
 
-static const int DEBUG_TAB_INDEX = 5;
+static const int DEBUG_TAB_INDEX = 6;
 static uint16_t lastTouchX = 0;
 static uint16_t lastTouchY = 0;
 

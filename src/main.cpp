@@ -10,6 +10,7 @@
 #include "services/aviation_service.h"
 #include "services/iss_service.h"
 #include "services/trend_history_service.h"
+#include "services/spacex_launch_service.h"
 #include "screens/screen_manager.h"
 #include "debug_log.h"
 #include "debug_controls.h"
@@ -17,6 +18,9 @@
 using namespace PanelDisplay;
 
 static const uint32_t WEATHER_POLL_MS      = 10UL * 60UL * 1000UL;
+static const uint32_t SPACEX_POLL_MS       = 4UL * 60UL * 60UL * 1000UL; // every few hours --
+                                                                     // launch schedules don't
+                                                                     // change minute-to-minute.
 static const uint32_t AIR_QUALITY_POLL_MS  = 25UL * 60UL * 1000UL; // deliberately not a clean
                                                                      // multiple of WEATHER_POLL_MS,
                                                                      // so the two heavy HTTPS fetches
@@ -158,7 +162,7 @@ void uiTask(void* param) {
 }
 
 void networkTask(void* param) {
-  uint32_t lastWeather = 0, lastAviation = 0, lastIss = 0, lastAirQuality = 0, lastAstro = 0;
+  uint32_t lastWeather = 0, lastAviation = 0, lastIss = 0, lastAirQuality = 0, lastAstro = 0, lastSpacex = 0;
   uint32_t lastPrecipRetry = 0;
   bool astroDataLoaded = false;
   bool weatherDataLoaded = false;
@@ -268,6 +272,14 @@ void networkTask(void* param) {
       debug_log("iss fetch start");
       iss_service_update();
       debug_log("iss fetch done");
+    }
+    // Not urgent -- deferred to the next cycle like Aviation/ISS rather
+    // than forcing itself in alongside a heavy fetch already running.
+    if (!heavyFetchThisCycle && now - lastSpacex > SPACEX_POLL_MS) {
+      lastSpacex = now;
+      debug_log("spacex fetch start");
+      spacex_launch_service_update();
+      debug_log("spacex fetch done");
     }
 
     // Cheap no-op most iterations -- internally gated to a 5-minute
