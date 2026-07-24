@@ -21,6 +21,14 @@ static const uint32_t WEATHER_POLL_MS      = 10UL * 60UL * 1000UL;
 static const uint32_t SPACEX_POLL_MS       = 4UL * 60UL * 60UL * 1000UL; // every few hours --
                                                                      // launch schedules don't
                                                                      // change minute-to-minute.
+// Bug fix: with a flat 4h interval and lastSpacex starting at 0, the
+// first fetch wouldn't happen until 4 REAL HOURS of uptime had passed
+// (the "-999 never attempted" sentinel was showing on the SpaceX page
+// as a result). Same retry-until-loaded pattern as Weather/Astro/Air
+// Quality now applies -- fast retry until first success, then settle
+// into the slow cadence. 150s chosen to avoid re-aligning with the
+// other retry timers (60/75/90/105s) that caused the earlier flicker bug.
+static const uint32_t SPACEX_RETRY_MS      = 150UL * 1000UL;
 static const uint32_t AIR_QUALITY_POLL_MS  = 25UL * 60UL * 1000UL; // deliberately not a clean
                                                                      // multiple of WEATHER_POLL_MS,
                                                                      // so the two heavy HTTPS fetches
@@ -166,6 +174,7 @@ void networkTask(void* param) {
   uint32_t lastPrecipRetry = 0;
   bool astroDataLoaded = false;
   bool weatherDataLoaded = false;
+  bool spacexDataLoaded = false;
   bool airQualityDataLoaded = false;
   int weatherRetryCount = 0;
   int airQualityRetryCount = 0;
@@ -275,10 +284,14 @@ void networkTask(void* param) {
     }
     // Not urgent -- deferred to the next cycle like Aviation/ISS rather
     // than forcing itself in alongside a heavy fetch already running.
-    if (!heavyFetchThisCycle && now - lastSpacex > SPACEX_POLL_MS) {
+    uint32_t spacexInterval = spacexDataLoaded ? SPACEX_POLL_MS : SPACEX_RETRY_MS;
+    if (!heavyFetchThisCycle && now - lastSpacex > spacexInterval) {
       lastSpacex = now;
       debug_log("spacex fetch start");
       spacex_launch_service_update();
+      if (g_spacexValid) {
+        spacexDataLoaded = true;
+      }
       debug_log("spacex fetch done");
     }
 
