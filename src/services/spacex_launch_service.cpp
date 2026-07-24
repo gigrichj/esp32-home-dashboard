@@ -3,6 +3,7 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <esp_heap_caps.h>
+#include <WiFi.h>
 #include <time.h>
 
 SpacexLaunch g_spacexLaunches[SPACEX_MAX_LAUNCHES];
