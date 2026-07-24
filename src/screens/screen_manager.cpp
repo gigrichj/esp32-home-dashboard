@@ -407,7 +407,8 @@ static void draw_dashboard() {
   char line[64];
 
   // WEATHER + AIR QUALITY column
-  int y = 207;
+  int y = 147; // moved up ~1/2in (was 207) -- LAUNCHES section below was
+               // overflowing past the bottom of the screen
   screen.setTextSize(2);
   screen.setTextColor(colorAccent, colorBg);
   screen.drawString("WEATHER", leftX, y);
@@ -511,7 +512,7 @@ static void draw_dashboard() {
         screen.setTextSize(3);
         screen.setTextColor(colorStarship, colorBg);
         screen.drawString(next.rocketName.c_str(), leftX + 28, y);
-        y += 34;
+        y += 42; // more breathing room before the countdown line below (was 34)
 
         screen.setTextSize(2);
         screen.setTextColor(colorDim, colorBg);
