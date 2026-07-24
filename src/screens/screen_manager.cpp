@@ -1578,20 +1578,24 @@ static void draw_weather() {
       snprintf(tempPart, sizeof(tempPart), "%.0f/%.0f ", g_forecast[i].highF, g_forecast[i].lowF);
       snprintf(rainPart, sizeof(rainPart), "%dR", g_forecast[i].precipChance);
 
+      // drawString() only supports top_left and middle_center datums (no
+      // left+vcenter option), so instead of left-aligning we compute each
+      // piece's own center point and draw both with middle_center -- same
+      // vertical position, x-centers placed so the pair reads as one string.
       int tempW = screen.textWidth(tempPart);
       int rainW = screen.textWidth(rainPart);
       int totalW = tempW + rainW;
-      int startX = cx - totalW / 2;
+      int leftEdge = cx - totalW / 2;
+      int tempCx = leftEdge + tempW / 2;
+      int rainCx = leftEdge + tempW + rainW / 2;
 
-      screen.setTextDatum(textdatum_t::middle_left);
       screen.setTextColor(colorText, colorBg);
-      screen.drawString(tempPart, startX, stripY + 44);
+      screen.drawString(tempPart, tempCx, stripY + 44);
 
       screen.setTextColor(colorAccent, colorBg);
-      screen.drawString(rainPart, startX + tempW, stripY + 44);
+      screen.drawString(rainPart, rainCx, stripY + 44);
 
       screen.setTextColor(colorText, colorBg);
-      screen.setTextDatum(textdatum_t::middle_center);
     } else {
       char hilo[32];
       snprintf(hilo, sizeof(hilo), "%.0f / %.0f", g_forecast[i].highF, g_forecast[i].lowF);
