@@ -2739,6 +2739,18 @@ static void checkAlertTriggers() {
       g_alertShownAtMs = millis();
       g_alertColorOverride = colorSuccess;
       snprintf(g_alertMessage, sizeof(g_alertMessage), "ASTRO CONDITIONS NOW GOOD TONIGHT");
+    } else if (!astroIsGood && g_prevAstroWasGood && g_alertActive &&
+               strcmp(g_alertMessage, "ASTRO CONDITIONS NOW GOOD TONIGHT") == 0) {
+      // The banner only ever fired once on the moment of transition and
+      // then sat frozen until tapped -- if a later Astro data refresh
+      // brings the verdict back down (e.g. seeing worsens even though
+      // cloud cover/transparency stayed good), the banner was left
+      // showing stale "GOOD" text that no longer matched the Astro
+      // page's own live verdict. Auto-clear specifically when the
+      // condition it announced has reverted, rather than on any fixed
+      // timer -- this is not the auto-timeout that was removed earlier,
+      // it only reacts to the underlying data actually changing.
+      g_alertActive = false;
     }
   }
 
