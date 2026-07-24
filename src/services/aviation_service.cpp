@@ -122,7 +122,11 @@ static void fetchAndDecodePhoto(const String& url) {
 // and dropping OAuth entirely removes a whole class of token-refresh
 // failure modes. adsb.fi is tried first; airplanes.live is an automatic
 // fallback on the same poll cycle if adsb.fi fails for any reason.
-static const int AVIATION_RANGE_NM = 40;
+// Reduced from 40nm to 20nm -- still comfortably covers DCA and IAD from
+// Lorton, VA, but cuts the query area to roughly a quarter of before,
+// meaning a much smaller aircraft payload per fetch. Tried as a fix for
+// adsb.fi's near-constant timeouts seen in busy-airspace conditions.
+static const int AVIATION_RANGE_NM = 20;
 
 static bool pendingDetailRequested = false;
 static String pendingIcao;

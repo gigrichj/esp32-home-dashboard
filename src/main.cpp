@@ -272,11 +272,11 @@ void networkTask(void* param) {
       debug_log("precip retry fetch done");
       heavyFetchThisCycle = true;
     }
-    // TEMP DIAGNOSTIC: aviation fetch + detail loop fully disabled to
-    // isolate whether repeated adsb.fi timeouts/fallbacks correlate with
-    // the display flicker. Flip this back to true once the isolation
-    // test is done.
-    static const bool AVIATION_FETCH_ENABLED = false;
+    // Re-enabled after isolating flicker testing to the Aviation page.
+    // Radius also reduced 40nm -> 20nm (aviation_service.cpp) to shrink
+    // the payload per fetch and hopefully cut down adsb.fi's frequent
+    // timeouts at the old radius.
+    static const bool AVIATION_FETCH_ENABLED = true;
     if (AVIATION_FETCH_ENABLED && !heavyFetchThisCycle && now - lastAviation > g_aviationPollMs) {
       lastAviation = now;
       debug_log("aviation fetch start");
