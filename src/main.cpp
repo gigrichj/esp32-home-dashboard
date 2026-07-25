@@ -19,9 +19,17 @@
 using namespace PanelDisplay;
 
 static const uint32_t WEATHER_POLL_MS      = 10UL * 60UL * 1000UL;
-static const uint32_t SPACEX_POLL_MS       = 4UL * 60UL * 60UL * 1000UL; // every few hours --
+static const uint32_t SPACEX_POLL_MS       = 2UL * 60UL * 60UL * 1000UL; // every couple hours --
                                                                      // launch schedules don't
                                                                      // change minute-to-minute.
+                                                                     // Reduced from 4h so a
+                                                                     // failed image/landing
+                                                                     // fetch's eventual slow-
+                                                                     // cadence retry (see
+                                                                     // SPACEX_DETAIL_RETRY_MS
+                                                                     // below) doesn't wait as
+                                                                     // long once fast retries
+                                                                     // are exhausted.
 // Bug fix: with a flat 4h interval and lastSpacex starting at 0, the
 // first fetch wouldn't happen until 4 REAL HOURS of uptime had passed
 // (the "-999 never attempted" sentinel was showing on the SpaceX page
@@ -30,6 +38,12 @@ static const uint32_t SPACEX_POLL_MS       = 4UL * 60UL * 60UL * 1000UL; // ever
 // into the slow cadence. 150s chosen to avoid re-aligning with the
 // other retry timers (60/75/90/105s) that caused the earlier flicker bug.
 static const uint32_t SPACEX_RETRY_MS      = 150UL * 1000UL;
+// Mission image + booster landing info now retry on their own cadence,
+// independent of the list-fetch interval above -- see the dedicated
+// block in networkTask() for why. Same 150s value as SPACEX_RETRY_MS,
+// kept as a separate constant since the two timers serve different
+// purposes and may need to diverge later.
+static const uint32_t SPACEX_DETAIL_RETRY_MS = 150UL * 1000UL;
 static const uint32_t AIR_QUALITY_POLL_MS  = 25UL * 60UL * 1000UL; // deliberately not a clean
                                                                      // multiple of WEATHER_POLL_MS,
                                                                      // so the two heavy HTTPS fetches
@@ -177,6 +191,9 @@ void networkTask(void* param) {
   bool weatherDataLoaded = false;
   bool spacexDataLoaded = false;
   int spacexRetryCount = 0;
+  uint32_t lastSpacexDetail = 0;
+  int spacexDetailRetryCount = 0;
+  String lastSpacexDetailAttemptId = ""; // tracks which launchId spacexDetailRetryCount currently applies to
   String lastSpacexDetailLaunchId = ""; // tracks which launch's image +
                                          // landing info we last fetched,
                                          // so those extra heavy fetches
@@ -305,26 +322,51 @@ void networkTask(void* param) {
       if (g_spacexValid) {
         spacexDataLoaded = true;
         spacexRetryCount = 0;
-        // Mission image + booster landing info only fetched when the
-        // "next" launch has actually changed -- both are heavier,
-        // separate fetches (image up to 250KB, landing detail is a much
-        // larger single-launch endpoint), no need to repeat them for the
-        // same launch every 4 hours.
-        if (g_spacexLaunchCount > 0 && g_spacexLaunches[0].launchId != lastSpacexDetailLaunchId) {
-          // Only cache this launchId as "done" if both fetches actually
-          // succeeded -- a failure now naturally retries on the next
-          // spacex_launch_service_update() cycle instead of being
-          // silently abandoned until "next" happens to change.
-          bool imageOk = spacex_fetch_next_image();
-          bool landingOk = spacex_fetch_next_landing_info();
-          if (imageOk && landingOk) {
-            lastSpacexDetailLaunchId = g_spacexLaunches[0].launchId;
-          }
-        }
       } else if (!spacexDataLoaded) {
         spacexRetryCount++;
       }
       debug_log("spacex fetch done");
+    }
+
+    // Mission image + booster landing info retried on their own faster
+    // cadence, independent of the list-fetch interval above. Previously
+    // both were nested inside that block, so a failed attempt (e.g.
+    // during a weak-WiFi window, which produced repeated HTTP -11/-1
+    // errors in the field) had to wait for the full SPACEX_POLL_MS
+    // list-refresh interval before trying again -- up to hours. Only
+    // fires once the list has loaded at least once and only while the
+    // current "next" launch's detail hasn't been successfully fetched
+    // yet. Backs off to the slow SPACEX_POLL_MS cadence once
+    // MAX_FAST_RETRIES is hit, so a persistently broken image URL
+    // doesn't retry every 150s forever.
+    if (!heavyFetchThisCycle && spacexDataLoaded && g_spacexLaunchCount > 0 &&
+        g_spacexLaunches[0].launchId != lastSpacexDetailLaunchId) {
+      if (g_spacexLaunches[0].launchId != lastSpacexDetailAttemptId) {
+        // New launch to fetch details for -- reset the backoff so it
+        // gets fresh fast retries instead of inheriting a previous
+        // launch's exhausted retry count.
+        lastSpacexDetailAttemptId = g_spacexLaunches[0].launchId;
+        spacexDetailRetryCount = 0;
+        lastSpacexDetail = 0; // allow an attempt this same cycle
+      }
+      uint32_t spacexDetailInterval = (spacexDetailRetryCount >= MAX_FAST_RETRIES) ? SPACEX_POLL_MS : SPACEX_DETAIL_RETRY_MS;
+      if (now - lastSpacexDetail > spacexDetailInterval) {
+        lastSpacexDetail = now;
+        debug_log("spacex detail fetch start");
+        // Only cache this launchId as "done" if both fetches actually
+        // succeeded -- a failure now retries on the next
+        // SPACEX_DETAIL_RETRY_MS cycle instead of being silently
+        // abandoned until "next" happens to change.
+        bool imageOk = spacex_fetch_next_image();
+        bool landingOk = spacex_fetch_next_landing_info();
+        if (imageOk && landingOk) {
+          lastSpacexDetailLaunchId = g_spacexLaunches[0].launchId;
+          spacexDetailRetryCount = 0;
+        } else {
+          spacexDetailRetryCount++;
+        }
+        debug_log("spacex detail fetch done");
+      }
     }
 
     // Cheap no-op most iterations -- internally gated to a 5-minute
