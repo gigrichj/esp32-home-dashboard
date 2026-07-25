@@ -1,6 +1,7 @@
 #include "weather_service.h"
 #include "wifi_manager.h"
 #include "secrets.h"
+#include "../state_mutex.h"
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <WiFi.h>
@@ -26,12 +27,19 @@ static void fetchCurrentConditions() {
 
   http.begin(url);
   int code = http.GET();
+  state_lock();
   g_weather.lastHttpCode = code;
+  state_unlock();
   if (code == 200) {
-    String payload = http.getString();
+    String payload = http.getString(); // network I/O -- stays outside the lock
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, payload);
     if (!err) {
+      // Parsing + writing g_weather is all in-memory (no I/O) from here
+      // on, so it's safe and fast to hold the lock for the whole block --
+      // this is the section that used to race against the UI task
+      // reading g_weather mid-write.
+      state_lock();
       g_weather.tempF       = doc["main"]["temp"]      | 0.0f;
       g_weather.feelsLikeF  = doc["main"]["feels_like"] | 0.0f;
       g_weather.humidity    = doc["main"]["humidity"]   | 0;
@@ -70,6 +78,7 @@ static void fetchCurrentConditions() {
       }
 
       g_weather.valid = true;
+      state_unlock();
     } else {
       Serial.printf("[Weather] JSON parse error: %s\n", err.c_str());
       Serial.printf("[Weather] raw payload: %s\n", payload.c_str());
@@ -94,27 +103,33 @@ static void fetchForecast() {
   http.setTimeout(15000);
   http.begin(url);
   int code = http.GET();
+  state_lock();
   g_forecastLastHttpCode = code;
+  state_unlock();
   if (code != 200) {
     Serial.printf("[Weather] Forecast HTTP %d\n", code);
     http.end();
     return;
   }
 
-  String payload = http.getString();
+  String payload = http.getString(); // network I/O -- stays outside the lock
   http.end();
 
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, payload);
   if (err) {
     Serial.printf("[Weather] Forecast JSON parse error: %s\n", err.c_str());
+    state_lock();
     g_forecastLastHttpCode = -1; // distinguish parse failure from a real HTTP code
+    state_unlock();
     return;
   }
 
   long tzOffsetSec = doc["city"]["timezone"] | 0;
+  state_lock();
   if (g_weather.sunriseUnix == 0) g_weather.sunriseUnix = doc["city"]["sunrise"] | 0;
   if (g_weather.sunsetUnix == 0)  g_weather.sunsetUnix  = doc["city"]["sunset"]  | 0;
+  state_unlock();
 
   JsonArray list = doc["list"].as<JsonArray>();
 
@@ -122,7 +137,9 @@ static void fetchForecast() {
   // the nearest upcoming forecast entry instead.
   if (list.size() > 0) {
     float pop = list[0]["pop"] | 0.0f;
+    state_lock();
     g_weather.precipChance = (int)(pop * 100.0f + 0.5f);
+    state_unlock();
   }
 
   struct DayAccum {
@@ -174,7 +191,12 @@ static void fetchForecast() {
 
   // Skip today (usually a partial day) if we have enough full days to
   // fill a 5-day strip; otherwise show what's available.
+  //
+  // Locked for the whole loop, not just each assignment -- g_forecastCount
+  // and g_forecast[] must never be visible to a reader in a state where
+  // the count implies more entries than have actually been written yet.
   int startIdx = (dayCount > FORECAST_DAYS) ? 1 : 0;
+  state_lock();
   g_forecastCount = 0;
   for (int i = startIdx; i < dayCount && g_forecastCount < FORECAST_DAYS; i++) {
     g_forecast[g_forecastCount].dayLabel     = String(days[i].label);
@@ -184,6 +206,7 @@ static void fetchForecast() {
     g_forecast[g_forecastCount].precipChance = days[i].maxPop;
     g_forecastCount++;
   }
+  state_unlock();
 }
 
 // UV index isn't on OpenWeatherMap's free tier, so it's fetched from
@@ -205,9 +228,11 @@ static void fetchUvIndex() {
   // what plain http.getString() below expects.
   http.useHTTP10(true);
   int code = http.GET();
+  state_lock();
   g_weather.uvLastHttpCode = code;
+  state_unlock();
   if (code == 200) {
-    String payload = http.getString();
+    String payload = http.getString(); // network I/O -- stays outside the lock
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, payload);
     if (!err) {
@@ -235,8 +260,10 @@ static void fetchUvIndex() {
         i++;
       }
       if (bestIdx >= 0 && bestIdx < (int)uvValues.size()) {
+        state_lock();
         g_weather.uvIndex = uvValues[bestIdx] | 0.0f;
         g_weather.uvValid = true;
+        state_unlock();
       }
     } else {
       Serial.printf("[Weather] UV JSON parse error: %s\n", err.c_str());
@@ -326,7 +353,9 @@ static void fetchHourlyPrecip() {
   // HTTP/1.0.
   http.useHTTP10(true);
   int code = http.GET();
+  state_lock();
   g_precipHourlyLastHttpCode = code;
+  state_unlock();
   if (code != 200) {
     Serial.printf("[Weather] Precip HTTP %d\n", code);
     http.end();
@@ -359,6 +388,10 @@ static void fetchHourlyPrecip() {
   int startIdx = utcNow->tm_hour;
   if (startIdx < 0 || startIdx >= (int)times.size()) startIdx = 0;
 
+  // Locked for the whole loop -- g_precipHourlyCount and g_precipHourly[]
+  // must never be visible to a reader in a state where the count implies
+  // more entries than have actually been written yet.
+  state_lock();
   g_precipHourlyCount = 0;
   for (int i = startIdx;
        i < (int)times.size() && i < (int)probs.size() && g_precipHourlyCount < PRECIP_HOURLY_POINTS;
@@ -374,6 +407,7 @@ static void fetchHourlyPrecip() {
     g_precipHourlyCount++;
   }
   g_precipHourlyValid = (g_precipHourlyCount > 0);
+  state_unlock();
 }
 
 void weather_service_update() {

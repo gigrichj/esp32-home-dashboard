@@ -2,6 +2,7 @@
 #include "secrets.h"
 #include "panel_display.h"
 #include "version.h"
+#include "state_mutex.h"
 #include "services/wifi_manager.h"
 #include "services/mqtt_service.h"
 #include "services/weather_service.h"
@@ -338,6 +339,7 @@ void networkTask(void* param) {
 void setup() {
   Serial.begin(115200);
   debug_controls_record_reset_reason(); // capture ASAP, before anything else can reset the board again
+  state_mutex_init(); // must exist before any task that could touch shared state starts
   uint32_t serialStart = millis();
   while (!Serial && millis() - serialStart < 3000) {
     delay(20);

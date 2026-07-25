@@ -3178,11 +3178,10 @@ static void draw_spacex() {
   int y = 50;
 
   if (g_spacexImageValid && g_spacexImagePixels != nullptr) {
-    // Now pre-downsampled in spacex_launch_service.cpp to a fixed 72px
-    // (0.9in) tall thumbnail, width aspect-preserved. This is the shared
+    // Now pre-downsampled in spacex_launch_service.cpp to a fixed 80px
+    // (1.0in) tall thumbnail, width aspect-preserved. This is the shared
     // "row height" the Starship/Super Heavy badge below is vertically
-    // centered against. Shifted right 1/4in (20px, this project's
-    // established 80px/in scale) per follow-up feedback.
+    // centered against.
     screen.drawRGBBitmap(620, 84, g_spacexImagePixels, g_spacexImageWidth, g_spacexImageHeight);
   }
 
@@ -3230,16 +3229,14 @@ static void draw_spacex() {
     lowerRocket.toLowerCase();
     bool nextIsSuperHeavy = lowerRocket.indexOf("super heavy") >= 0;
     const char* badgeLabel = nextIsSuperHeavy ? "SUPER HEAVY" : "STARSHIP";
-    // Vertically centered against the image's 72px-tall row (image
-    // top y=84, row center y=84+36=120): icon (32px tall) top = 120-16
-    // =104, text (FONT_H=7 at size 3 = 21px tall) top = 120-11=109 --
-    // both landing on the same mid-row line as the image. x positions
-    // unchanged (still clears "SUPER HEAVY" against the image's new
-    // x=620 left edge).
-    drawRocketIcon(350, 104, colorStarship);
+    // Vertically centered against the image's 80px-tall row (image
+    // top y=84, row center y=84+40=124): icon (32px tall) top = 124-16
+    // =108, text (FONT_H=7 at size 3 = 21px tall) top = 124-11=113 --
+    // both landing on the same mid-row line as the image.
+    drawRocketIcon(350, 108, colorStarship);
     screen.setTextSize(3);
     screen.setTextColor(colorStarship, colorBg);
-    screen.drawString(badgeLabel, 378, 109);
+    screen.drawString(badgeLabel, 378, 113);
 
     screen.setTextSize(1);
     screen.setTextColor(colorText, colorBg);
