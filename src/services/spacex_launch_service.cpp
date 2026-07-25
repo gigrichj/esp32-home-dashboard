@@ -414,7 +414,7 @@ static bool decodeAndStorePng(uint8_t *buf, size_t bufLen) {
     if (lineBuf != nullptr) free(lineBuf);
     png->close();
   } else {
-    Serial.println("[SpaceX] PNG openRAM failed");
+    Serial.printf("[SpaceX] PNG openRAM failed, error=%d\n", png->getLastError());
   }
 
   png->~PNG();
