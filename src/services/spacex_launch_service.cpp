@@ -6,6 +6,7 @@
 #include <WiFi.h>
 #include <time.h>
 #include <JPEGDEC.h>
+#include "../state_mutex.h"
 
 SpacexLaunch g_spacexLaunches[SPACEX_MAX_LAUNCHES];
 int g_spacexLaunchCount = 0;
@@ -125,7 +126,9 @@ void spacex_launch_service_update() {
   // the raw stream read.
   http.useHTTP10(true);
   int code = http.GET();
+  state_lock();
   g_spacexLastHttpCode = code;
+  state_unlock();
   if (code != 200) {
     Serial.printf("[SpaceX] HTTP %d\n", code);
     http.end();
@@ -162,6 +165,11 @@ void spacex_launch_service_update() {
   uint32_t graceFloorUnix = (now > 100000 && (uint32_t)now > PAST_LAUNCH_GRACE_SEC)
                                 ? (uint32_t)now - PAST_LAUNCH_GRACE_SEC : 0;
 
+  // Locked for the whole loop (plus the final validity flag) --
+  // g_spacexLaunchCount and g_spacexLaunches[] must never be visible to a
+  // reader in a state where the count implies more entries than have
+  // actually been written yet.
+  state_lock();
   g_spacexLaunchCount = 0;
   for (JsonObject launch : results) {
     if (g_spacexLaunchCount >= SPACEX_MAX_LAUNCHES) break;
@@ -193,6 +201,7 @@ void spacex_launch_service_update() {
     g_spacexLaunchCount++;
   }
   g_spacexValid = true;
+  state_unlock();
 }
 
 // Mirrors aviation_service.cpp's fetchAndDecodePhoto() pattern -- fetches
@@ -307,6 +316,12 @@ void spacex_fetch_next_image() {
           }
         }
 
+        // Locked as one atomic swap -- this frees the old pixel buffer
+        // and reassigns the pointer. If the UI task's drawRGBBitmap()
+        // read this pointer mid-swap, it would dereference freed memory
+        // (a real use-after-free, not just a torn read), so this is the
+        // single most important lock in this file.
+        state_lock();
         if (g_spacexImagePixels != nullptr) {
           free(g_spacexImagePixels);
           g_spacexImagePixels = nullptr;
@@ -316,6 +331,7 @@ void spacex_fetch_next_image() {
         g_spacexImageWidth = targetW;
         g_spacexImageHeight = targetH;
         g_spacexImageValid = true;
+        state_unlock();
         Serial.printf("[SpaceX] image decoded %dx%d, downsampled to %dx%d\n", decodedW, decodedH, targetW, targetH);
       } else {
         Serial.printf("[SpaceX] final image buffer alloc failed (%dx%d requested)\n", targetW, targetH);
@@ -376,16 +392,20 @@ void spacex_fetch_next_landing_info() {
   // attempt planned (e.g. expendable missions), hence the size() check.
   JsonArray stages = doc["rocket"]["launcher_stage"].as<JsonArray>();
   if (stages.size() == 0) {
+    state_lock();
     g_spacexLandingAttempt = false;
     g_spacexLandingValid = true;
+    state_unlock();
     return;
   }
 
   JsonObject landing = stages[0]["landing"];
+  state_lock();
   g_spacexLandingAttempt = landing["attempt"] | false;
   g_spacexLandingLocation = landing["location"]["name"] | "";
   g_spacexLandingAbbrev = landing["location"]["abbrev"] | "";
   g_spacexLandingType = landing["type"]["abbrev"] | "";
   g_spacexLandingValid = true;
+  state_unlock();
 }
 
