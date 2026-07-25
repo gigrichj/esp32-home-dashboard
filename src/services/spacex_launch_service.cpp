@@ -483,7 +483,7 @@ bool spacex_fetch_next_image() {
   // far. Left armed (not cleared) for the rest of this run so it catches
   // the write whenever it actually happens, even if that's later than
   // this function's own execution.
-  esp_err_t wpResult = esp_cpu_set_watchpoint(0, (void *)0x3c325c84, 4, ESP_WATCHPOINT_STORE);
+  esp_err_t wpResult = esp_cpu_set_watchpoint(0, (void *)0x3c325c84, 4, ESP_CPU_WATCHPOINT_STORE); // this IDF version uses the ESP_CPU_ prefix, not the older ESP_WATCHPOINT_ name shown in some docs
   Serial.printf("[SpaceX] watchpoint on 0x3c325c84 armed: %s\n", (wpResult == ESP_OK) ? "OK" : "FAILED");
 
   if (!wifi_manager_is_connected()) return false;
