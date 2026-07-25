@@ -562,13 +562,24 @@ static void draw_dashboard() {
       screen.setTextColor(colorDim, colorBg);
       screen.drawString(next.missionName.c_str(), leftX, y);
 
-      // Surface "In Flight" (a real Launch Library 2 status value once
-      // liftoff happens) here too -- previously only visible on the
-      // SpaceX page itself via next.statusName.
-      if (next.statusName.equalsIgnoreCase("In Flight")) {
+      // Surface whatever Launch Library 2 status comes back (Go, TBD,
+      // Hold, In Flight, Success, Failure, etc.) as the mission
+      // progresses -- previously only visible on the SpaceX page itself
+      // via next.statusName. Same color convention used there.
+      if (next.statusName.length() > 0) {
         y += 24;
-        screen.setTextColor(colorSuccess, colorBg);
-        screen.drawString("IN FLIGHT", leftX, y);
+        uint16_t dashStatusColor = colorText;
+        if (next.statusName.equalsIgnoreCase("Go") || next.statusName.equalsIgnoreCase("Success")) {
+          dashStatusColor = colorSuccess;
+        } else if (next.statusName.equalsIgnoreCase("TBD") || next.statusName.equalsIgnoreCase("Hold")) {
+          dashStatusColor = colorDim;
+        } else if (next.statusName.equalsIgnoreCase("Failure")) {
+          dashStatusColor = colorDanger;
+        }
+        screen.setTextColor(dashStatusColor, colorBg);
+        String upperStatus = next.statusName;
+        upperStatus.toUpperCase();
+        screen.drawString(upperStatus.c_str(), leftX, y);
       }
     } else {
       screen.setTextColor(colorDim, colorBg);
