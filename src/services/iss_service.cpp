@@ -7,6 +7,7 @@
 #include <ArduinoJson.h>
 #include <Sgp4.h>
 #include <time.h>
+#include "../state_mutex.h"
 
 IssData g_iss;
 IssPass g_issPasses[ISS_MAX_PASSES];
@@ -46,9 +47,11 @@ static void fetchCrewCount() {
   HTTPClient http;
   http.begin("http://api.open-notify.org/astros.json");
   int code = http.GET();
+  state_lock();
   g_issCrewLastHttpCode = code;
+  state_unlock();
   if (code == 200) {
-    String payload = http.getString();
+    String payload = http.getString(); // network I/O -- stays outside the lock
     JsonDocument doc;
     if (!deserializeJson(doc, payload)) {
       JsonArray people = doc["people"].as<JsonArray>();
@@ -57,7 +60,9 @@ static void fetchCrewCount() {
         const char* craft = p["craft"] | "";
         if (String(craft) == "ISS") count++;
       }
+      state_lock();
       g_issCrewCount = count;
+      state_unlock();
       crewCountLoaded = true;
     }
   } else {
@@ -112,7 +117,9 @@ static bool readTleBodySafely(HTTPClient& http, String& outPayload) {
 static bool initSatFromTle(const String& nameLine, const String& line1, const String& line2) {
   if (line1.length() < 60 || line2.length() < 60) {
     Serial.println("[ISS] TLE lines look truncated, skipping");
+    state_lock();
     g_tleLastFailureReason = "lines truncated (l1=" + String(line1.length()) + " l2=" + String(line2.length()) + ")";
+    state_unlock();
     return false;
   }
 
@@ -126,7 +133,9 @@ static bool initSatFromTle(const String& nameLine, const String& line1, const St
   sat.site((double)HOME_LAT, (double)HOME_LON, 0);
   sat.init(nameBuf, line1Buf, line2Buf); // return value just means "TLE unchanged since last call" - not an error
   Serial.println("[ISS] TLE loaded/refreshed");
+  state_lock();
   g_tleLastFailureReason = "";
+  state_unlock();
   return true;
 }
 
@@ -139,17 +148,23 @@ static bool fetchTLEFromCelestrak() {
   // even for small responses; applying the same fix here defensively.
   http.useHTTP10(true);
   int code = http.GET();
+  state_lock();
   g_tleLastHttpCode = code;
+  state_unlock();
   if (code != 200) {
     Serial.printf("[ISS] Celestrak TLE fetch HTTP %d\n", code);
+    state_lock();
     g_tleLastFailureReason = "Celestrak: HTTP " + String(code);
+    state_unlock();
     http.end();
     return false;
   }
 
   String payload;
   if (!readTleBodySafely(http, payload)) {
+    state_lock();
     g_tleLastFailureReason = "Celestrak: payload read error";
+    state_unlock();
     http.end();
     return false;
   }
@@ -159,7 +174,9 @@ static bool fetchTLEFromCelestrak() {
   int nl2 = payload.indexOf('\n', nl1 + 1);
   if (nl1 < 0 || nl2 < 0) {
     Serial.println("[ISS] Celestrak TLE response missing expected line breaks");
+    state_lock();
     g_tleLastFailureReason = "Celestrak: response missing line breaks (len=" + String(payload.length()) + ")";
+    state_unlock();
     return false;
   }
 
@@ -188,17 +205,23 @@ static bool fetchTLEFromIvanstanojevic() {
   // and get corrupted by our manual read loop, producing "invalid input".
   http.useHTTP10(true);
   int code = http.GET();
+  state_lock();
   g_tleLastHttpCode = code;
+  state_unlock();
   if (code != 200) {
     Serial.printf("[ISS] tle.ivanstanojevic.me fetch HTTP %d\n", code);
+    state_lock();
     g_tleLastFailureReason = "ivanstanojevic: HTTP " + String(code);
+    state_unlock();
     http.end();
     return false;
   }
 
   String payload;
   if (!readTleBodySafely(http, payload)) {
+    state_lock();
     g_tleLastFailureReason = "ivanstanojevic: payload read error";
+    state_unlock();
     http.end();
     return false;
   }
@@ -208,7 +231,9 @@ static bool fetchTLEFromIvanstanojevic() {
   DeserializationError err = deserializeJson(doc, payload);
   if (err) {
     Serial.printf("[ISS] tle.ivanstanojevic.me JSON parse error: %s\n", err.c_str());
+    state_lock();
     g_tleLastFailureReason = "ivanstanojevic: JSON parse: " + String(err.c_str());
+    state_unlock();
     return false;
   }
 
@@ -217,7 +242,9 @@ static bool fetchTLEFromIvanstanojevic() {
   const char* line2 = doc["line2"] | "";
   if (strlen(line1) == 0 || strlen(line2) == 0) {
     Serial.println("[ISS] tle.ivanstanojevic.me response missing line1/line2");
+    state_lock();
     g_tleLastFailureReason = "ivanstanojevic: response missing line1/line2";
+    state_unlock();
     return false;
   }
 
@@ -235,13 +262,17 @@ static bool fetchAndInitTLE() {
 
 static void computeGroundTrack() {
   if (!tleLoaded) {
+    state_lock();
     g_issTrackValid = false;
+    state_unlock();
     return;
   }
 
   uint32_t nowUnix = (uint32_t)time(nullptr);
   if (nowUnix < 100000) {
+    state_lock();
     g_issTrackValid = false; // clock not synced yet
+    state_unlock();
     return;
   }
 
@@ -249,6 +280,11 @@ static void computeGroundTrack() {
   // ISS_TRACK_NOW_INDEX are the recent past, indices at/after it are the
   // near future. offsetSteps is negative for past points, zero at "now",
   // positive for future points.
+  //
+  // Locked for the whole loop -- g_issTrackCount and g_issTrack[] must
+  // never be visible to a reader in a state where the count implies more
+  // points than have actually been written yet.
+  state_lock();
   g_issTrackCount = 0;
   for (int i = 0; i < ISS_TRACK_POINTS; i++) {
     long offsetSteps = (long)i - (long)ISS_TRACK_NOW_INDEX;
@@ -259,6 +295,7 @@ static void computeGroundTrack() {
     g_issTrackCount++;
   }
   g_issTrackValid = true;
+  state_unlock();
 }
 
 void iss_service_update() {
@@ -272,9 +309,11 @@ void iss_service_update() {
 
   http.begin(url);
   int code = http.GET();
+  state_lock();
   g_iss.lastHttpCode = code;
+  state_unlock();
   if (code == 200) {
-    String payload = http.getString();
+    String payload = http.getString(); // network I/O -- stays outside the lock
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, payload);
     if (err) {
@@ -282,10 +321,12 @@ void iss_service_update() {
       Serial.printf("[ISS] raw payload: %s\n", payload.c_str());
     } else {
       JsonObject pos = doc["positions"][0];
+      state_lock();
       g_iss.lat        = pos["satlatitude"]  | 0.0f;
       g_iss.lon        = pos["satlongitude"] | 0.0f;
       g_iss.altitudeKm = pos["sataltitude"]  | 0.0f;
       g_iss.valid = true;
+      state_unlock();
     }
   } else {
     Serial.printf("[ISS] HTTP %d\n", code);
@@ -306,17 +347,26 @@ void iss_service_update() {
   // below expects.
   passHttp.useHTTP10(true);
   int passCode = passHttp.GET();
+  state_lock();
   g_issPassesLastHttpCode = passCode;
   g_issPassesParseFailed = false;
+  state_unlock();
   if (passCode == 200) {
-    String passPayload = passHttp.getString();
+    String passPayload = passHttp.getString(); // network I/O -- stays outside the lock
     JsonDocument passDoc;
     DeserializationError passErr = deserializeJson(passDoc, passPayload);
     if (passErr) {
+      state_lock();
       g_issPassesParseFailed = true;
+      state_unlock();
       Serial.printf("[ISS] visualpasses JSON parse error: %s\n", passErr.c_str());
     } else {
       JsonArray passes = passDoc["passes"].as<JsonArray>();
+      // Locked for the whole loop (plus the nextPass fields that depend
+      // on g_issPasses[0]) -- g_issPassCount and g_issPasses[] must never
+      // be visible to a reader in a state where the count implies more
+      // entries than have actually been written yet.
+      state_lock();
       g_issPassCount = 0;
       for (JsonObject p : passes) {
         if (g_issPassCount >= ISS_MAX_PASSES) break;
@@ -342,6 +392,7 @@ void iss_service_update() {
         g_iss.nextPassUnix = g_issPasses[0].startUnix;
         g_iss.nextPassDurationSec = (int)(g_issPasses[0].endUnix - g_issPasses[0].startUnix);
       }
+      state_unlock();
     }
   } else {
     Serial.printf("[ISS] visualpasses HTTP %d\n", passCode);

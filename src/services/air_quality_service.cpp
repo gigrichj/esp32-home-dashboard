@@ -1,6 +1,7 @@
 #include "air_quality_service.h"
 #include "wifi_manager.h"
 #include "secrets.h"
+#include "../state_mutex.h"
 #include <HTTPClient.h>
 #include <esp_heap_caps.h>
 #include <WiFi.h>
@@ -38,7 +39,9 @@ void air_quality_service_update() {
 
   http.begin(url);
   int code = http.GET();
+  state_lock();
   g_airQuality.lastHttpCode = code;
+  state_unlock();
 
   if (code != 200) {
     Serial.printf("[AirQuality] HTTP %d\n", code);
@@ -93,10 +96,12 @@ void air_quality_service_update() {
   DeserializationError err = deserializeJson(doc, payload);
   if (!err) {
     JsonObject item = doc["list"][0];
+    state_lock();
     g_airQuality.aqi   = item["main"]["aqi"] | 0;
     g_airQuality.pm2_5 = item["components"]["pm2_5"] | 0.0f;
     g_airQuality.pm10  = item["components"]["pm10"]  | 0.0f;
     g_airQuality.valid = true;
+    state_unlock();
   } else {
     Serial.printf("[AirQuality] JSON parse error: %s\n", err.c_str());
   }

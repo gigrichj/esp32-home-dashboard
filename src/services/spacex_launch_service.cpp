@@ -149,6 +149,18 @@ void spacex_launch_service_update() {
   JsonArray results = doc["results"].as<JsonArray>();
   time_t now = time(nullptr);
   uint32_t cutoffUnix = (now > 100000) ? (uint32_t)now + (30UL * 86400UL) : 0xFFFFFFFF;
+  // LL2's "upcoming" endpoint keeps a launch listed for a while after its
+  // NET (liftoff) time passes -- that's actually needed, since it's the
+  // only way "In Flight"/"Success" status ever becomes visible (the NET
+  // is always in the past once a rocket has actually launched). But
+  // without any lower bound, a launch just stays in the list forever as
+  // long as the API keeps returning it, showing up as stale days later.
+  // 12 hours is enough to see status settle from Go -> In Flight ->
+  // Success/Failure, short enough that a launch won't linger past when
+  // it's actually relevant.
+  static const uint32_t PAST_LAUNCH_GRACE_SEC = 12UL * 3600UL;
+  uint32_t graceFloorUnix = (now > 100000 && (uint32_t)now > PAST_LAUNCH_GRACE_SEC)
+                                ? (uint32_t)now - PAST_LAUNCH_GRACE_SEC : 0;
 
   g_spacexLaunchCount = 0;
   for (JsonObject launch : results) {
@@ -161,9 +173,12 @@ void spacex_launch_service_update() {
       netUnix = utcToUnix(yr, mo, dy, hr, mi);
     }
 
-    // Skip anything beyond 30 days out -- the API returns launches in
-    // ascending date order already, so this naturally trims the tail.
-    if (netUnix == 0 || netUnix > cutoffUnix) continue;
+    // Skip anything beyond 30 days out, or more than the grace window in
+    // the past -- the API returns launches in ascending date order
+    // already, so the upper bound naturally trims the tail, but past
+    // launches need this explicit lower-bound check since they'd
+    // otherwise never get filtered out at all.
+    if (netUnix == 0 || netUnix > cutoffUnix || netUnix < graceFloorUnix) continue;
 
     SpacexLaunch& out = g_spacexLaunches[g_spacexLaunchCount];
     out.displayName = launch["name"] | "";
