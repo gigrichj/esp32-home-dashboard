@@ -6,6 +6,7 @@
 #include <WiFi.h>
 #include <time.h>
 #include <JPEGDEC.h>
+#include <PNGdec.h>
 #include "../state_mutex.h"
 
 SpacexLaunch g_spacexLaunches[SPACEX_MAX_LAUNCHES];
@@ -43,6 +44,47 @@ static int jpegDrawCallback(JPEGDRAW *pDraw) {
       int destX = pDraw->x + col;
       if (destX < 0 || destX >= s_decodeTargetW) continue;
       destRow[destX] = srcRow[col];
+    }
+  }
+  return 1;
+}
+
+// PNG counterpart to the statics/callback above. PNGdec has no built-in
+// reduced-scale decode like JPEGDEC's JPEG_SCALE_EIGHTH, so instead of a
+// two-stage shrink, downsampling happens directly in the line callback:
+// for each full-resolution row PNGdec hands us, check whether it's one of
+// the rows our small target image actually needs (nearest-neighbor row
+// mapping), and only if so, convert that one row to RGB565 and sample it
+// into the final small buffer. Avoids ever allocating a full-resolution
+// intermediate buffer, which matters since PNG mission photos have been
+// seen at several thousand pixels wide.
+static uint16_t* s_pngFinalBuf = nullptr;
+static int s_pngFinalW = 0;
+static int s_pngFinalH = 0;
+static int s_pngSrcW = 0;
+static int s_pngSrcH = 0;
+static uint16_t* s_pngLineBuf = nullptr;
+static PNG* s_pngObj = nullptr;
+
+static int pngDrawCallback(PNGDRAW *pDraw) {
+  if (s_pngFinalBuf == nullptr || s_pngLineBuf == nullptr || s_pngObj == nullptr) return 0;
+  int srcY = pDraw->y;
+
+  bool needed = false;
+  for (int ty = 0; ty < s_pngFinalH; ty++) {
+    if ((ty * s_pngSrcH) / s_pngFinalH == srcY) { needed = true; break; }
+  }
+  if (!needed) return 1; // this source row isn't sampled by our downsample, skip the RGB565 conversion
+
+  s_pngObj->getLineAsRGB565(pDraw, s_pngLineBuf, PNG_RGB565_LITTLE_ENDIAN, 0xffffffff);
+
+  for (int ty = 0; ty < s_pngFinalH; ty++) {
+    if ((ty * s_pngSrcH) / s_pngFinalH == srcY) {
+      uint16_t *destRow = s_pngFinalBuf + (size_t)ty * s_pngFinalW;
+      for (int tx = 0; tx < s_pngFinalW; tx++) {
+        int srcX = tx * s_pngSrcW / s_pngFinalW;
+        destRow[tx] = s_pngLineBuf[srcX];
+      }
     }
   }
   return 1;
@@ -216,6 +258,152 @@ void spacex_launch_service_update() {
 // failed attempt (timeout, oversized image, decode failure, etc.) meant
 // the image silently stayed blank until "next" happened to change to a
 // different launch -- which could be days away.
+// Extracted from the original spacex_fetch_next_image() body, unchanged
+// apart from taking the raw buffer/length as parameters -- same two-stage
+// shrink (1/8 scale then manual nearest-neighbor downsample to the
+// on-screen target box).
+static bool decodeAndStoreJpeg(uint8_t *buf, size_t bufLen) {
+  bool success = false;
+
+  JPEGDEC jpeg;
+  if (jpeg.openRAM(buf, (int)bufLen, jpegDrawCallback)) {
+    int w = jpeg.getWidth();
+    int h = jpeg.getHeight();
+    Serial.printf("[SpaceX] JPEG source dimensions %dx%d\n", w, h);
+
+    int decodedW = w / 8;
+    int decodedH = h / 8;
+
+    uint16_t *decodeBuf = (uint16_t *)heap_caps_malloc((size_t)decodedW * decodedH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+    if (decodeBuf != nullptr) {
+      s_decodeTarget = decodeBuf;
+      s_decodeTargetW = decodedW;
+      s_decodeTargetH = decodedH;
+      jpeg.decode(0, 0, JPEG_SCALE_EIGHTH);
+      s_decodeTarget = nullptr;
+
+      // Target box reserved on the SpaceX page (see draw_spacex() in
+      // screen_manager.cpp) -- top-right, beside the Starship/Super
+      // Heavy badge and above the divider line further down. Grown to
+      // 1.25in tall (100px, this project's established 80px/in scale)
+      // per follow-up feedback. Width derived from the real source
+      // aspect ratio rather than assumed, in case future images come in
+      // a different shape.
+      int targetH = 100;
+      int targetW = (int)((float)targetH * w / h);
+      if (targetW < 1) targetW = 1;
+
+      uint16_t *finalBuf = (uint16_t *)heap_caps_malloc((size_t)targetW * targetH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+      if (finalBuf != nullptr) {
+        for (int dy = 0; dy < targetH; dy++) {
+          int srcY = dy * decodedH / targetH;
+          for (int dx = 0; dx < targetW; dx++) {
+            int srcX = dx * decodedW / targetW;
+            finalBuf[dy * targetW + dx] = decodeBuf[srcY * decodedW + srcX];
+          }
+        }
+
+        // Locked as one atomic swap -- this frees the old pixel buffer
+        // and reassigns the pointer. If the UI task's drawRGBBitmap()
+        // read this pointer mid-swap, it would dereference freed memory
+        // (a real use-after-free, not just a torn read), so this is the
+        // single most important lock in this file.
+        state_lock();
+        if (g_spacexImagePixels != nullptr) {
+          free(g_spacexImagePixels);
+          g_spacexImagePixels = nullptr;
+          g_spacexImageValid = false;
+        }
+        g_spacexImagePixels = finalBuf;
+        g_spacexImageWidth = targetW;
+        g_spacexImageHeight = targetH;
+        g_spacexImageValid = true;
+        state_unlock();
+        Serial.printf("[SpaceX] JPEG decoded %dx%d, downsampled to %dx%d\n", decodedW, decodedH, targetW, targetH);
+        success = true;
+      } else {
+        Serial.printf("[SpaceX] final image buffer alloc failed (%dx%d requested)\n", targetW, targetH);
+      }
+
+      free(decodeBuf);
+    } else {
+      Serial.printf("[SpaceX] intermediate decode buffer alloc failed (%dx%d requested)\n", decodedW, decodedH);
+    }
+    jpeg.close();
+  } else {
+    Serial.println("[SpaceX] JPEG openRAM failed");
+  }
+
+  return success;
+}
+
+// PNG counterpart to decodeAndStoreJpeg() above. See pngDrawCallback()
+// near the top of this file for how the direct-to-target downsample
+// works without a full-resolution intermediate buffer.
+static bool decodeAndStorePng(uint8_t *buf, size_t bufLen) {
+  bool success = false;
+
+  PNG png;
+  if (png.openRAM(buf, (int)bufLen, pngDrawCallback) == PNG_SUCCESS) {
+    int w = png.getWidth();
+    int h = png.getHeight();
+    Serial.printf("[SpaceX] PNG source dimensions %dx%d\n", w, h);
+
+    int targetH = 100;
+    int targetW = (int)((float)targetH * w / h);
+    if (targetW < 1) targetW = 1;
+
+    uint16_t *finalBuf = (uint16_t *)heap_caps_malloc((size_t)targetW * targetH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+    uint16_t *lineBuf = (uint16_t *)heap_caps_malloc((size_t)w * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+
+    if (finalBuf != nullptr && lineBuf != nullptr) {
+      s_pngFinalBuf = finalBuf;
+      s_pngFinalW = targetW;
+      s_pngFinalH = targetH;
+      s_pngSrcW = w;
+      s_pngSrcH = h;
+      s_pngLineBuf = lineBuf;
+      s_pngObj = &png;
+
+      int rc = png.decode(nullptr, 0);
+
+      s_pngFinalBuf = nullptr;
+      s_pngLineBuf = nullptr;
+      s_pngObj = nullptr;
+
+      if (rc == PNG_SUCCESS) {
+        // Same atomic swap as the JPEG path -- see the comment there.
+        state_lock();
+        if (g_spacexImagePixels != nullptr) {
+          free(g_spacexImagePixels);
+          g_spacexImagePixels = nullptr;
+          g_spacexImageValid = false;
+        }
+        g_spacexImagePixels = finalBuf;
+        g_spacexImageWidth = targetW;
+        g_spacexImageHeight = targetH;
+        g_spacexImageValid = true;
+        state_unlock();
+        Serial.printf("[SpaceX] PNG decoded %dx%d, downsampled to %dx%d\n", w, h, targetW, targetH);
+        success = true;
+      } else {
+        Serial.printf("[SpaceX] PNG decode failed, rc=%d\n", rc);
+        free(finalBuf);
+      }
+    } else {
+      Serial.println("[SpaceX] PNG buffer alloc failed");
+      if (finalBuf != nullptr) free(finalBuf);
+    }
+
+    if (lineBuf != nullptr) free(lineBuf);
+    png.close();
+  } else {
+    Serial.println("[SpaceX] PNG openRAM failed");
+  }
+
+  return success;
+}
+
 bool spacex_fetch_next_image() {
   if (!wifi_manager_is_connected()) return false;
   if (g_spacexLaunchCount == 0) return false;
@@ -249,8 +437,8 @@ bool spacex_fetch_next_image() {
     return false;
   }
 
-  uint8_t *jpegBuf = (uint8_t *)heap_caps_malloc(len, MALLOC_CAP_SPIRAM);
-  if (jpegBuf == nullptr) {
+  uint8_t *imgBuf = (uint8_t *)heap_caps_malloc(len, MALLOC_CAP_SPIRAM);
+  if (imgBuf == nullptr) {
     Serial.println("[SpaceX] image buffer alloc failed");
     http.end();
     return false;
@@ -264,7 +452,7 @@ bool spacex_fetch_next_image() {
     size_t avail = stream->available();
     if (avail > 0) {
       int toRead = (int)min((size_t)avail, (size_t)len - readTotal);
-      int r = stream->readBytes(jpegBuf + readTotal, toRead);
+      int r = stream->readBytes(imgBuf + readTotal, toRead);
       if (r <= 0) { readError = true; break; }
       readTotal += r;
     } else {
@@ -275,101 +463,31 @@ bool spacex_fetch_next_image() {
 
   if (readError || readTotal == 0) {
     Serial.println("[SpaceX] image payload read error");
-    free(jpegBuf);
+    free(imgBuf);
     return false;
   }
 
-  bool success = false;
-
-  // Diagnostic added to isolate "JPEG openRAM failed" -- distinguishes a
-  // truncated download (readTotal < len) from a response that downloaded
-  // fully but isn't a valid JPEG (a real JPEG always starts FF D8 FF).
-  Serial.printf("[SpaceX] image read %u of %d bytes, first bytes: %02X %02X %02X\n",
+  // Diagnostic kept from the earlier "JPEG openRAM failed" investigation --
+  // it turned out LL2 mission images aren't always JPEG (a real capture
+  // showed a PNG signature, 89 50 4E 47, arriving here). This now also
+  // drives the format sniff below instead of assuming JPEG.
+  Serial.printf("[SpaceX] image read %u of %d bytes, first bytes: %02X %02X %02X %02X\n",
                 (unsigned)readTotal, len,
-                readTotal > 0 ? jpegBuf[0] : 0,
-                readTotal > 1 ? jpegBuf[1] : 0,
-                readTotal > 2 ? jpegBuf[2] : 0);
+                readTotal > 0 ? imgBuf[0] : 0,
+                readTotal > 1 ? imgBuf[1] : 0,
+                readTotal > 2 ? imgBuf[2] : 0,
+                readTotal > 3 ? imgBuf[3] : 0);
 
-  JPEGDEC jpeg;
-  if (jpeg.openRAM(jpegBuf, (int)readTotal, jpegDrawCallback)) {
-    int w = jpeg.getWidth();
-    int h = jpeg.getHeight();
-    Serial.printf("[SpaceX] JPEG source dimensions %dx%d\n", w, h);
-
-    // Two-stage shrink. Stage 1: decode at 1/8 scale (JPEGDEC's largest
-    // built-in reduction) into a temporary buffer -- for a 4096-wide
-    // source that's still 512px, too big to fit the ~220px-wide area
-    // reserved on the SpaceX page. Stage 2: manually downsample that
-    // into a small buffer sized to actually fit on screen, so the whole
-    // photo is visible (just small) instead of the screen only showing
-    // a cropped corner of an oversized image.
-    int decodedW = w / 8;
-    int decodedH = h / 8;
-
-    uint16_t *decodeBuf = (uint16_t *)heap_caps_malloc((size_t)decodedW * decodedH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
-    if (decodeBuf != nullptr) {
-      s_decodeTarget = decodeBuf;
-      s_decodeTargetW = decodedW;
-      s_decodeTargetH = decodedH;
-      jpeg.decode(0, 0, JPEG_SCALE_EIGHTH);
-      s_decodeTarget = nullptr;
-
-      // Target box reserved on the SpaceX page (see draw_spacex() in
-      // screen_manager.cpp) -- top-right, beside the Starship/Super
-      // Heavy badge and above the divider line further down. Grown to
-      // 1.25in tall (100px, this project's established 80px/in scale)
-      // per follow-up feedback. Width derived from the real source
-      // aspect ratio rather than assumed, in case future images come in
-      // a different shape.
-      int targetH = 100;
-      int targetW = (int)((float)targetH * w / h);
-      if (targetW < 1) targetW = 1;
-
-      uint16_t *finalBuf = (uint16_t *)heap_caps_malloc((size_t)targetW * targetH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
-      if (finalBuf != nullptr) {
-        // Simple nearest-neighbor downsample -- plenty good for a small
-        // thumbnail on this display, and cheap enough to run on every
-        // fetch without pulling in a real resampling library.
-        for (int dy = 0; dy < targetH; dy++) {
-          int srcY = dy * decodedH / targetH;
-          for (int dx = 0; dx < targetW; dx++) {
-            int srcX = dx * decodedW / targetW;
-            finalBuf[dy * targetW + dx] = decodeBuf[srcY * decodedW + srcX];
-          }
-        }
-
-        // Locked as one atomic swap -- this frees the old pixel buffer
-        // and reassigns the pointer. If the UI task's drawRGBBitmap()
-        // read this pointer mid-swap, it would dereference freed memory
-        // (a real use-after-free, not just a torn read), so this is the
-        // single most important lock in this file.
-        state_lock();
-        if (g_spacexImagePixels != nullptr) {
-          free(g_spacexImagePixels);
-          g_spacexImagePixels = nullptr;
-          g_spacexImageValid = false;
-        }
-        g_spacexImagePixels = finalBuf;
-        g_spacexImageWidth = targetW;
-        g_spacexImageHeight = targetH;
-        g_spacexImageValid = true;
-        state_unlock();
-        Serial.printf("[SpaceX] image decoded %dx%d, downsampled to %dx%d\n", decodedW, decodedH, targetW, targetH);
-        success = true;
-      } else {
-        Serial.printf("[SpaceX] final image buffer alloc failed (%dx%d requested)\n", targetW, targetH);
-      }
-
-      free(decodeBuf);
-    } else {
-      Serial.printf("[SpaceX] intermediate decode buffer alloc failed (%dx%d requested)\n", decodedW, decodedH);
-    }
-    jpeg.close();
+  bool success = false;
+  if (readTotal >= 3 && imgBuf[0] == 0xFF && imgBuf[1] == 0xD8 && imgBuf[2] == 0xFF) {
+    success = decodeAndStoreJpeg(imgBuf, readTotal);
+  } else if (readTotal >= 4 && imgBuf[0] == 0x89 && imgBuf[1] == 0x50 && imgBuf[2] == 0x4E && imgBuf[3] == 0x47) {
+    success = decodeAndStorePng(imgBuf, readTotal);
   } else {
-    Serial.println("[SpaceX] JPEG openRAM failed");
+    Serial.println("[SpaceX] image format not recognized (not JPEG or PNG)");
   }
 
-  free(jpegBuf);
+  free(imgBuf);
   return success;
 }
 
