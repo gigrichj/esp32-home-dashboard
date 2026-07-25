@@ -267,12 +267,13 @@ void spacex_fetch_next_image() {
       s_decodeTarget = nullptr;
 
       // Target box reserved on the SpaceX page (see draw_spacex() in
-      // screen_manager.cpp) -- top-right, below the Starship/Super Heavy
-      // badge and above the divider line further down. Fixed at 0.75in
-      // tall (60px, this project's established 80px/in scale) with
-      // width derived from the real source aspect ratio rather than
-      // assumed, in case future images come in a different shape.
-      int targetH = 60;
+      // screen_manager.cpp) -- top-right, beside the Starship/Super
+      // Heavy badge and above the divider line further down. Grown from
+      // 0.75in to 0.8in tall (64px, this project's established 80px/in
+      // scale) per follow-up feedback. Width derived from the real
+      // source aspect ratio rather than assumed, in case future images
+      // come in a different shape.
+      int targetH = 64;
       int targetW = (int)((float)targetH * w / h);
       if (targetW < 1) targetW = 1;
 
