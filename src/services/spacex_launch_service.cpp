@@ -208,11 +208,19 @@ void spacex_launch_service_update() {
 // raw JPEG bytes directly into a PSRAM buffer (not through readHttpBodySafely,
 // since that returns a null-terminated String, not appropriate for binary
 // JPEG data) and decodes via JPEGDEC into an RGB565 pixel buffer.
-void spacex_fetch_next_image() {
-  if (!wifi_manager_is_connected()) return;
-  if (g_spacexLaunchCount == 0) return;
+// Returns true only if the image was fully fetched and decoded --
+// main.cpp uses this (along with spacex_fetch_next_landing_info()'s own
+// return value) to decide whether to mark this launch's detail fetch as
+// "done" or retry it on a later cycle. Previously this returned void and
+// main.cpp always marked it done regardless of outcome, so a single
+// failed attempt (timeout, oversized image, decode failure, etc.) meant
+// the image silently stayed blank until "next" happened to change to a
+// different launch -- which could be days away.
+bool spacex_fetch_next_image() {
+  if (!wifi_manager_is_connected()) return false;
+  if (g_spacexLaunchCount == 0) return false;
   String url = g_spacexLaunches[0].imageUrl;
-  if (url.length() == 0) return;
+  if (url.length() == 0) return false;
 
   HTTPClient http;
   http.begin(url);
@@ -222,7 +230,7 @@ void spacex_fetch_next_image() {
   if (code != 200) {
     Serial.printf("[SpaceX] image fetch HTTP %d\n", code);
     http.end();
-    return;
+    return false;
   }
 
   // Raised from 250000 -- real LL2 mission photos have been coming back
@@ -233,14 +241,14 @@ void spacex_fetch_next_image() {
   if (len <= 0 || len > 900000) {
     Serial.printf("[SpaceX] image size invalid: %d\n", len);
     http.end();
-    return;
+    return false;
   }
 
   uint8_t *jpegBuf = (uint8_t *)heap_caps_malloc(len, MALLOC_CAP_SPIRAM);
   if (jpegBuf == nullptr) {
     Serial.println("[SpaceX] image buffer alloc failed");
     http.end();
-    return;
+    return false;
   }
 
   WiFiClient *stream = http.getStreamPtr();
@@ -263,8 +271,10 @@ void spacex_fetch_next_image() {
   if (readError || readTotal == 0) {
     Serial.println("[SpaceX] image payload read error");
     free(jpegBuf);
-    return;
+    return false;
   }
+
+  bool success = false;
 
   JPEGDEC jpeg;
   if (jpeg.openRAM(jpegBuf, (int)readTotal, jpegDrawCallback)) {
@@ -331,6 +341,7 @@ void spacex_fetch_next_image() {
         g_spacexImageValid = true;
         state_unlock();
         Serial.printf("[SpaceX] image decoded %dx%d, downsampled to %dx%d\n", decodedW, decodedH, targetW, targetH);
+        success = true;
       } else {
         Serial.printf("[SpaceX] final image buffer alloc failed (%dx%d requested)\n", targetW, targetH);
       }
@@ -345,6 +356,7 @@ void spacex_fetch_next_image() {
   }
 
   free(jpegBuf);
+  return success;
 }
 
 // Booster landing info for the next launch -- only available via LL2's
@@ -352,11 +364,13 @@ void spacex_fetch_next_image() {
 // above), which returns a much larger response (full agency/rocket/program
 // descriptions we don't need, alongside the landing info we do). Reuses
 // readHttpBodySafely() since this is JSON text, not binary like the image.
-void spacex_fetch_next_landing_info() {
-  if (!wifi_manager_is_connected()) return;
-  if (g_spacexLaunchCount == 0) return;
+// Returns true only on a fully successful fetch/parse -- see
+// spacex_fetch_next_image()'s comment above for why this matters.
+bool spacex_fetch_next_landing_info() {
+  if (!wifi_manager_is_connected()) return false;
+  if (g_spacexLaunchCount == 0) return false;
   String launchId = g_spacexLaunches[0].launchId;
-  if (launchId.length() == 0) return;
+  if (launchId.length() == 0) return false;
 
   HTTPClient http;
   String url = "https://ll.thespacedevs.com/2.0.0/launch/" + launchId + "/";
@@ -368,13 +382,13 @@ void spacex_fetch_next_landing_info() {
   if (code != 200) {
     Serial.printf("[SpaceX] landing detail HTTP %d\n", code);
     http.end();
-    return;
+    return false;
   }
 
   String payload;
   if (!readHttpBodySafely(http, payload, "SpaceX landing detail")) {
     http.end();
-    return;
+    return false;
   }
   http.end();
 
@@ -382,7 +396,7 @@ void spacex_fetch_next_landing_info() {
   DeserializationError err = deserializeJson(doc, payload);
   if (err) {
     Serial.printf("[SpaceX] landing detail JSON parse error: %s\n", err.c_str());
-    return;
+    return false;
   }
 
   // rocket.launcher_stage is an array; landing info (if any) lives on the
@@ -394,7 +408,7 @@ void spacex_fetch_next_landing_info() {
     g_spacexLandingAttempt = false;
     g_spacexLandingValid = true;
     state_unlock();
-    return;
+    return true; // legitimate successful outcome: fetched OK, no landing attempt planned
   }
 
   JsonObject landing = stages[0]["landing"];
@@ -405,5 +419,6 @@ void spacex_fetch_next_landing_info() {
   g_spacexLandingType = landing["type"]["abbrev"] | "";
   g_spacexLandingValid = true;
   state_unlock();
+  return true;
 }
 

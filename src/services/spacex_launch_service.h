@@ -36,7 +36,7 @@ extern uint16_t* g_spacexImagePixels;
 extern int g_spacexImageWidth;
 extern int g_spacexImageHeight;
 extern bool g_spacexImageValid;
-void spacex_fetch_next_image();
+bool spacex_fetch_next_image(); // returns true only on a fully successful decode
 
 // Booster landing info for the NEXT launch only -- only available via a
 // separate, much heavier single-launch detail fetch (LL2's list/upcoming
@@ -47,4 +47,4 @@ extern bool g_spacexLandingAttempt;
 extern String g_spacexLandingLocation;
 extern String g_spacexLandingAbbrev;
 extern String g_spacexLandingType;
-void spacex_fetch_next_landing_info();
+bool spacex_fetch_next_landing_info(); // returns true only on a fully successful fetch/parse

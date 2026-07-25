@@ -311,9 +311,15 @@ void networkTask(void* param) {
         // larger single-launch endpoint), no need to repeat them for the
         // same launch every 4 hours.
         if (g_spacexLaunchCount > 0 && g_spacexLaunches[0].launchId != lastSpacexDetailLaunchId) {
-          spacex_fetch_next_image();
-          spacex_fetch_next_landing_info();
-          lastSpacexDetailLaunchId = g_spacexLaunches[0].launchId;
+          // Only cache this launchId as "done" if both fetches actually
+          // succeeded -- a failure now naturally retries on the next
+          // spacex_launch_service_update() cycle instead of being
+          // silently abandoned until "next" happens to change.
+          bool imageOk = spacex_fetch_next_image();
+          bool landingOk = spacex_fetch_next_landing_info();
+          if (imageOk && landingOk) {
+            lastSpacexDetailLaunchId = g_spacexLaunches[0].launchId;
+          }
         }
       } else if (!spacexDataLoaded) {
         spacexRetryCount++;
