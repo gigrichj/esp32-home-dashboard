@@ -7,6 +7,7 @@
 #include <time.h>
 #include <JPEGDEC.h>
 #include <PNGdec.h>
+#include <new>
 #include "../state_mutex.h"
 
 SpacexLaunch g_spacexLaunches[SPACEX_MAX_LAUNCHES];
@@ -343,10 +344,25 @@ static bool decodeAndStoreJpeg(uint8_t *buf, size_t bufLen) {
 static bool decodeAndStorePng(uint8_t *buf, size_t bufLen) {
   bool success = false;
 
-  PNG png;
-  if (png.openRAM(buf, (int)bufLen, pngDrawCallback) == PNG_SUCCESS) {
-    int w = png.getWidth();
-    int h = png.getHeight();
+  // The PNG decoder is allocated on PSRAM rather than declared as a
+  // local (stack) variable. PNGdec's internal struct embeds a fixed-size
+  // double-line buffer sized by PNG_MAX_BUFFERED_PIXELS (see
+  // platformio.ini) -- at our chosen width that buffer alone is roughly
+  // 32KB. A local "PNG png;" here put all of that on this task's stack
+  // the moment the object was constructed, regardless of the actual
+  // image's dimensions, which caused an immediate "Stack canary
+  // watchpoint triggered" crash (with a garbled backtrace from the
+  // corrupted stack) the first time this ran against a real photo.
+  void *pngMem = heap_caps_malloc(sizeof(PNG), MALLOC_CAP_SPIRAM);
+  if (pngMem == nullptr) {
+    Serial.println("[SpaceX] PNG decoder alloc failed");
+    return false;
+  }
+  PNG *png = new (pngMem) PNG();
+
+  if (png->openRAM(buf, (int)bufLen, pngDrawCallback) == PNG_SUCCESS) {
+    int w = png->getWidth();
+    int h = png->getHeight();
     Serial.printf("[SpaceX] PNG source dimensions %dx%d\n", w, h);
 
     int targetH = 100;
@@ -363,9 +379,9 @@ static bool decodeAndStorePng(uint8_t *buf, size_t bufLen) {
       s_pngSrcW = w;
       s_pngSrcH = h;
       s_pngLineBuf = lineBuf;
-      s_pngObj = &png;
+      s_pngObj = png;
 
-      int rc = png.decode(nullptr, 0);
+      int rc = png->decode(nullptr, 0);
 
       s_pngFinalBuf = nullptr;
       s_pngLineBuf = nullptr;
@@ -396,11 +412,13 @@ static bool decodeAndStorePng(uint8_t *buf, size_t bufLen) {
     }
 
     if (lineBuf != nullptr) free(lineBuf);
-    png.close();
+    png->close();
   } else {
     Serial.println("[SpaceX] PNG openRAM failed");
   }
 
+  png->~PNG();
+  free(pngMem);
   return success;
 }
 
