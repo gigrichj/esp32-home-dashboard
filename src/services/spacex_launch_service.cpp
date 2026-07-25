@@ -9,6 +9,7 @@
 #include <PNGdec.h>
 #include <new>
 #include "esp_heap_caps.h"
+#include "esp_cpu.h"
 #include "../state_mutex.h"
 
 SpacexLaunch g_spacexLaunches[SPACEX_MAX_LAUNCHES];
@@ -470,6 +471,20 @@ bool spacex_fetch_next_image() {
   // proves it.
   bool heapOkOnEntry = heap_caps_check_integrity_all(true);
   Serial.printf("[SpaceX] heap integrity on spacex_fetch_next_image() entry: %s\n", heapOkOnEntry ? "OK" : "CORRUPT");
+
+  // Diagnostic: the exact same address (0x3c325c84) has shown up as the
+  // corrupted heap header across every single crash so far -- a fixed,
+  // repeatable address like this points to deterministic corruption tied
+  // to this run's allocation sequence, not a nondeterministic race with
+  // the UI task. Arming a hardware watchpoint on that specific address
+  // means the CPU halts the instant anything writes to it, giving a real
+  // backtrace of the actual culprit instruction instead of the
+  // misattributed one (rmtInit()/draw_astro()) seen in every crash so
+  // far. Left armed (not cleared) for the rest of this run so it catches
+  // the write whenever it actually happens, even if that's later than
+  // this function's own execution.
+  esp_err_t wpResult = esp_cpu_set_watchpoint(0, (void *)0x3c325c84, 4, ESP_WATCHPOINT_STORE);
+  Serial.printf("[SpaceX] watchpoint on 0x3c325c84 armed: %s\n", (wpResult == ESP_OK) ? "OK" : "FAILED");
 
   if (!wifi_manager_is_connected()) return false;
   if (g_spacexLaunchCount == 0) return false;
