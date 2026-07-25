@@ -213,7 +213,11 @@ static void drawHeader() {
   screen.setTextColor(colorBg, colorAccent);
   screen.setTextDatum(textdatum_t::top_left);
   if (currentTab == 0) {
-    screen.drawString("DASHBOARD - LORTON,VA", 10, 12);
+    // Nudged up from y=12 to y=3 -- makes room for the WiFi status row
+    // added below (see the block near the end of this function), moved
+    // here from the page body where it was overlapping the cloud
+    // graphics. Still comfortably inside this 40px banner.
+    screen.drawString("DASHBOARD - LORTON,VA", 10, 3);
   } else if (currentTab == ISS_TAB_INDEX) {
     // Home coordinates alongside the title, same pattern as the
     // Dashboard's "- LORTON,VA" suffix -- useful reference since this
@@ -236,13 +240,11 @@ static void drawHeader() {
 
   // Compact WiFi signal icon, flush with the banner's far-right edge --
   // same ascending-bar style and RSSI thresholds as the Dashboard page's
-  // larger status icon, just small enough to fit this 1-line banner
-  // strip. Shows all bars unlit rather than hiding the icon when not
-  // connected, so its position stays consistent across pages/states.
-  // Skipped on the Dashboard page (currentTab 0) since it already has
-  // its own larger, more detailed WiFi status block further down (SSID,
-  // IP, bigger bar icon) -- this avoids a redundant second indicator
-  // there.
+  // WiFi row below, just small enough to fit this 1-line banner strip.
+  // Shows all bars unlit rather than hiding the icon when not connected,
+  // so its position stays consistent across pages/states. Skipped on the
+  // Dashboard page (currentTab 0), which gets its own dedicated WiFi row
+  // (SSID + IP, see below) instead of just the bare icon.
   int wifiIconW = 0;
   if (currentTab != 0) {
     int wifiLitBars = 0;
@@ -264,8 +266,48 @@ static void drawHeader() {
 
   // Page number + TAP hint drawn just to the left of the icon (or flush
   // right, same as before, on the Dashboard page where there's no icon).
+  // Nudged up on the Dashboard page to match the title above, again to
+  // leave room for the new WiFi row below.
   int tabIndicatorX = (wifiIconW > 0) ? (WIDTH - 10 - wifiIconW - 8) : (WIDTH - 10);
-  screen.drawString(tabIndicator, tabIndicatorX, 15);
+  int tabIndicatorY = (currentTab == 0) ? 6 : 15;
+  screen.drawString(tabIndicator, tabIndicatorX, tabIndicatorY);
+
+  // Dashboard-only: WiFi network + IP, relocated here from the page body
+  // (previously drawn over the cloud background around y=50) -- a second
+  // compact row inside this same 40px banner, right-aligned like the tab
+  // indicator above it, with a small ascending-bar signal icon to its
+  // left in the same style as the per-page icon above.
+  if (currentTab == 0) {
+    char wifiLine[48];
+    uint16_t wifiTextColor;
+    int wifiLitBars = 0;
+    if (WiFi.status() == WL_CONNECTED) {
+      snprintf(wifiLine, sizeof(wifiLine), "%s (%s)", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
+      wifiTextColor = colorSuccess;
+      int rssi = g_wifiRssi; // cached on the network task, not read live here
+      wifiLitBars = (rssi > -55) ? 4 : (rssi > -65) ? 3 : (rssi > -75) ? 2 : 1;
+    } else {
+      snprintf(wifiLine, sizeof(wifiLine), "disconnected (%d)", (int)WiFi.status());
+      wifiTextColor = colorDanger;
+    }
+    int wifiRowY = 25; // second row, below the title/tap row above, still inside the 40px banner
+    screen.setTextColor(wifiTextColor, colorAccent);
+    screen.drawString(wifiLine, WIDTH - 10, wifiRowY);
+
+    int lineWidth = (int)strlen(wifiLine) * 6; // ~6px/char at text size 1
+    int iconBarW = 3, iconGap = 1;
+    int iconTotalW = iconBarW * 4 + iconGap * 3;
+    int iconRight = WIDTH - 10 - lineWidth - 8; // 8px gap before the text
+    int iconBaseY = wifiRowY + 8; // bars grow upward from this baseline
+
+    for (int b = 0; b < 4; b++) {
+      int barH = 2 + b * 2; // ascending heights: 2,4,6,8px
+      int bx = iconRight - iconTotalW + b * (iconBarW + iconGap);
+      uint16_t barColor = (b < wifiLitBars) ? colorSuccess : colorDim;
+      screen.fillRect(bx, iconBaseY - barH, iconBarW, barH, barColor);
+    }
+    screen.setTextColor(colorBg, colorAccent); // restore banner text color for anything drawn after this
+  }
 }
 
 static void drawCloudIcon(int cx, int cy, int r, uint16_t color); // defined further down
@@ -426,45 +468,9 @@ static void draw_dashboard() {
   screen.drawString(formatCurrentDateTime(), 20, 55);
   screen.setTextColor(colorText, colorBg);
 
-  // WiFi status - small, tucked in the top-right corner instead of the
-  // main list, so it doesn't compete for attention with the real data.
-  // A small signal-strength bar icon sits just to the left of the text,
-  // giving an at-a-glance read without needing to parse the dBm number.
-  screen.setTextSize(1);
-  screen.setTextDatum(textdatum_t::top_right);
-  if (WiFi.status() == WL_CONNECTED) {
-    char line[64];
-    snprintf(line, sizeof(line), "WiFi: %s (%s)", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
-    screen.setTextColor(colorSuccess, colorBg);
-    screen.drawString(line, WIDTH - 10, 50);
-
-    {
-      // 4-bar signal icon, classic ascending-height bars. RSSI thresholds
-      // roughly follow common phone/router conventions: > -55 excellent,
-      // > -65 good, > -75 fair, otherwise weak (still shows 1 bar so it
-      // doesn't look broken/blank at low-but-connected signal).
-      int rssi = g_wifiRssi; // cached on the network task, not read live here
-      int litBars = (rssi > -55) ? 4 : (rssi > -65) ? 3 : (rssi > -75) ? 2 : 1;
-
-      int lineWidth = (int)strlen(line) * 6; // ~6px/char at text size 1
-      int iconBarW = 4, iconGap = 2;
-      int iconTotalW = iconBarW * 4 + iconGap * 3;
-      int iconRight = WIDTH - 10 - lineWidth - 10; // 10px gap before the text
-      int iconBaseY = 58; // bars grow upward from this baseline
-
-      for (int b = 0; b < 4; b++) {
-        int barH = 3 + b * 3; // ascending heights: 3,6,9,12px
-        int bx = iconRight - iconTotalW + b * (iconBarW + iconGap);
-        uint16_t barColor = (b < litBars) ? colorSuccess : colorDim;
-        screen.fillRect(bx, iconBaseY - barH, iconBarW, barH, barColor);
-      }
-    }
-  } else {
-    char line[32];
-    snprintf(line, sizeof(line), "WiFi: disconnected (%d)", (int)WiFi.status());
-    screen.setTextColor(colorDanger, colorBg);
-    screen.drawString(line, WIDTH - 10, 50);
-  }
+  // WiFi status moved into the banner in drawHeader() -- see the
+  // Dashboard-only block there. This used to draw here, overlapping the
+  // cloud background.
   screen.setTextDatum(textdatum_t::top_left);
   screen.setTextSize(2);
   screen.setTextColor(colorText, colorBg);

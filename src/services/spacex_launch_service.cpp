@@ -370,7 +370,16 @@ static bool decodeAndStorePng(uint8_t *buf, size_t bufLen) {
     if (targetW < 1) targetW = 1;
 
     uint16_t *finalBuf = (uint16_t *)heap_caps_malloc((size_t)targetW * targetH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
-    uint16_t *lineBuf = (uint16_t *)heap_caps_malloc((size_t)w * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+    // Padded +16 pixels beyond the exact width -- every official PNGdec
+    // example sizes this buffer generously (a fixed 320 or MAX_IMAGE_WIDTH
+    // array), never tightly to the real image width like this originally
+    // did. A heap corruption traced (via cleanup checkpoint logging) to
+    // exactly the free() of this buffer, right after a successful decode,
+    // strongly suggests getLineAsRGB565() writes a little past the
+    // documented iWidth*2 bytes internally (e.g. alignment in its own
+    // copy loop) -- this padding absorbs that instead of clobbering the
+    // next heap block's header.
+    uint16_t *lineBuf = (uint16_t *)heap_caps_malloc((size_t)(w + 16) * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
 
     if (finalBuf != nullptr && lineBuf != nullptr) {
       s_pngFinalBuf = finalBuf;
