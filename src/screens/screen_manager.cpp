@@ -3407,7 +3407,7 @@ static void draw_spacex() {
     screen.setTextColor(colorDim, colorBg);
     screen.drawString("= Starship/Super Heavy", legendIconX + 26, legendIconY + 10);
 
-    int falconLegendY = legendIconY - 24;
+    int falconLegendY = legendIconY - 34; // nudged up 10px total from icon row
     drawFalconIcon(legendIconX, falconLegendY, colorAccent);
     screen.drawString("= Falcon 9/Heavy", legendIconX + 26, falconLegendY + 10);
   }

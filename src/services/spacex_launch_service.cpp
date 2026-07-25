@@ -226,6 +226,11 @@ bool spacex_fetch_next_image() {
   http.begin(url);
   http.setTimeout(15000); // same fix as the list/landing fetches above
   http.setUserAgent("esp32-home-dashboard/1.0");
+  http.useHTTP10(true); // required for the manual read-loop below --
+  // without this, chunked transfer encoding corrupts both getSize()
+  // (returns -1) and the raw byte stream itself (chunk-size markers
+  // get read as image data). Same fix applied elsewhere in this file
+  // and across the other fetch services.
   int code = http.GET();
   if (code != 200) {
     Serial.printf("[SpaceX] image fetch HTTP %d\n", code);
