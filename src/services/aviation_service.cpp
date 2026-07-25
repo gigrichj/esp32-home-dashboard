@@ -286,26 +286,15 @@ static bool fetchAircraftFromUrl(const char* url, const char* sourceName) {
   return parseAircraftJson(payload, sourceName);
 }
 
+// STRIPPED for flicker isolation testing: this used to fetch from
+// adsb.fi (with an airplanes.live fallback). Gutted to a true no-op --
+// not just gated behind a flag -- after finding a second, unconditional
+// call to this function in main.cpp's boot sequence that had been
+// bypassing the AVIATION_FETCH_ENABLED flag the whole time. This way
+// there's no code path left that can make an aviation network call,
+// regardless of how it's invoked.
 void aviation_service_update() {
-  if (!wifi_manager_is_connected()) return;
-
-  char adsbFiUrl[160];
-  snprintf(adsbFiUrl, sizeof(adsbFiUrl),
-    "https://opendata.adsb.fi/api/v3/lat/%f/lon/%f/dist/%d",
-    (double)HOME_LAT, (double)HOME_LON, AVIATION_RANGE_NM);
-
-  if (fetchAircraftFromUrl(adsbFiUrl, "adsb.fi")) {
-    return;
-  }
-
-  Serial.println("[Aviation] adsb.fi failed, falling back to airplanes.live");
-
-  char airplanesLiveUrl[160];
-  snprintf(airplanesLiveUrl, sizeof(airplanesLiveUrl),
-    "https://api.airplanes.live/v2/point/%f/%f/%d",
-    (double)HOME_LAT, (double)HOME_LON, AVIATION_RANGE_NM);
-
-  fetchAircraftFromUrl(airplanesLiveUrl, "airplanes.live");
+  return;
 }
 
 bool aviation_lookup_flight(const String& flightNumber, Aircraft& out) {
@@ -385,26 +374,9 @@ static void fetchRoute(const String& callsign) {
   http.end();
 }
 
+// STRIPPED for flicker isolation testing -- see aviation_service_update()
+// above for why. This used to resolve aircraft type/route/photo detail
+// lookups for a tapped aircraft; now a true no-op.
 void aviation_service_detail_loop() {
-  if (!pendingDetailRequested) return;
-  if (!wifi_manager_is_connected()) return;
-
-  String icaoHex = pendingIcao;
-  String callsign = pendingCallsign;
-  pendingDetailRequested = false;
-
-  g_aircraftDetail = AircraftDetail();
-  g_aircraftDetail.lookupInProgress = true;
-  g_aircraftPhotoValid = false;
-
-  fetchAircraftType(icaoHex);
-  fetchRoute(callsign);
-
-  if (g_aircraftDetail.photoThumbUrl.length() > 0) {
-    fetchAndDecodePhoto(g_aircraftDetail.photoThumbUrl);
-  }
-
-  g_aircraftDetail.lookedUpIcao = icaoHex;
-  g_aircraftDetail.lookupInProgress = false;
-  g_aircraftDetail.valid = true;
+  return;
 }

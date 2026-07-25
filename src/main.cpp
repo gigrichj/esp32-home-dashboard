@@ -17,15 +17,6 @@
 
 using namespace PanelDisplay;
 
-// TEMP DIAGNOSTIC, round 2: disabled to test extended runtime stability
-// with Aviation off. Promoted to file scope (was a local static inside
-// networkTask()) because a second, unconditional aviation_service_update()
-// call in setup()'s one-time boot sequence was bypassing this flag
-// entirely -- it ran once at boot regardless, silently populating a
-// stale aircraft count that never got cleared since the periodic loop
-// stayed off. Both call sites now gate on this one flag.
-static const bool AVIATION_FETCH_ENABLED = false;
-
 static const uint32_t WEATHER_POLL_MS      = 10UL * 60UL * 1000UL;
 static const uint32_t SPACEX_POLL_MS       = 4UL * 60UL * 60UL * 1000UL; // every few hours --
                                                                      // launch schedules don't
@@ -179,7 +170,7 @@ void uiTask(void* param) {
 }
 
 void networkTask(void* param) {
-  uint32_t lastWeather = 0, lastAviation = 0, lastIss = 0, lastAirQuality = 0, lastAstro = 0, lastSpacex = 0;
+  uint32_t lastWeather = 0, lastIss = 0, lastAirQuality = 0, lastAstro = 0, lastSpacex = 0;
   uint32_t lastPrecipRetry = 0;
   bool astroDataLoaded = false;
   bool weatherDataLoaded = false;
@@ -281,16 +272,10 @@ void networkTask(void* param) {
       debug_log("precip retry fetch done");
       heavyFetchThisCycle = true;
     }
-    // AVIATION_FETCH_ENABLED now declared at file scope (see top of file).
-    if (AVIATION_FETCH_ENABLED && !heavyFetchThisCycle && now - lastAviation > g_aviationPollMs) {
-      lastAviation = now;
-      debug_log("aviation fetch start");
-      aviation_service_update();
-      debug_log("aviation fetch done");
-    }
-    if (AVIATION_FETCH_ENABLED && !heavyFetchThisCycle) {
-      aviation_service_detail_loop();
-    }
+    // Aviation fetch calls removed entirely (not just flag-gated) for a
+    // genuinely clean flicker-isolation build -- aviation_service_update()
+    // and aviation_service_detail_loop() are also stripped to no-ops in
+    // aviation_service.cpp, so this is belt-and-suspenders.
     if (!heavyFetchThisCycle && now - lastIss > ISS_POLL_MS) {
       lastIss = now;
       debug_log("iss fetch start");
@@ -381,10 +366,8 @@ void setup() {
     delay(150);
     astro_seeing_service_update();
     delay(150);
-    if (AVIATION_FETCH_ENABLED) {
-      aviation_service_update();
-      delay(150);
-    }
+    // Boot-time aviation_service_update() call removed entirely --
+    // see the comment near networkTask()'s old aviation block above.
     iss_service_update();
   } else {
     wasInSetupMode = true;
