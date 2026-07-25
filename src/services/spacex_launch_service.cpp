@@ -281,6 +281,15 @@ bool spacex_fetch_next_image() {
 
   bool success = false;
 
+  // Diagnostic added to isolate "JPEG openRAM failed" -- distinguishes a
+  // truncated download (readTotal < len) from a response that downloaded
+  // fully but isn't a valid JPEG (a real JPEG always starts FF D8 FF).
+  Serial.printf("[SpaceX] image read %u of %d bytes, first bytes: %02X %02X %02X\n",
+                (unsigned)readTotal, len,
+                readTotal > 0 ? jpegBuf[0] : 0,
+                readTotal > 1 ? jpegBuf[1] : 0,
+                readTotal > 2 ? jpegBuf[2] : 0);
+
   JPEGDEC jpeg;
   if (jpeg.openRAM(jpegBuf, (int)readTotal, jpegDrawCallback)) {
     int w = jpeg.getWidth();

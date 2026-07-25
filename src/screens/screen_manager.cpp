@@ -3262,7 +3262,7 @@ static void draw_spacex() {
   snprintf(line1, sizeof(line1), "%s  %s %s", dateBuf, timeBuf, tzLabel);
   screen.drawString(line1, 20, y);
   screen.setTextColor(statusColor, colorBg);
-  screen.drawString(next.statusName.c_str(), 260, y);
+  screen.drawString(next.statusName.c_str(), 260, y - 10); // nudged up 1/8in (10px) to clear the badge icon below it
   y += 28;
 
   // Every launch now gets the icon+colored-name badge treatment (was
@@ -3407,7 +3407,7 @@ static void draw_spacex() {
     screen.setTextColor(colorDim, colorBg);
     screen.drawString("= Starship/Super Heavy", legendIconX + 26, legendIconY + 10);
 
-    int falconLegendY = legendIconY - 34; // nudged up 10px total from icon row
+    int falconLegendY = legendIconY - 44; // nudged up 1/8in (10px) further to clear icon overlap, 20px total from icon row
     drawFalconIcon(legendIconX, falconLegendY, colorAccent);
     screen.drawString("= Falcon 9/Heavy", legendIconX + 26, falconLegendY + 10);
   }
