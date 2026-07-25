@@ -272,11 +272,12 @@ void networkTask(void* param) {
       debug_log("precip retry fetch done");
       heavyFetchThisCycle = true;
     }
-    // Re-enabled after isolating flicker testing to the Aviation page.
-    // Radius also reduced 40nm -> 20nm (aviation_service.cpp) to shrink
-    // the payload per fetch and hopefully cut down adsb.fi's frequent
-    // timeouts at the old radius.
-    static const bool AVIATION_FETCH_ENABLED = true;
+    // TEMP DIAGNOSTIC, round 2: disabled again to test whether a longer
+    // stable runtime (>30min) is achievable with Aviation off, now that
+    // the SpaceX image cap has also been raised (separately testing
+    // whether Aviation vs. the image decode is the bigger PSRAM/display
+    // contention contributor).
+    static const bool AVIATION_FETCH_ENABLED = false;
     if (AVIATION_FETCH_ENABLED && !heavyFetchThisCycle && now - lastAviation > g_aviationPollMs) {
       lastAviation = now;
       debug_log("aviation fetch start");

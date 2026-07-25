@@ -821,12 +821,10 @@ static void draw_aircraft_detail_card(int listX) {
 }
 
 static void draw_aviation() {
-  // TEMP DIAGNOSTIC, STAGE 2: page draw/compute re-enabled, but
-  // AVIATION_FETCH_ENABLED in main.cpp is still false, so this runs
-  // against an empty/stale aircraft list with zero network activity.
-  // If flicker returns now, it's the rendering/compute side, not fetch.
-  // If it stays clean, re-enable fetch next to confirm that's the cause.
-  static const bool AVIATION_PAGE_ENABLED = true;
+  // TEMP DIAGNOSTIC, round 2: disabled again alongside the fetch flag in
+  // main.cpp, to test runtime stability with Aviation fully off now that
+  // the SpaceX image cap has also been raised.
+  static const bool AVIATION_PAGE_ENABLED = false;
   if (!AVIATION_PAGE_ENABLED) {
     screen.setTextSize(2);
     screen.setTextColor(colorDim, colorBg);

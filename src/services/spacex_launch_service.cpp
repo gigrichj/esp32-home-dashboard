@@ -201,8 +201,12 @@ void spacex_fetch_next_image() {
     return;
   }
 
+  // Raised from 250000 -- real LL2 mission photos have been coming back
+  // around 660KB, well over the old cap, so the image never once passed
+  // this check. 900000 gives headroom above that while still rejecting
+  // anything wildly oversized/malformed.
   int len = http.getSize();
-  if (len <= 0 || len > 250000) {
+  if (len <= 0 || len > 900000) {
     Serial.printf("[SpaceX] image size invalid: %d\n", len);
     http.end();
     return;
