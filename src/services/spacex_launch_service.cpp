@@ -248,35 +248,63 @@ void spacex_fetch_next_image() {
     int h = jpeg.getHeight();
     Serial.printf("[SpaceX] JPEG source dimensions %dx%d\n", w, h);
 
-    // Decoded at 1/4 scale (JPEG_SCALE_QUARTER) instead of full
-    // resolution -- real LL2 mission photos come back large enough
-    // (e.g. 1200x800+) that a full-size RGB565 buffer could be several
-    // MB, which either fails to allocate outright or adds real PSRAM
-    // pressure right as the display is fighting for PSRAM bus access
-    // (the same contention behind the display flicker investigation).
-    // Quarter scale cuts the pixel buffer to 1/16th the size.
-    int scaledW = w / 4;
-    int scaledH = h / 4;
+    // Two-stage shrink. Stage 1: decode at 1/8 scale (JPEGDEC's largest
+    // built-in reduction) into a temporary buffer -- for a 4096-wide
+    // source that's still 512px, too big to fit the ~220px-wide area
+    // reserved on the SpaceX page. Stage 2: manually downsample that
+    // into a small buffer sized to actually fit on screen, so the whole
+    // photo is visible (just small) instead of the screen only showing
+    // a cropped corner of an oversized image.
+    int decodedW = w / 8;
+    int decodedH = h / 8;
 
-    if (g_spacexImagePixels != nullptr) {
-      free(g_spacexImagePixels);
-      g_spacexImagePixels = nullptr;
-      g_spacexImageValid = false;
-    }
+    uint16_t *decodeBuf = (uint16_t *)heap_caps_malloc((size_t)decodedW * decodedH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+    if (decodeBuf != nullptr) {
+      s_decodeTarget = decodeBuf;
+      s_decodeTargetW = decodedW;
+      s_decodeTargetH = decodedH;
+      jpeg.decode(0, 0, JPEG_SCALE_EIGHTH);
+      s_decodeTarget = nullptr;
 
-    uint16_t *photoBuf = (uint16_t *)heap_caps_malloc((size_t)scaledW * scaledH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
-    if (photoBuf != nullptr) {
-      s_decodeTarget = photoBuf;
-      s_decodeTargetW = scaledW;
-      s_decodeTargetH = scaledH;
-      jpeg.decode(0, 0, JPEG_SCALE_QUARTER);
-      g_spacexImagePixels = photoBuf;
-      g_spacexImageWidth = scaledW;
-      g_spacexImageHeight = scaledH;
-      g_spacexImageValid = true;
-      Serial.printf("[SpaceX] image decoded %dx%d (quarter scale)\n", scaledW, scaledH);
+      // Target box reserved on the SpaceX page (see draw_spacex() in
+      // screen_manager.cpp) -- top-right, below the Starship/Super Heavy
+      // badge and clear of the legend in the bottom-right corner. Aspect
+      // ratio preserved from the real source dimensions rather than
+      // assumed, in case future images come in a different shape.
+      int targetW = 220;
+      int targetH = (int)((float)targetW * h / w);
+      if (targetH < 1) targetH = 1;
+
+      uint16_t *finalBuf = (uint16_t *)heap_caps_malloc((size_t)targetW * targetH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+      if (finalBuf != nullptr) {
+        // Simple nearest-neighbor downsample -- plenty good for a small
+        // thumbnail on this display, and cheap enough to run on every
+        // fetch without pulling in a real resampling library.
+        for (int dy = 0; dy < targetH; dy++) {
+          int srcY = dy * decodedH / targetH;
+          for (int dx = 0; dx < targetW; dx++) {
+            int srcX = dx * decodedW / targetW;
+            finalBuf[dy * targetW + dx] = decodeBuf[srcY * decodedW + srcX];
+          }
+        }
+
+        if (g_spacexImagePixels != nullptr) {
+          free(g_spacexImagePixels);
+          g_spacexImagePixels = nullptr;
+          g_spacexImageValid = false;
+        }
+        g_spacexImagePixels = finalBuf;
+        g_spacexImageWidth = targetW;
+        g_spacexImageHeight = targetH;
+        g_spacexImageValid = true;
+        Serial.printf("[SpaceX] image decoded %dx%d, downsampled to %dx%d\n", decodedW, decodedH, targetW, targetH);
+      } else {
+        Serial.printf("[SpaceX] final image buffer alloc failed (%dx%d requested)\n", targetW, targetH);
+      }
+
+      free(decodeBuf);
     } else {
-      Serial.printf("[SpaceX] image pixel buffer alloc failed (%dx%d requested)\n", scaledW, scaledH);
+      Serial.printf("[SpaceX] intermediate decode buffer alloc failed (%dx%d requested)\n", decodedW, decodedH);
     }
     jpeg.close();
   } else {

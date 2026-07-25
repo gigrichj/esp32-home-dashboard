@@ -3178,11 +3178,12 @@ static void draw_spacex() {
   int y = 50;
 
   if (g_spacexImageValid && g_spacexImagePixels != nullptr) {
-    // Drawn at native decoded resolution -- no scaling applied (matches
-    // aviation_service.cpp's own photo feature, which does the same). If
-    // the source image is unusually large it may extend past this
-    // reserved area; revisit with a scale-down pass if that's common.
-    screen.drawRGBBitmap(560, y, g_spacexImagePixels, g_spacexImageWidth, g_spacexImageHeight);
+    // Now pre-downsampled in spacex_launch_service.cpp to actually fit
+    // this reserved area (~220px wide, aspect-preserved) instead of
+    // being drawn at native resolution and cropped. Positioned at y=85
+    // so it sits below the Starship/Super Heavy badge (drawn at y=40)
+    // rather than getting drawn over by it.
+    screen.drawRGBBitmap(560, 85, g_spacexImagePixels, g_spacexImageWidth, g_spacexImageHeight);
   }
 
   time_t t = (time_t)next.netUnix;
