@@ -3201,13 +3201,13 @@ static void draw_spacex() {
   int y = 50;
 
   if (g_spacexImageValid && g_spacexImagePixels != nullptr) {
-    // Now pre-downsampled in spacex_launch_service.cpp to a fixed 96px
-    // (1.2in) tall thumbnail, width aspect-preserved. This is the shared
-    // "row height" the Starship/Super Heavy badge below is vertically
-    // centered against. Moved up to y=64 (was y=79) so the taller image
-    // still clears the divider line at y=166 (bottom edge now lands at
-    // y=160, 6px of margin).
-    screen.drawRGBBitmap(620, 64, g_spacexImagePixels, g_spacexImageWidth, g_spacexImageHeight);
+    // Now pre-downsampled in spacex_launch_service.cpp to a fixed 100px
+    // (1.25in) tall thumbnail, width aspect-preserved. This is the
+    // shared "row height" the Starship/Super Heavy badge below is
+    // vertically centered against. Moved left 5px and up 4px (was
+    // x=620, y=64) per follow-up feedback -- bottom edge now lands at
+    // y=160, still 6px clear of the divider line at y=166.
+    screen.drawRGBBitmap(615, 60, g_spacexImagePixels, g_spacexImageWidth, g_spacexImageHeight);
   }
 
   time_t t = (time_t)next.netUnix;
@@ -3254,14 +3254,14 @@ static void draw_spacex() {
     lowerRocket.toLowerCase();
     bool nextIsSuperHeavy = lowerRocket.indexOf("super heavy") >= 0;
     const char* badgeLabel = nextIsSuperHeavy ? "SUPER HEAVY" : "STARSHIP";
-    // Vertically centered against the image's 96px-tall row (image
-    // top y=64, row center y=64+48=112): icon (32px tall) top = 112-16
-    // =96, text (FONT_H=7 at size 3 = 21px tall) top = 112-11=101 --
+    // Vertically centered against the image's 100px-tall row (image
+    // top y=60, row center y=60+50=110): icon (32px tall) top = 110-16
+    // =94, text (FONT_H=7 at size 3 = 21px tall) top = 110-11=99 --
     // both landing on the same mid-row line as the image.
-    drawRocketIcon(350, 96, colorStarship);
+    drawRocketIcon(350, 94, colorStarship);
     screen.setTextSize(3);
     screen.setTextColor(colorStarship, colorBg);
-    screen.drawString(badgeLabel, 378, 101);
+    screen.drawString(badgeLabel, 378, 99);
 
     screen.setTextSize(1);
     screen.setTextColor(colorText, colorBg);
