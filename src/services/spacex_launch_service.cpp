@@ -268,12 +268,13 @@ void spacex_fetch_next_image() {
 
       // Target box reserved on the SpaceX page (see draw_spacex() in
       // screen_manager.cpp) -- top-right, below the Starship/Super Heavy
-      // badge and clear of the legend in the bottom-right corner. Aspect
-      // ratio preserved from the real source dimensions rather than
+      // badge and above the divider line further down. Fixed at 0.75in
+      // tall (60px, this project's established 80px/in scale) with
+      // width derived from the real source aspect ratio rather than
       // assumed, in case future images come in a different shape.
-      int targetW = 220;
-      int targetH = (int)((float)targetW * h / w);
-      if (targetH < 1) targetH = 1;
+      int targetH = 60;
+      int targetW = (int)((float)targetH * w / h);
+      if (targetW < 1) targetW = 1;
 
       uint16_t *finalBuf = (uint16_t *)heap_caps_malloc((size_t)targetW * targetH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
       if (finalBuf != nullptr) {

@@ -3178,11 +3178,11 @@ static void draw_spacex() {
   int y = 50;
 
   if (g_spacexImageValid && g_spacexImagePixels != nullptr) {
-    // Now pre-downsampled in spacex_launch_service.cpp to actually fit
-    // this reserved area (~220px wide, aspect-preserved) instead of
-    // being drawn at native resolution and cropped. Positioned at y=85
-    // so it sits below the Starship/Super Heavy badge (drawn at y=40)
-    // rather than getting drawn over by it.
+    // Now pre-downsampled in spacex_launch_service.cpp to a fixed 60px
+    // (0.75in) tall thumbnail, width aspect-preserved -- shorter than
+    // before so it clears the divider line further down the page
+    // without needing to move horizontally (the badge above occupies
+    // roughly y=40-72, well clear of this image's y=85 start either way).
     screen.drawRGBBitmap(560, 85, g_spacexImagePixels, g_spacexImageWidth, g_spacexImageHeight);
   }
 
@@ -3230,10 +3230,13 @@ static void draw_spacex() {
     lowerRocket.toLowerCase();
     bool nextIsSuperHeavy = lowerRocket.indexOf("super heavy") >= 0;
     const char* badgeLabel = nextIsSuperHeavy ? "SUPER HEAVY" : "STARSHIP";
-    drawRocketIcon(560, 40, colorStarship);
+    // Shifted left (was x=560) for cleaner composition now that the
+    // image below is shorter -- no collision risk either way since the
+    // badge (y=40-72) and image (y=85+) don't share vertical space.
+    drawRocketIcon(440, 40, colorStarship);
     screen.setTextSize(3);
     screen.setTextColor(colorStarship, colorBg);
-    screen.drawString(badgeLabel, 588, 44);
+    screen.drawString(badgeLabel, 468, 44);
 
     screen.setTextSize(1);
     screen.setTextColor(colorText, colorBg);
