@@ -18,3 +18,21 @@
 void state_mutex_init();
 void state_lock();
 void state_unlock();
+
+// RAII guard -- locks on construction, unlocks on destruction. Use this
+// instead of manual state_lock()/state_unlock() pairs anywhere a function
+// might return early partway through (which is most of the draw_*()
+// functions in screen_manager.cpp): a manual state_unlock() placed only
+// at the end of a function is skipped by any earlier return, permanently
+// leaving the lock held and deadlocking every other state_lock() call in
+// the program forever. A local StateLockGuard's destructor runs on any
+// exit path (early return or normal fall-through), so the lock is always
+// released no matter how the function exits.
+class StateLockGuard {
+public:
+  StateLockGuard() { state_lock(); }
+  ~StateLockGuard() { state_unlock(); }
+  // Not copyable/movable -- this is a scope-bound lock, not a value type.
+  StateLockGuard(const StateLockGuard&) = delete;
+  StateLockGuard& operator=(const StateLockGuard&) = delete;
+};
