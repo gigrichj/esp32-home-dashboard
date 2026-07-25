@@ -16,6 +16,7 @@
 #include <time.h>
 #include <WiFi.h>
 #include "../services/wifi_manager.h"
+#include "../state_mutex.h"
 
 using namespace PanelDisplay;
 
