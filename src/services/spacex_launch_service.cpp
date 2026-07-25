@@ -246,6 +246,17 @@ void spacex_fetch_next_image() {
   if (jpeg.openRAM(jpegBuf, (int)readTotal, jpegDrawCallback)) {
     int w = jpeg.getWidth();
     int h = jpeg.getHeight();
+    Serial.printf("[SpaceX] JPEG source dimensions %dx%d\n", w, h);
+
+    // Decoded at 1/4 scale (JPEG_SCALE_QUARTER) instead of full
+    // resolution -- real LL2 mission photos come back large enough
+    // (e.g. 1200x800+) that a full-size RGB565 buffer could be several
+    // MB, which either fails to allocate outright or adds real PSRAM
+    // pressure right as the display is fighting for PSRAM bus access
+    // (the same contention behind the display flicker investigation).
+    // Quarter scale cuts the pixel buffer to 1/16th the size.
+    int scaledW = w / 4;
+    int scaledH = h / 4;
 
     if (g_spacexImagePixels != nullptr) {
       free(g_spacexImagePixels);
@@ -253,19 +264,19 @@ void spacex_fetch_next_image() {
       g_spacexImageValid = false;
     }
 
-    uint16_t *photoBuf = (uint16_t *)heap_caps_malloc((size_t)w * h * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+    uint16_t *photoBuf = (uint16_t *)heap_caps_malloc((size_t)scaledW * scaledH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
     if (photoBuf != nullptr) {
       s_decodeTarget = photoBuf;
-      s_decodeTargetW = w;
-      s_decodeTargetH = h;
-      jpeg.decode(0, 0, 0);
+      s_decodeTargetW = scaledW;
+      s_decodeTargetH = scaledH;
+      jpeg.decode(0, 0, JPEG_SCALE_QUARTER);
       g_spacexImagePixels = photoBuf;
-      g_spacexImageWidth = w;
-      g_spacexImageHeight = h;
+      g_spacexImageWidth = scaledW;
+      g_spacexImageHeight = scaledH;
       g_spacexImageValid = true;
-      Serial.printf("[SpaceX] image decoded %dx%d\n", w, h);
+      Serial.printf("[SpaceX] image decoded %dx%d (quarter scale)\n", scaledW, scaledH);
     } else {
-      Serial.println("[SpaceX] image pixel buffer alloc failed");
+      Serial.printf("[SpaceX] image pixel buffer alloc failed (%dx%d requested)\n", scaledW, scaledH);
     }
     jpeg.close();
   } else {
