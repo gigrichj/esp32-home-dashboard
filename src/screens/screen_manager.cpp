@@ -242,6 +242,8 @@ static void enqueueAlert(const char* message, uint16_t color); // defined furthe
 static void advanceAlertQueue(); // defined further down
 static bool isStarshipOrSuperHeavy(const String& rocketName); // defined further down
 static void drawRocketIcon(int cx, int cy, uint16_t color); // defined further down
+static bool isFalconClass(const String& rocketName); // defined further down
+static void drawFalconIcon(int cx, int cy, uint16_t color); // defined further down
 
 static void drawDashboardBackground() {
   StateLockGuard lockGuard;
@@ -1890,7 +1892,7 @@ static void draw_iss() {
     screen.drawString("Duration", col2X, contentY + 32);
     screen.setTextColor(colorText, colorBg);
     snprintf(row, sizeof(row), "%d min", g_iss.nextPassDurationSec / 60);
-    screen.drawString(row, col2X + 100, contentY + 32);
+    screen.drawString(row, col2X + 104, contentY + 32); // nudged 4px right per follow-up feedback
   } else if (g_iss.nextPassUnix > 0) {
     uint32_t secsUntil = (g_iss.nextPassUnix > nowUnix) ? (g_iss.nextPassUnix - nowUnix) : 0;
     int hh = secsUntil / 3600;
@@ -1940,7 +1942,7 @@ static void draw_iss() {
     screen.drawString("Duration", col2X, detailY);
     screen.setTextColor(colorText, colorBg);
     snprintf(row, sizeof(row), "%d min", g_iss.nextPassDurationSec / 60);
-    screen.drawString(row, col2X + 100, detailY);
+    screen.drawString(row, col2X + 104, detailY); // nudged 4px right per follow-up feedback
 
     if (g_issPassCount > 0) {
       // Look-direction compass, matching the wind compass style on the
@@ -3147,6 +3149,16 @@ static bool isStarshipOrSuperHeavy(const String& rocketName) {
   return lower.indexOf("starship") >= 0 || lower.indexOf("super heavy") >= 0;
 }
 
+// Falcon 9 / Falcon Heavy -- SpaceX's workhorse family, the majority of
+// launches on this page day-to-day. Gets its own badge treatment (blue,
+// falcon/hawk icon) distinct from the rarer Starship/Super Heavy gold
+// badge, instead of being lumped into a generic fallback.
+static bool isFalconClass(const String& rocketName) {
+  String lower = rocketName;
+  lower.toLowerCase();
+  return lower.indexOf("falcon") >= 0;
+}
+
 // Compact rocket silhouette (nose cone + body + fins), built from the
 // same fillTriangle/fillRect primitives used throughout this project --
 // no custom bitmap needed. (cx, cy) anchors the top-left of a ~20x32
@@ -3164,6 +3176,24 @@ static void drawRocketIcon(int cx, int cy, uint16_t color) {
   int finY = cy + h / 3 + h / 2;
   screen.fillTriangle(bodyX, finY, bodyX - 6, finY + 8, bodyX, finY + 8, color);
   screen.fillTriangle(bodyX + bodyW, finY, bodyX + bodyW + 6, finY + 8, bodyX + bodyW, finY + 8, color);
+}
+
+// Hawk-in-flight silhouette (pointed head/beak, tapering body, swept-back
+// wings) for the Falcon-family badge -- same ~20x32 bounding box and
+// fillTriangle-only construction style as drawRocketIcon(), so the two
+// badges sit at consistent size/position regardless of which one shows.
+static void drawFalconIcon(int cx, int cy, uint16_t color) {
+  int w = 20, h = 32;
+  int centerX = cx + w / 2;
+
+  // Head/beak (small triangle at the very top).
+  screen.fillTriangle(centerX, cy, centerX - 3, cy + 6, centerX + 3, cy + 6, color);
+  // Body (tapers from the head down to a point at the tail).
+  screen.fillTriangle(centerX - 3, cy + 6, centerX + 3, cy + 6, centerX, cy + h, color);
+  // Wings -- swept back from mid-body, classic hawk-from-below silhouette.
+  int wingY = cy + 10;
+  screen.fillTriangle(centerX, wingY, cx, wingY + 4, centerX - 2, wingY + 14, color);
+  screen.fillTriangle(centerX, wingY, cx + w, wingY + 4, centerX + 2, wingY + 14, color);
 }
 
 static void draw_spacex() {
@@ -3235,35 +3265,46 @@ static void draw_spacex() {
   screen.drawString(next.statusName.c_str(), 260, y);
   y += 28;
 
+  // Every launch now gets the icon+colored-name badge treatment (was
+  // Starship/Super Heavy only, with everything else falling back to
+  // plain "RocketName - MissionName" text): gold rocket icon for
+  // Starship/Super Heavy, blue falcon/hawk icon for the Falcon family,
+  // dim rocket icon for anything else. Badge position/sizing (icon at
+  // 350,94, text at 378,99) and the mission-name line below it are the
+  // same in all three cases, only the icon/color/label text differ.
   bool nextIsStarship = isStarshipOrSuperHeavy(next.rocketName);
-  if (nextIsStarship) {
-    // Badge moved to the right, independent of the left column's
-    // vertical flow -- matches the compact list's badge placement, and
-    // keeps the left column's line spacing the same as a non-Starship
-    // launch instead of pushing the mission name down an extra line.
-    String lowerRocket = next.rocketName;
-    lowerRocket.toLowerCase();
-    bool nextIsSuperHeavy = lowerRocket.indexOf("super heavy") >= 0;
-    const char* badgeLabel = nextIsSuperHeavy ? "SUPER HEAVY" : "STARSHIP";
+  bool nextIsFalcon = isFalconClass(next.rocketName);
+  {
+    String badgeLabelStr = next.rocketName;
+    uint16_t badgeColor;
+    if (nextIsStarship) {
+      String lowerRocket = next.rocketName;
+      lowerRocket.toLowerCase();
+      bool nextIsSuperHeavy = lowerRocket.indexOf("super heavy") >= 0;
+      badgeLabelStr = nextIsSuperHeavy ? "SUPER HEAVY" : "STARSHIP";
+      badgeColor = colorStarship;
+      drawRocketIcon(350, 94, badgeColor);
+    } else if (nextIsFalcon) {
+      badgeLabelStr.toUpperCase();
+      badgeColor = colorAccent;
+      drawFalconIcon(350, 94, badgeColor);
+    } else {
+      badgeLabelStr.toUpperCase();
+      badgeColor = colorDim;
+      drawRocketIcon(350, 94, badgeColor);
+    }
+
     // Vertically centered against the image's 100px-tall row (image
     // top y=60, row center y=60+50=110): icon (32px tall) top = 110-16
     // =94, text (FONT_H=7 at size 3 = 21px tall) top = 110-11=99 --
     // both landing on the same mid-row line as the image.
-    drawRocketIcon(350, 94, colorStarship);
     screen.setTextSize(3);
-    screen.setTextColor(colorStarship, colorBg);
-    screen.drawString(badgeLabel, 378, 99);
+    screen.setTextColor(badgeColor, colorBg);
+    screen.drawString(badgeLabelStr.c_str(), 378, 99);
 
     screen.setTextSize(1);
     screen.setTextColor(colorText, colorBg);
     screen.drawString(next.missionName.c_str(), 20, y);
-    y += 18;
-  } else {
-    screen.setTextSize(1);
-    screen.setTextColor(colorText, colorBg);
-    char line2[80];
-    snprintf(line2, sizeof(line2), "%s - %s", next.rocketName.c_str(), next.missionName.c_str());
-    screen.drawString(line2, 20, y);
     y += 18;
   }
 
@@ -3355,8 +3396,9 @@ static void draw_spacex() {
     }
   }
 
-  // Legend for the Starship/Super Heavy icon used above -- bottom-right
-  // corner, out of the way of the launch list itself.
+  // Legend for both badge icons used above -- bottom-right corner, out
+  // of the way of the launch list itself. Falcon entry stacked above the
+  // Starship/Super Heavy one, same x position.
   {
     int legendIconX = WIDTH - 180; // moved left ~1/4in -- was clipping off the right edge
     int legendIconY = HEIGHT - 40;
@@ -3364,6 +3406,10 @@ static void draw_spacex() {
     screen.setTextSize(1);
     screen.setTextColor(colorDim, colorBg);
     screen.drawString("= Starship/Super Heavy", legendIconX + 26, legendIconY + 10);
+
+    int falconLegendY = legendIconY - 24;
+    drawFalconIcon(legendIconX, falconLegendY, colorAccent);
+    screen.drawString("= Falcon 9/Heavy", legendIconX + 26, falconLegendY + 10);
   }
 }
 
