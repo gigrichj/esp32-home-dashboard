@@ -4,6 +4,7 @@
 #include "aviation_service.h"
 #include "astro_seeing_service.h"
 #include <time.h>
+#include "../state_mutex.h"
 
 TrendSample g_trendSamples[TREND_MAX_SAMPLES];
 int g_trendSampleCount = 0;
@@ -39,9 +40,14 @@ void trend_history_update() {
     s.astroBadness = -1;
   }
 
+  // Locked as one block -- g_trendSampleCount/g_trendNextWriteIdx and
+  // g_trendSamples[] must never be visible to a reader (the Trends page
+  // draw code) mid-update.
+  state_lock();
   g_trendSamples[g_trendNextWriteIdx] = s;
   g_trendNextWriteIdx = (g_trendNextWriteIdx + 1) % TREND_MAX_SAMPLES;
   if (g_trendSampleCount < TREND_MAX_SAMPLES) {
     g_trendSampleCount++;
   }
+  state_unlock();
 }
