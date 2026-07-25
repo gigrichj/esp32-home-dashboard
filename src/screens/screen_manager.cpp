@@ -243,6 +243,7 @@ static bool isStarshipOrSuperHeavy(const String& rocketName); // defined further
 static void drawRocketIcon(int cx, int cy, uint16_t color); // defined further down
 
 static void drawDashboardBackground() {
+  state_lock();
   uint32_t t = millis();
 
   // Full weather-reactive background (rain, snow, sun/moon, thunderstorm
@@ -350,6 +351,7 @@ static void drawDashboardBackground() {
     uint16_t flameColor = ((t / 150) % 2 == 0) ? flameColorA : flameColorB;
     screen.fillTriangle(x - 14, y - 2, x - 14, y + 2, x - 22, y, flameColor);
   }
+  state_unlock();
 }
 
 static int countVisibleAircraft(); // defined further down, used in draw_dashboard()
@@ -380,6 +382,7 @@ static int drawTempF(float tempF, int x, int y, int textSize, uint16_t fgColor, 
 }
 
 static void draw_dashboard() {
+  state_lock();
   drawDashboardBackground();
   astro_recompute_moon_phase(); // keeps moon illum% current for the ASTRO column below
 
@@ -685,6 +688,7 @@ static void draw_dashboard() {
       screen.drawString("Tonight: --", rightX, y2);
     }
   }
+  state_unlock();
 }
 
 static const int RADAR_CX = 320;
@@ -713,6 +717,7 @@ int g_listRowCount = 0;
 int g_selectedAircraftIndex = -1;
 
 static void draw_aircraft_detail_card(int listX) {
+  state_lock();
   Aircraft& a = g_aircraft[g_selectedAircraftIndex];
 
   int photoBoxW = 300;
@@ -818,9 +823,11 @@ static void draw_aircraft_detail_card(int listX) {
   screen.setTextDatum(textdatum_t::middle_center);
   screen.drawString("< BACK", listX + 50, 440);
   screen.setTextDatum(textdatum_t::top_left);
+  state_unlock();
 }
 
 static void draw_aviation() {
+  state_lock();
   // TEMP DIAGNOSTIC, round 2: disabled again alongside the fetch flag in
   // main.cpp, to test runtime stability with Aviation fully off now that
   // the SpaceX image cap has also been raised.
@@ -1094,6 +1101,7 @@ static void draw_aviation() {
       screen.drawString(g_aviationStatus.lastError.c_str(), listX, listY);
     }
   }
+  state_unlock();
 }
 
 // ---- Weather icon drawing (plain vector shapes, no bitmap assets) ----
@@ -1262,6 +1270,7 @@ static void drawWeatherBackground(int weatherId, bool isNight, int sunCyOffset, 
 }
 
 static void draw_weather() {
+  state_lock();
   screen.setTextDatum(textdatum_t::top_left);
 
   if (!g_weather.valid) {
@@ -1694,6 +1703,7 @@ static void draw_weather() {
     }
   }
   screen.setTextDatum(textdatum_t::top_left);
+  state_unlock();
 }
 
 static String formatUnixTime(uint32_t unixTime) {
@@ -1737,6 +1747,7 @@ static void drawIssIcon(int cx, int cy, uint16_t color) {
 }
 
 static void draw_iss() {
+  state_lock();
   screen.setTextDatum(textdatum_t::top_left);
 
   if (!g_iss.valid) {
@@ -2028,6 +2039,7 @@ static void draw_iss() {
       }
     }
   }
+  state_unlock();
 }
 
 // A simple, original decorative badge for the Debug page -- a generic
@@ -2228,6 +2240,7 @@ static void drawDebugLegend() {
 }
 
 static void draw_debug() {
+  state_lock();
   drawDebugBadge();
   drawDebugLegend();
 
@@ -2244,6 +2257,7 @@ static void draw_debug() {
   char heapLine[48];
   snprintf(heapLine, sizeof(heapLine), "MIN FREE HEAP: %u KB", (unsigned)(g_minFreeHeapSeen / 1024));
   screen.drawString(heapLine, 20, 163);
+  state_unlock();
 }
 
 // Finds the first astro forecast point at or after tonight's sunset --
@@ -2295,6 +2309,7 @@ static int findBestNightIndex(float* outBadness) {
 }
 
 static void draw_astro() {
+  state_lock();
   screen.setTextDatum(textdatum_t::top_left);
 
   astro_recompute_moon_phase();
@@ -2684,6 +2699,7 @@ static void draw_astro() {
   }
 
   screen.setTextDatum(textdatum_t::top_left);
+  state_unlock();
 }
 
 // Draws one sparkline panel: a title, a simple min/max-scaled line plot
@@ -2798,6 +2814,7 @@ static bool trendGetAstro(int idx, float* outValue) {
 }
 
 static void draw_trends() {
+  state_lock();
   screen.setTextDatum(textdatum_t::top_left);
 
   screen.setTextSize(2);
@@ -2828,15 +2845,18 @@ static void draw_trends() {
   drawTrendPanel(col2X, row1Y, panelW, panelH, "AIR QUALITY (AQI)", trendGetAqi, screen.color565(230, 130, 40));
   drawTrendPanel(col1X, row2Y, panelW, panelH, "AIRCRAFT NEARBY", trendGetAircraft, screen.color565(90, 200, 255));
   drawTrendPanel(col2X, row2Y, panelW, panelH, "ASTRO BADNESS (0=best)", trendGetAstro, screen.color565(170, 120, 210));
+  state_unlock();
 }
 
 static void draw_placeholder(const char* label) {
+  state_lock();
   screen.setTextSize(2);
   screen.setTextColor(colorDim, colorBg);
   screen.setTextDatum(textdatum_t::middle_center);
   char msg[64];
   snprintf(msg, sizeof(msg), "%s\n(screen not built yet)", label);
   screen.drawString(msg, WIDTH / 2, HEIGHT / 2);
+  state_unlock();
 }
 
 void screen_manager_init() {
@@ -2886,6 +2906,7 @@ static bool g_nightModeActive = false; // updated once per frame below
 // Checks the three alert conditions against last frame's state, firing
 // the banner exactly once at the moment any of them newly becomes true.
 static void checkAlertTriggers() {
+  state_lock();
   bool astroIsGood = false;
   int tonightIdx = findTonightAstroIndex();
   if (tonightIdx >= 0) {
@@ -3057,12 +3078,14 @@ static void checkAlertTriggers() {
   g_prevSuperHeavyLaunch30Min = superHeavyLaunch30Min;
   g_alertStatePrimed = true;
 
+  state_unlock();
 }
 
 // Drawn last, on top of everything else (including the header), so it's
 // a true takeover regardless of which page is showing or whether the
 // page is locked.
 static void drawAlertBanner() {
+  state_lock();
   if (!g_alertActive) return;
   int bannerH = 50;
   screen.fillRect(0, 0, WIDTH, bannerH, colorBg);
@@ -3077,6 +3100,7 @@ static void drawAlertBanner() {
   screen.setTextColor(colorDim, colorBg);
   screen.drawString("tap to dismiss", WIDTH / 2, bannerH / 2 + 14);
   screen.setTextDatum(textdatum_t::top_left);
+  state_unlock();
 }
 
 // Alert queue: if two+ conditions become newly-true in the same frame,
@@ -3154,6 +3178,7 @@ static void drawRocketIcon(int cx, int cy, uint16_t color) {
 }
 
 static void draw_spacex() {
+  state_lock();
   screen.setTextDatum(textdatum_t::top_left);
 
   if (!g_spacexValid) {
@@ -3351,6 +3376,7 @@ static void draw_spacex() {
     screen.setTextColor(colorDim, colorBg);
     screen.drawString("= Starship/Super Heavy", legendIconX + 26, legendIconY + 10);
   }
+  state_unlock();
 }
 
 void screen_manager_draw() {
