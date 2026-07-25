@@ -411,14 +411,27 @@ static bool decodeAndStorePng(uint8_t *buf, size_t bufLen) {
       if (finalBuf != nullptr) free(finalBuf);
     }
 
+    // Checkpoint logging through cleanup -- a heap corruption caught by
+    // CONFIG_HEAP_POISONING_LIGHT was observed right after a successful
+    // decode of a real photo, but its backtrace pointed at unrelated code
+    // on the other core (heap poisoning flags corruption at the NEXT
+    // allocation that touches the damaged region, not necessarily where
+    // the actual overwrite happened) -- so these checkpoints narrow down
+    // which specific free/close call in this sequence is the trigger.
+    Serial.println("[SpaceX] PNG cleanup: freeing lineBuf");
     if (lineBuf != nullptr) free(lineBuf);
+    Serial.println("[SpaceX] PNG cleanup: closing png");
     png->close();
+    Serial.println("[SpaceX] PNG cleanup: close done");
   } else {
     Serial.printf("[SpaceX] PNG openRAM failed, error=%d\n", png->getLastError());
   }
 
+  Serial.println("[SpaceX] PNG cleanup: destructing png object");
   png->~PNG();
+  Serial.println("[SpaceX] PNG cleanup: freeing pngMem");
   free(pngMem);
+  Serial.println("[SpaceX] PNG cleanup: done");
   return success;
 }
 

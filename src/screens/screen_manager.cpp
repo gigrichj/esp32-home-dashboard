@@ -239,24 +239,33 @@ static void drawHeader() {
   // larger status icon, just small enough to fit this 1-line banner
   // strip. Shows all bars unlit rather than hiding the icon when not
   // connected, so its position stays consistent across pages/states.
-  int wifiLitBars = 0;
-  if (WiFi.status() == WL_CONNECTED) {
-    int rssi = g_wifiRssi; // cached on the network task, not read live here
-    wifiLitBars = (rssi > -55) ? 4 : (rssi > -65) ? 3 : (rssi > -75) ? 2 : 1;
-  }
-  int wifiBarW = 3, wifiGap = 1;
-  int wifiIconW = wifiBarW * 4 + wifiGap * 3;
-  int wifiIconRight = WIDTH - 10; // flush with the banner's existing right margin
-  int wifiBaseY = 21; // bars grow upward from this baseline, sized for the 1-line banner
-  for (int b = 0; b < 4; b++) {
-    int barH = 2 + b * 2; // ascending heights: 2,4,6,8px
-    int bx = wifiIconRight - wifiIconW + b * (wifiBarW + wifiGap);
-    uint16_t barColor = (b < wifiLitBars) ? colorBg : colorDim;
-    screen.fillRect(bx, wifiBaseY - barH, wifiBarW, barH, barColor);
+  // Skipped on the Dashboard page (currentTab 0) since it already has
+  // its own larger, more detailed WiFi status block further down (SSID,
+  // IP, bigger bar icon) -- this avoids a redundant second indicator
+  // there.
+  int wifiIconW = 0;
+  if (currentTab != 0) {
+    int wifiLitBars = 0;
+    if (WiFi.status() == WL_CONNECTED) {
+      int rssi = g_wifiRssi; // cached on the network task, not read live here
+      wifiLitBars = (rssi > -55) ? 4 : (rssi > -65) ? 3 : (rssi > -75) ? 2 : 1;
+    }
+    int wifiBarW = 3, wifiGap = 1;
+    wifiIconW = wifiBarW * 4 + wifiGap * 3;
+    int wifiIconRight = WIDTH - 10; // flush with the banner's existing right margin
+    int wifiBaseY = 21; // bars grow upward from this baseline, sized for the 1-line banner
+    for (int b = 0; b < 4; b++) {
+      int barH = 2 + b * 2; // ascending heights: 2,4,6,8px
+      int bx = wifiIconRight - wifiIconW + b * (wifiBarW + wifiGap);
+      uint16_t barColor = (b < wifiLitBars) ? colorSuccess : colorDim; // lit bars now green instead of black
+      screen.fillRect(bx, wifiBaseY - barH, wifiBarW, barH, barColor);
+    }
   }
 
-  // Page number + TAP hint drawn just to the left of the icon.
-  screen.drawString(tabIndicator, wifiIconRight - wifiIconW - 8, 15);
+  // Page number + TAP hint drawn just to the left of the icon (or flush
+  // right, same as before, on the Dashboard page where there's no icon).
+  int tabIndicatorX = (wifiIconW > 0) ? (WIDTH - 10 - wifiIconW - 8) : (WIDTH - 10);
+  screen.drawString(tabIndicator, tabIndicatorX, 15);
 }
 
 static void drawCloudIcon(int cx, int cy, int r, uint16_t color); // defined further down
