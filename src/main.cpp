@@ -171,7 +171,7 @@ void uiTask(void* param) {
 }
 
 void networkTask(void* param) {
-  uint32_t lastWeather = 0, lastIss = 0, lastAirQuality = 0, lastAstro = 0, lastSpacex = 0;
+  uint32_t lastWeather = 0, lastAviation = 0, lastIss = 0, lastAirQuality = 0, lastAstro = 0, lastSpacex = 0;
   uint32_t lastPrecipRetry = 0;
   bool astroDataLoaded = false;
   bool weatherDataLoaded = false;
@@ -273,10 +273,17 @@ void networkTask(void* param) {
       debug_log("precip retry fetch done");
       heavyFetchThisCycle = true;
     }
-    // Aviation fetch calls removed entirely (not just flag-gated) for a
-    // genuinely clean flicker-isolation build -- aviation_service_update()
-    // and aviation_service_detail_loop() are also stripped to no-ops in
-    // aviation_service.cpp, so this is belt-and-suspenders.
+    // Restored alongside aviation_service.cpp's fetch functions -- see
+    // that file's comment on aviation_service_update() for why.
+    if (!heavyFetchThisCycle && now - lastAviation > g_aviationPollMs) {
+      lastAviation = now;
+      debug_log("aviation fetch start");
+      aviation_service_update();
+      debug_log("aviation fetch done");
+    }
+    if (!heavyFetchThisCycle) {
+      aviation_service_detail_loop();
+    }
     if (!heavyFetchThisCycle && now - lastIss > ISS_POLL_MS) {
       lastIss = now;
       debug_log("iss fetch start");
@@ -368,8 +375,8 @@ void setup() {
     delay(150);
     astro_seeing_service_update();
     delay(150);
-    // Boot-time aviation_service_update() call removed entirely --
-    // see the comment near networkTask()'s old aviation block above.
+    aviation_service_update();
+    delay(150);
     iss_service_update();
   } else {
     wasInSetupMode = true;

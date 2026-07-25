@@ -826,19 +826,10 @@ static void draw_aircraft_detail_card(int listX) {
 
 static void draw_aviation() {
   StateLockGuard lockGuard;
-  // TEMP DIAGNOSTIC, round 2: disabled again alongside the fetch flag in
-  // main.cpp, to test runtime stability with Aviation fully off now that
-  // the SpaceX image cap has also been raised.
-  static const bool AVIATION_PAGE_ENABLED = false;
-  if (!AVIATION_PAGE_ENABLED) {
-    screen.setTextSize(2);
-    screen.setTextColor(colorDim, colorBg);
-    screen.setTextDatum(textdatum_t::middle_center);
-    screen.drawString("AVIATION DISABLED (DIAGNOSTIC TEST)", WIDTH / 2, HEIGHT / 2);
-    screen.setTextDatum(textdatum_t::top_left);
-    return;
-  }
-
+  // Diagnostic placeholder removed -- restored alongside
+  // aviation_service.cpp's fetch functions now that the mutex refactor
+  // has closed the underlying data race. See aviation_service_update()'s
+  // comment for the full story.
   uint16_t colorGrid = screen.color565(40, 60, 55);
   uint16_t colorPlane = screen.color565(255, 70, 90);
   uint16_t colorLabel = screen.color565(200, 220, 210);

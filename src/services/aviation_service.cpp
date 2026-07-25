@@ -8,6 +8,7 @@
 #include <esp_heap_caps.h>
 #include <WiFiClient.h>
 #include <string.h>
+#include "../state_mutex.h"
 
 Aircraft g_aircraft[MAX_TRACKED_AIRCRAFT];
 int g_aircraftCount = 0;
@@ -85,6 +86,10 @@ static void fetchAndDecodePhoto(const String& url) {
     int w = jpeg.getWidth();
     int h = jpeg.getHeight();
 
+    // Locked as one atomic swap -- same use-after-free concern as the
+    // SpaceX image pointer swap: if the UI task's drawRGBBitmap() read
+    // this pointer mid-swap, it would dereference freed memory.
+    state_lock();
     if (g_aircraftPhotoPixels != nullptr) {
       free(g_aircraftPhotoPixels);
       g_aircraftPhotoPixels = nullptr;
@@ -101,8 +106,10 @@ static void fetchAndDecodePhoto(const String& url) {
       g_aircraftPhotoWidth = w;
       g_aircraftPhotoHeight = h;
       g_aircraftPhotoValid = true;
+      state_unlock();
       Serial.printf("[Aviation] photo decoded %dx%d\n", w, h);
     } else {
+      state_unlock();
       Serial.println("[Aviation] photo pixel buffer alloc failed");
     }
     jpeg.close();
@@ -158,11 +165,18 @@ static bool parseAircraftJson(const String& payload, const char* sourceName) {
   if (err) {
     Serial.printf("[Aviation] %s JSON parse error: %s\n", sourceName, err.c_str());
     Serial.printf("[Aviation] %s raw payload: %s\n", sourceName, payload.c_str());
+    state_lock();
     g_aviationStatus.lastError = String(sourceName) + " JSON parse: " + err.c_str();
+    state_unlock();
     return false;
   }
 
   JsonArray ac = doc["ac"].as<JsonArray>();
+  // Locked for the whole loop (plus the trailing lastError clear) --
+  // g_aircraftCount and g_aircraft[] must never be visible to a reader
+  // in a state where the count implies more entries than have actually
+  // been written yet.
+  state_lock();
   g_aircraftCount = 0;
   for (JsonObject a : ac) {
     if (g_aircraftCount >= MAX_TRACKED_AIRCRAFT) break;
@@ -202,6 +216,7 @@ static bool parseAircraftJson(const String& payload, const char* sourceName) {
   }
 
   g_aviationStatus.lastError = "";
+  state_unlock();
   return true;
 }
 
@@ -223,11 +238,15 @@ static bool fetchAircraftFromUrl(const char* url, const char* sourceName) {
   // (too-small-for-a-busy-area) buffer fallback.
   http.useHTTP10(true);
   int code = http.GET();
+  state_lock();
   g_aviationStatus.lastHttpCode = code;
+  state_unlock();
 
   if (code != 200) {
     Serial.printf("[Aviation] %s HTTP %d\n", sourceName, code);
+    state_lock();
     g_aviationStatus.lastError = String(sourceName) + " HTTP request failed";
+    state_unlock();
     http.end();
     return false;
   }
@@ -235,7 +254,9 @@ static bool fetchAircraftFromUrl(const char* url, const char* sourceName) {
   int payloadLen = http.getSize();
   if (payloadLen > 200000) {
     Serial.printf("[Aviation] %s payload implausibly large (%d bytes), skipping\n", sourceName, payloadLen);
+    state_lock();
     g_aviationStatus.lastError = String(sourceName) + " payload too large, skipped";
+    state_unlock();
     http.end();
     return false;
   }
@@ -249,7 +270,9 @@ static bool fetchAircraftFromUrl(const char* url, const char* sourceName) {
   char *rawBuf = (char *)heap_caps_malloc(bufSize, MALLOC_CAP_8BIT);
   if (rawBuf == nullptr) {
     Serial.printf("[Aviation] %s payload buffer alloc failed\n", sourceName);
+    state_lock();
     g_aviationStatus.lastError = "Buffer alloc failed";
+    state_unlock();
     http.end();
     return false;
   }
@@ -275,7 +298,9 @@ static bool fetchAircraftFromUrl(const char* url, const char* sourceName) {
 
   if (readError) {
     Serial.printf("[Aviation] %s payload read error\n", sourceName);
+    state_lock();
     g_aviationStatus.lastError = String(sourceName) + " payload read error";
+    state_unlock();
     free(rawBuf);
     return false;
   }
@@ -286,15 +311,32 @@ static bool fetchAircraftFromUrl(const char* url, const char* sourceName) {
   return parseAircraftJson(payload, sourceName);
 }
 
-// STRIPPED for flicker isolation testing: this used to fetch from
-// adsb.fi (with an airplanes.live fallback). Gutted to a true no-op --
-// not just gated behind a flag -- after finding a second, unconditional
-// call to this function in main.cpp's boot sequence that had been
-// bypassing the AVIATION_FETCH_ENABLED flag the whole time. This way
-// there's no code path left that can make an aviation network call,
-// regardless of how it's invoked.
+// Restored after the mutex refactor closed the underlying data race that
+// was the real cause of the earlier display glitch investigation -- an
+// extended clean test run (6+ hours) with Aviation stripped confirmed the
+// race fix holds, so this is the real test of whether Aviation was ever
+// actually the culprit, or just the busiest source of fetch/draw
+// collisions against the (now fixed) unprotected shared state.
 void aviation_service_update() {
-  return;
+  if (!wifi_manager_is_connected()) return;
+
+  char adsbFiUrl[160];
+  snprintf(adsbFiUrl, sizeof(adsbFiUrl),
+    "https://opendata.adsb.fi/api/v3/lat/%f/lon/%f/dist/%d",
+    (double)HOME_LAT, (double)HOME_LON, AVIATION_RANGE_NM);
+
+  if (fetchAircraftFromUrl(adsbFiUrl, "adsb.fi")) {
+    return;
+  }
+
+  Serial.println("[Aviation] adsb.fi failed, falling back to airplanes.live");
+
+  char airplanesLiveUrl[160];
+  snprintf(airplanesLiveUrl, sizeof(airplanesLiveUrl),
+    "https://api.airplanes.live/v2/point/%f/%f/%d",
+    (double)HOME_LAT, (double)HOME_LON, AVIATION_RANGE_NM);
+
+  fetchAircraftFromUrl(airplanesLiveUrl, "airplanes.live");
 }
 
 bool aviation_lookup_flight(const String& flightNumber, Aircraft& out) {
@@ -317,9 +359,14 @@ void aviation_request_detail(const String& icaoHex, const String& callsign) {
   pendingIcao = icaoHex;
   pendingCallsign = callsign;
   pendingDetailRequested = true;
+  // Locked -- g_aircraftDetail is read by draw_aircraft_detail_card() in
+  // screen_manager.cpp and can also be written concurrently by
+  // aviation_service_detail_loop() on the network task.
+  state_lock();
   g_aircraftDetail.valid = false;
   g_aircraftDetail.lookupInProgress = true;
   g_aircraftDetail.lookupError = "";
+  state_unlock();
 }
 
 static void fetchAircraftType(const String& icaoHex) {
@@ -333,9 +380,11 @@ static void fetchAircraftType(const String& icaoHex) {
     if (!deserializeJson(doc, payload)) {
       JsonObject aircraft = doc["response"]["aircraft"];
       if (!aircraft.isNull()) {
+        state_lock();
         g_aircraftDetail.type = aircraft["type"].as<String>();
         const char* thumb = aircraft["url_photo_thumbnail"];
         g_aircraftDetail.photoThumbUrl = thumb ? String(thumb) : String("");
+        state_unlock();
       }
     }
   } else {
@@ -358,6 +407,7 @@ static void fetchRoute(const String& callsign) {
       if (!route.isNull()) {
         JsonObject origin = route["origin"];
         JsonObject dest = route["destination"];
+        state_lock();
         if (!origin.isNull()) {
           g_aircraftDetail.originName = origin["municipality"].as<String>();
           g_aircraftDetail.originIata = origin["iata_code"].as<String>();
@@ -366,6 +416,7 @@ static void fetchRoute(const String& callsign) {
           g_aircraftDetail.destName = dest["municipality"].as<String>();
           g_aircraftDetail.destIata = dest["iata_code"].as<String>();
         }
+        state_unlock();
       }
     }
   } else {
@@ -374,9 +425,33 @@ static void fetchRoute(const String& callsign) {
   http.end();
 }
 
-// STRIPPED for flicker isolation testing -- see aviation_service_update()
-// above for why. This used to resolve aircraft type/route/photo detail
-// lookups for a tapped aircraft; now a true no-op.
+// Restored alongside aviation_service_update() -- see its comment above.
 void aviation_service_detail_loop() {
-  return;
+  if (!pendingDetailRequested) return;
+  if (!wifi_manager_is_connected()) return;
+
+  String icaoHex = pendingIcao;
+  String callsign = pendingCallsign;
+  pendingDetailRequested = false;
+
+  // Locked as one block -- g_aircraftDetail/g_aircraftPhotoValid must
+  // never be visible to a reader mid-reset.
+  state_lock();
+  g_aircraftDetail = AircraftDetail();
+  g_aircraftDetail.lookupInProgress = true;
+  g_aircraftPhotoValid = false;
+  state_unlock();
+
+  fetchAircraftType(icaoHex);
+  fetchRoute(callsign);
+
+  if (g_aircraftDetail.photoThumbUrl.length() > 0) {
+    fetchAndDecodePhoto(g_aircraftDetail.photoThumbUrl);
+  }
+
+  state_lock();
+  g_aircraftDetail.lookedUpIcao = icaoHex;
+  g_aircraftDetail.lookupInProgress = false;
+  g_aircraftDetail.valid = true;
+  state_unlock();
 }
