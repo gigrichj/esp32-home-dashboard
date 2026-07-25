@@ -567,7 +567,7 @@ static void draw_dashboard() {
       // progresses -- previously only visible on the SpaceX page itself
       // via next.statusName. Same color convention used there.
       if (next.statusName.length() > 0) {
-        y += 24;
+        y += 27; // nudged 3px lower per follow-up feedback (was +24)
         uint16_t dashStatusColor = colorText;
         if (next.statusName.equalsIgnoreCase("Go") || next.statusName.equalsIgnoreCase("Success")) {
           dashStatusColor = colorSuccess;
@@ -3178,11 +3178,12 @@ static void draw_spacex() {
   int y = 50;
 
   if (g_spacexImageValid && g_spacexImagePixels != nullptr) {
-    // Now pre-downsampled in spacex_launch_service.cpp to a fixed 64px
-    // (0.8in) tall thumbnail, width aspect-preserved. This 64px band is
-    // the shared "row height" the Starship/Super Heavy badge below is
-    // vertically centered against.
-    screen.drawRGBBitmap(600, 84, g_spacexImagePixels, g_spacexImageWidth, g_spacexImageHeight);
+    // Now pre-downsampled in spacex_launch_service.cpp to a fixed 72px
+    // (0.9in) tall thumbnail, width aspect-preserved. This is the shared
+    // "row height" the Starship/Super Heavy badge below is vertically
+    // centered against. Shifted right 1/4in (20px, this project's
+    // established 80px/in scale) per follow-up feedback.
+    screen.drawRGBBitmap(620, 84, g_spacexImagePixels, g_spacexImageWidth, g_spacexImageHeight);
   }
 
   time_t t = (time_t)next.netUnix;
@@ -3229,16 +3230,16 @@ static void draw_spacex() {
     lowerRocket.toLowerCase();
     bool nextIsSuperHeavy = lowerRocket.indexOf("super heavy") >= 0;
     const char* badgeLabel = nextIsSuperHeavy ? "SUPER HEAVY" : "STARSHIP";
-    // Vertically centered against the image's 64px-tall row (image
-    // top y=84): icon (32px tall) centers at 84+16=100, text (FONT_H=7
-    // at size 3 = 21px tall) centers at 84+21=105 -- both landing on the
-    // same mid-row line as the image (y=116). Shifted further left (was
-    // x=440/468) so the longer "SUPER HEAVY" label still clears the
-    // image's left edge (x=600) with real margin.
-    drawRocketIcon(350, 100, colorStarship);
+    // Vertically centered against the image's 72px-tall row (image
+    // top y=84, row center y=84+36=120): icon (32px tall) top = 120-16
+    // =104, text (FONT_H=7 at size 3 = 21px tall) top = 120-11=109 --
+    // both landing on the same mid-row line as the image. x positions
+    // unchanged (still clears "SUPER HEAVY" against the image's new
+    // x=620 left edge).
+    drawRocketIcon(350, 104, colorStarship);
     screen.setTextSize(3);
     screen.setTextColor(colorStarship, colorBg);
-    screen.drawString(badgeLabel, 378, 105);
+    screen.drawString(badgeLabel, 378, 109);
 
     screen.setTextSize(1);
     screen.setTextColor(colorText, colorBg);
