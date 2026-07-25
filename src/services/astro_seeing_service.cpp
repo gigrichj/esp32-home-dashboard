@@ -7,6 +7,7 @@
 #include <ArduinoJson.h>
 #include <time.h>
 #include <math.h>
+#include "../state_mutex.h"
 
 AstroForecastPoint g_astroForecast[ASTRO_MAX_POINTS];
 int g_astroForecastCount = 0;
@@ -100,6 +101,11 @@ static void computeMoonPhase(uint32_t nowUnix) {
   double frac = phaseDays / synodicDays;
   double illum = (1.0 - cos(2.0 * PI * frac)) / 2.0 * 100.0;
 
+  // Locked for the whole block -- called from both the UI task
+  // (draw_dashboard()/draw_astro() in screen_manager.cpp) and the network
+  // task (astro_seeing_service_update() below), so these globals are a
+  // genuine cross-task race without this.
+  state_lock();
   g_moonPhaseFraction = (float)frac;
   g_moonIllumPercent = (float)illum;
   // Same phaseDays/synodicDays values already computed above -- next new
@@ -114,6 +120,7 @@ static void computeMoonPhase(uint32_t nowUnix) {
   else if (frac < 0.72)                g_moonPhaseLabel = "Waning Gibbous";
   else if (frac < 0.78)                g_moonPhaseLabel = "Last Quarter";
   else                                  g_moonPhaseLabel = "Waning Crescent";
+  state_unlock();
 }
 
 void astro_recompute_moon_phase() {
@@ -190,18 +197,24 @@ static bool fetch7Timer() {
   // Open-Meteo, ISS TLE, and UV index.
   http.useHTTP10(true);
   int code = http.GET();
+  state_lock();
   g_astroLastHttpCode = code;
+  state_unlock();
 
   if (code != 200) {
     Serial.printf("[Astro] 7Timer HTTP %d (negative = connection/timeout error)\n", code);
+    state_lock();
     g_astroLastFailureReason = "7Timer: HTTP " + String(code);
+    state_unlock();
     http.end();
     return false;
   }
 
   String payload;
   if (!readHttpBodySafely(http, payload, "7Timer")) {
+    state_lock();
     g_astroLastFailureReason = "7Timer: payload read failed";
+    state_unlock();
     http.end();
     return false;
   }
@@ -212,7 +225,9 @@ static bool fetch7Timer() {
   if (err) {
     Serial.printf("[Astro] 7Timer JSON parse error: %s\n", err.c_str());
     Serial.printf("[Astro] 7Timer raw payload: %s\n", payload.c_str());
+    state_lock();
     g_astroLastFailureReason = "7Timer: JSON parse: " + String(err.c_str());
+    state_unlock();
     return false;
   }
 
@@ -232,6 +247,11 @@ static bool fetch7Timer() {
   }
 
   JsonArray series = doc["dataseries"].as<JsonArray>();
+  // Locked for the whole loop (plus the failure-reason check right after)
+  // -- g_astroForecastCount and g_astroForecast[] must never be visible
+  // to a reader in a state where the count implies more points than have
+  // actually been written yet.
+  state_lock();
   g_astroForecastCount = 0;
   for (JsonObject p : series) {
     if (g_astroForecastCount >= ASTRO_MAX_POINTS) break;
@@ -250,6 +270,7 @@ static bool fetch7Timer() {
   if (g_astroForecastCount == 0) {
     g_astroLastFailureReason = "7Timer: parsed OK but 0 forecast points";
   }
+  state_unlock();
   return g_astroForecastCount > 0;
 }
 
@@ -317,18 +338,24 @@ static bool fetchOpenMeteoFallback() {
   // on fallback success), so a failing fallback was invisible: the on-screen
   // diagnostic kept showing 7Timer's stale failure code with no way to tell
   // whether the fallback was even being attempted, let alone what it got back.
+  state_lock();
   g_astroLastHttpCode = code;
+  state_unlock();
 
   if (code != 200) {
     Serial.printf("[Astro] Open-Meteo fallback HTTP %d\n", code);
+    state_lock();
     g_astroLastFailureReason = "Open-Meteo: HTTP " + String(code);
+    state_unlock();
     http.end();
     return false;
   }
 
   String payload;
   if (!readHttpBodySafely(http, payload, "Open-Meteo fallback")) {
+    state_lock();
     g_astroLastFailureReason = "Open-Meteo: payload read failed";
+    state_unlock();
     http.end();
     return false;
   }
@@ -338,14 +365,18 @@ static bool fetchOpenMeteoFallback() {
   DeserializationError err = deserializeJson(doc, payload);
   if (err) {
     Serial.printf("[Astro] Open-Meteo fallback JSON parse error: %s\n", err.c_str());
+    state_lock();
     g_astroLastFailureReason = "Open-Meteo: JSON parse: " + String(err.c_str());
+    state_unlock();
     return false;
   }
 
   JsonObject hourly = doc["hourly"];
   if (hourly.isNull()) {
     Serial.println("[Astro] Open-Meteo fallback: missing 'hourly' object");
+    state_lock();
     g_astroLastFailureReason = "Open-Meteo: response missing 'hourly' object";
+    state_unlock();
     return false;
   }
 
@@ -356,6 +387,9 @@ static bool fetchOpenMeteoFallback() {
   JsonArray humidities = hourly["relativehumidity_2m"].as<JsonArray>();
 
   size_t total = times.size();
+  // Locked for the whole loop (plus the success/failure code right after)
+  // -- same reasoning as fetch7Timer()'s array+count loop above.
+  state_lock();
   g_astroForecastCount = 0;
   // Sample every 3rd hour to match 7Timer's 3-hour spacing / ASTRO_MAX_POINTS.
   for (size_t i = 0; i < total && g_astroForecastCount < ASTRO_MAX_POINTS; i += 3) {
@@ -388,6 +422,7 @@ static bool fetchOpenMeteoFallback() {
   } else {
     g_astroLastFailureReason = "Open-Meteo: HTTP 200 but 0 forecast points (times.size()=" + String(times.size()) + ")";
   }
+  state_unlock();
 
   return g_astroForecastCount > 0;
 }
