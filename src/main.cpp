@@ -17,6 +17,15 @@
 
 using namespace PanelDisplay;
 
+// TEMP DIAGNOSTIC, round 2: disabled to test extended runtime stability
+// with Aviation off. Promoted to file scope (was a local static inside
+// networkTask()) because a second, unconditional aviation_service_update()
+// call in setup()'s one-time boot sequence was bypassing this flag
+// entirely -- it ran once at boot regardless, silently populating a
+// stale aircraft count that never got cleared since the periodic loop
+// stayed off. Both call sites now gate on this one flag.
+static const bool AVIATION_FETCH_ENABLED = false;
+
 static const uint32_t WEATHER_POLL_MS      = 10UL * 60UL * 1000UL;
 static const uint32_t SPACEX_POLL_MS       = 4UL * 60UL * 60UL * 1000UL; // every few hours --
                                                                      // launch schedules don't
@@ -272,12 +281,7 @@ void networkTask(void* param) {
       debug_log("precip retry fetch done");
       heavyFetchThisCycle = true;
     }
-    // TEMP DIAGNOSTIC, round 2: disabled again to test whether a longer
-    // stable runtime (>30min) is achievable with Aviation off, now that
-    // the SpaceX image cap has also been raised (separately testing
-    // whether Aviation vs. the image decode is the bigger PSRAM/display
-    // contention contributor).
-    static const bool AVIATION_FETCH_ENABLED = false;
+    // AVIATION_FETCH_ENABLED now declared at file scope (see top of file).
     if (AVIATION_FETCH_ENABLED && !heavyFetchThisCycle && now - lastAviation > g_aviationPollMs) {
       lastAviation = now;
       debug_log("aviation fetch start");
@@ -377,8 +381,10 @@ void setup() {
     delay(150);
     astro_seeing_service_update();
     delay(150);
-    aviation_service_update();
-    delay(150);
+    if (AVIATION_FETCH_ENABLED) {
+      aviation_service_update();
+      delay(150);
+    }
     iss_service_update();
   } else {
     wasInSetupMode = true;
