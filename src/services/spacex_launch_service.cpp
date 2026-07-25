@@ -458,6 +458,19 @@ static bool decodeAndStorePng(uint8_t *buf, size_t bufLen) {
 }
 
 bool spacex_fetch_next_image() {
+  // Diagnostic: heap integrity checked immediately on entry, before this
+  // function does anything at all. A heap corruption crash was observed
+  // whose own backtrace points at unrelated UI-task code (rmtInit() via
+  // draw_astro()) rather than anything in this file, and a check placed
+  // right after decode() came back clean -- both hints this may be a
+  // pre-existing bug elsewhere (possibly the same one CONFIG_HEAP_POISONING_LIGHT
+  // in platformio.ini was originally added to chase) that this function's
+  // large PSRAM allocations are just now reliably exposing, rather than
+  // something this function is causing. If this reports CORRUPT, that
+  // proves it.
+  bool heapOkOnEntry = heap_caps_check_integrity_all(true);
+  Serial.printf("[SpaceX] heap integrity on spacex_fetch_next_image() entry: %s\n", heapOkOnEntry ? "OK" : "CORRUPT");
+
   if (!wifi_manager_is_connected()) return false;
   if (g_spacexLaunchCount == 0) return false;
   String url = g_spacexLaunches[0].imageUrl;
