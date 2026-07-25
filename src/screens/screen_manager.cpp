@@ -283,7 +283,7 @@ static void drawHeader() {
     int wifiLitBars = 0;
     if (WiFi.status() == WL_CONNECTED) {
       snprintf(wifiLine, sizeof(wifiLine), "%s (%s)", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
-      wifiTextColor = colorSuccess;
+      wifiTextColor = colorBg; // matches the title/tap text color above it, per follow-up feedback (was colorSuccess/green)
       int rssi = g_wifiRssi; // cached on the network task, not read live here
       wifiLitBars = (rssi > -55) ? 4 : (rssi > -65) ? 3 : (rssi > -75) ? 2 : 1;
     } else {

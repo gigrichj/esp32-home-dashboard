@@ -8,6 +8,7 @@
 #include <JPEGDEC.h>
 #include <PNGdec.h>
 #include <new>
+#include "esp_heap_caps.h"
 #include "../state_mutex.h"
 
 SpacexLaunch g_spacexLaunches[SPACEX_MAX_LAUNCHES];
@@ -391,6 +392,18 @@ static bool decodeAndStorePng(uint8_t *buf, size_t bufLen) {
       s_pngObj = png;
 
       int rc = png->decode(nullptr, 0);
+
+      // Diagnostic: the crash was previously only caught later, at
+      // free(lineBuf) -- but the actual overwrite could have happened
+      // here, during decode() itself. Checking heap integrity right now,
+      // before anything else touches the heap, tells us whether the
+      // corruption is already present at this exact point (implicating
+      // decode()/getLineAsRGB565/pngDrawCallback) or not yet (meaning
+      // something later in this function is the real cause). A padding
+      // fix on lineBuf didn't stop the crash, so this rules in or out
+      // whether decode() itself is even where to keep looking.
+      bool heapOkAfterDecode = heap_caps_check_integrity_all(true);
+      Serial.printf("[SpaceX] PNG heap integrity immediately after decode(): %s\n", heapOkAfterDecode ? "OK" : "CORRUPT");
 
       s_pngFinalBuf = nullptr;
       s_pngLineBuf = nullptr;
