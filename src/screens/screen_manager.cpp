@@ -1580,6 +1580,14 @@ static void draw_weather() {
     if (g_precipHourlyValid && g_precipHourlyCount > 0) {
       int n = g_precipHourlyCount;
       int slotW = precipStripW / n;
+      // Integer division truncates (e.g. 760/24 = 31, not 31.67), so the
+      // actual bars only span slotW*n px -- less than the nominal
+      // precipStripW. The border/label used to be positioned against the
+      // nominal width, leaving a gap between the last bar and the right
+      // border. usedWidth is the real, exact width the bars occupy, and
+      // everything below (border, label) now aligns to that instead.
+      int usedWidth = slotW * n;
+      int rightEdgeX = stripX + usedWidth;
       uint16_t barColor = screen.color565(70, 150, 220);
 
       // Faint background tint across the whole bar area so 0%-chance
@@ -1587,7 +1595,7 @@ static void draw_weather() {
       // identical to a strip that never loaded. Drawn first so bars/
       // baseline/labels all sit on top of it.
       uint16_t tintColor = screen.color565(30, 40, 55);
-      screen.fillRect(stripX + 1, barAreaY, precipStripW - 2, barAreaH, tintColor);
+      screen.fillRect(stripX + 1, barAreaY, usedWidth - 2, barAreaH, tintColor);
 
       // Any nonzero chance gets at least this many pixels -- previously
       // a low prob (5-10%) could round down to 0px against the 17px-tall
@@ -1602,9 +1610,9 @@ static void draw_weather() {
           screen.fillRect(bx + 1, barBaselineY - barH, max(slotW - 2, 1), barH, barColor);
         }
       }
-      screen.drawLine(stripX, barBaselineY, stripX + precipStripW, barBaselineY, colorDim);
+      screen.drawLine(stripX, barBaselineY, rightEdgeX, barBaselineY, colorDim);
       screen.drawLine(stripX, barBaselineY, stripX, frameBottomY, colorDim);
-      screen.drawLine(stripX + precipStripW, barBaselineY, stripX + precipStripW, frameBottomY, colorDim);
+      screen.drawLine(rightEdgeX, barBaselineY, rightEdgeX, frameBottomY, colorDim);
 
       // Compact hour-of-day tick labels every 4 hours -- labeling all 24
       // would be too dense at this width and this font's minimum size.
@@ -1624,12 +1632,13 @@ static void draw_weather() {
       }
 
       // Relocated label -- was a separate title+underline above the box,
-      // now sits bottom-right, same row/size as the hour ticks. Nudged
-      // 2px, then 4px more (6px total) lower than the hour-tick baseline
-      // per follow-up feedback.
+      // now sits bottom-right, same row/size as the hour ticks. Anchored
+      // to the corrected rightEdgeX (not the old nominal-width position),
+      // and nudged an additional 10px (1/8in, this project's established
+      // 80px/in scale) further left per follow-up feedback.
       screen.setTextColor(colorAccent, colorBg);
       int labelW = screen.textWidth("24HR PRECIP");
-      screen.drawString("24HR PRECIP", stripX + precipStripW - labelW - 2, barBaselineY + 9);
+      screen.drawString("24HR PRECIP", rightEdgeX - labelW - 12, barBaselineY + 9);
     } else {
       screen.setTextSize(2);
       screen.setTextColor(colorDim, colorBg);
