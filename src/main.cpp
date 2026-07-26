@@ -35,9 +35,10 @@ static const uint32_t SPACEX_POLL_MS       = 2UL * 60UL * 60UL * 1000UL; // ever
 // (the "-999 never attempted" sentinel was showing on the SpaceX page
 // as a result). Same retry-until-loaded pattern as Weather/Astro/Air
 // Quality now applies -- fast retry until first success, then settle
-// into the slow cadence. 150s chosen to avoid re-aligning with the
-// other retry timers (60/75/90/105s) that caused the earlier flicker bug.
-static const uint32_t SPACEX_RETRY_MS      = 150UL * 1000UL;
+// into the slow cadence. Was 150s; lowered to 115s per follow-up
+// feedback for a faster initial retry, while still avoiding the other
+// retry timers (60/75/90/105s) that caused the earlier flicker bug.
+static const uint32_t SPACEX_RETRY_MS      = 115UL * 1000UL;
 // Mission image + booster landing info now retry on their own cadence,
 // independent of the list-fetch interval above -- see the dedicated
 // block in networkTask() for why. Same 150s value as SPACEX_RETRY_MS,
