@@ -257,7 +257,7 @@ static void drawHeader() {
   if (currentTab == 0) {
     // Dashboard has no room for a second line (title + WiFi row already
     // fill the 40px banner), so SWIPE rides on the same line as TAP here.
-    snprintf(tabIndicator, sizeof(tabIndicator), "%d/%d  TAP>  SWIPE", currentTab + 1, TAB_COUNT);
+    snprintf(tabIndicator, sizeof(tabIndicator), "%d/%d  TAP>  <SWIPE", currentTab + 1, TAB_COUNT);
   } else {
     snprintf(tabIndicator, sizeof(tabIndicator), "%d/%d  TAP>", currentTab + 1, TAB_COUNT);
   }
@@ -296,12 +296,17 @@ static void drawHeader() {
   int tabIndicatorY = (currentTab == 0) ? 6 : 15;
   screen.drawString(tabIndicator, tabIndicatorX, tabIndicatorY);
 
-  // SWIPE hint, second line under TAP -- flush with the banner's plain
-  // right margin (not the icon-adjusted tabIndicatorX) since nothing else
-  // shares this lower row. Skipped on Dashboard, which folded it into the
-  // single combined line above instead.
+  // <SWIPE hint, second line, genuinely centered under TAP> above it --
+  // previously flush to the plain right margin, which visibly drifted
+  // out from under TAP> whenever the WiFi icon shifted tabIndicatorX (the
+  // two used different right-edges). Skipped on Dashboard, which folded
+  // it into the single combined line above instead.
   if (currentTab != 0) {
-    screen.drawString("SWIPE", WIDTH - 10, tabIndicatorY + 12);
+    int tapTextWidth = (int)strlen(tabIndicator) * 6; // ~6px/char at size1, same estimate used elsewhere in this file
+    int swipeCenterX = tabIndicatorX - tapTextWidth / 2; // center of the TAP> text block above
+    screen.setTextDatum(textdatum_t::middle_center);
+    screen.drawString("<SWIPE", swipeCenterX, tabIndicatorY + 17);
+    screen.setTextDatum(textdatum_t::top_right); // restore -- rest of this function expects it
   }
 
   // LOCKED / BRIGHT-DIMMED indicators, centered in the banner. On every
@@ -346,6 +351,10 @@ static void drawHeader() {
     }
     int wifiRowY = 25; // second row, below the title/tap row above, still inside the 40px banner
     screen.setTextColor(wifiTextColor, colorAccent);
+    screen.setTextDatum(textdatum_t::top_right); // explicit rather than relying on leftover state --
+                                                  // the centered LOCKED/BRIGHT-DIMMED indicators above
+                                                  // reset this to top_left, which sent this text off
+                                                  // the right edge of the screen instead of right-aligning it
     screen.drawString(wifiLine, WIDTH - 10, wifiRowY);
 
     int lineWidth = (int)strlen(wifiLine) * 6; // ~6px/char at text size 1
@@ -3641,6 +3650,13 @@ static uint16_t lastTouchX = 0;
 static uint16_t lastTouchY = 0;
 
 static const int AVIATION_TAB_INDEX = 1;
+static const int IMAGERY_TAB_INDEX = 6;
+
+// Double-tap on the IMAGERY page swaps to a new random image immediately,
+// bypassing the normal 15-min rotation timer (see imagery_service.cpp) --
+// a manual "backdoor" for testing/browsing without waiting.
+static uint32_t lastImageryTapMs = 0;
+static const uint32_t IMAGERY_DOUBLE_TAP_MAX_GAP_MS = 400;
 
 void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
   uint32_t now = millis();
@@ -3736,6 +3752,17 @@ void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
       bool hitPollButton = false;
       bool hitAlertTestButton = false;
 
+      bool handledImageryDoubleTap = false;
+      if (currentTab == IMAGERY_TAB_INDEX) {
+        if (lastImageryTapMs != 0 && now - lastImageryTapMs <= IMAGERY_DOUBLE_TAP_MAX_GAP_MS) {
+          imagery_update(); // swap to a new random image right now
+          lastImageryTapMs = 0; // reset so a third rapid tap doesn't chain into another double-tap
+          handledImageryDoubleTap = true;
+        } else {
+          lastImageryTapMs = now;
+        }
+      }
+
       bool handledAviation = false;
       if (currentTab == AVIATION_TAB_INDEX) {
         if (g_selectedAircraftIndex >= 0) {
@@ -3767,6 +3794,9 @@ void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
         cycleAviationPollInterval();
       } else if (hitAlertTestButton) {
         enqueueAlert("TEST ALERT - HIDDEN DEBUG TRIGGER", colorDanger);
+      } else if (handledImageryDoubleTap) {
+        // Already handled above -- just prevents falling through to
+        // tap-to-advance on the second tap of the pair.
       } else if (!handledAviation && !g_pageLocked) {
         currentTab = (currentTab + 1) % TAB_COUNT;
       }
