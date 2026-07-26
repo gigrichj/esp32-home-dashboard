@@ -360,7 +360,6 @@ void networkTask(void* param) {
         // abandoned until "next" happens to change.
         bool imageOk = spacex_fetch_next_image();
         bool landingOk = spacex_fetch_next_landing_info();
-        spacex_fetch_test_jpeg(); // TEMPORARY DIAGNOSTIC -- fire-and-forget, doesn't affect imageOk/landingOk gating above
         if (imageOk && landingOk) {
           lastSpacexDetailLaunchId = g_spacexLaunches[0].launchId;
           spacexDetailRetryCount = 0;

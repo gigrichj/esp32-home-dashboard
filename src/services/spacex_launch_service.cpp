@@ -8,8 +8,6 @@
 #include <JPEGDEC.h>
 #include <PNGdec.h>
 #include <new>
-#include "esp_heap_caps.h"
-#include "esp_cpu.h"
 #include "../state_mutex.h"
 
 SpacexLaunch g_spacexLaunches[SPACEX_MAX_LAUNCHES];
@@ -386,46 +384,22 @@ static bool decodeAndStorePng(uint8_t *buf, size_t bufLen) {
   }
   PNG *png = new (pngMem) PNG();
 
-  // Diagnostic: bracket check right after the PNG object itself is
-  // constructed on PSRAM, before openRAM() touches anything.
-  Serial.printf("[SpaceX] heap integrity after PNG object alloc: %s\n", heap_caps_check_integrity_all(true) ? "OK" : "CORRUPT");
-
   if (png->openRAM(buf, (int)bufLen, pngDrawCallback) == PNG_SUCCESS) {
     int w = png->getWidth();
     int h = png->getHeight();
     Serial.printf("[SpaceX] PNG source dimensions %dx%d\n", w, h);
 
-    // Diagnostic: bracket check right after openRAM()/getWidth()/getHeight(),
-    // immediately before finalBuf's malloc -- the exact call that crashed
-    // last time. If this already reports CORRUPT, the damage happened
-    // during openRAM()'s IHDR parsing or earlier; if OK, the malloc call
-    // itself is where to keep looking (though note a watchpoint firing
-    // there could just be normal free-list reuse of an already-damaged
-    // block from something earlier).
-    Serial.printf("[SpaceX] heap integrity after openRAM/getWidth/getHeight: %s\n", heap_caps_check_integrity_all(true) ? "OK" : "CORRUPT");
-
     int targetH = 100;
     int targetW = (int)((float)targetH * w / h);
     if (targetW < 1) targetW = 1;
 
-    // Diagnostic: the exact malloc call that crashed every time so far --
-    // bracketed directly, with nothing else running in between, to get a
-    // conclusive OK-to-CORRUPT (or not) reading across this one call.
     uint16_t *finalBuf = (uint16_t *)heap_caps_malloc((size_t)targetW * targetH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
-    Serial.printf("[SpaceX] heap integrity immediately after finalBuf malloc: %s\n", heap_caps_check_integrity_all(true) ? "OK" : "CORRUPT");
-    // Padded well beyond the exact width -- the earlier +16px padding
-    // did NOT stop the crash (still "Bad head" at free(lineBuf), even
-    // with every heap_caps_check_integrity_all() check reporting OK
-    // right up until that exact free() call). heap_caps_check_integrity_all()
-    // validates the allocator's own structural bookkeeping, which is a
-    // different thing from CONFIG_HEAP_POISONING_LIGHT's per-allocation
-    // guard bytes -- it's possible those guards are only verified at the
-    // moment of free(), not proactively, which would explain every prior
-    // check reading clean as a false negative. +256px is a deliberately
-    // blunt, decisive test: if this stops the crash, it confirms an
-    // getLineAsRGB565() overrun (just bigger than assumed); if it still
-    // crashes, that rules this buffer out entirely.
-    uint16_t *lineBuf = (uint16_t *)heap_caps_malloc((size_t)(w + 256) * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+    // Root cause of a long-standing heap corruption crash was PNGdec's
+    // own getLineAsRGB565() (see pngDrawCallback() above, which now does
+    // a manual RGB565 conversion instead) -- with that bypassed, this
+    // buffer no longer needs the defensive padding that was tried (and
+    // didn't help) while chasing that bug down.
+    uint16_t *lineBuf = (uint16_t *)heap_caps_malloc((size_t)w * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
 
     if (finalBuf != nullptr && lineBuf != nullptr) {
       s_pngFinalBuf = finalBuf;
@@ -437,18 +411,6 @@ static bool decodeAndStorePng(uint8_t *buf, size_t bufLen) {
       s_pngObj = png;
 
       int rc = png->decode(nullptr, 0);
-
-      // Diagnostic: the crash was previously only caught later, at
-      // free(lineBuf) -- but the actual overwrite could have happened
-      // here, during decode() itself. Checking heap integrity right now,
-      // before anything else touches the heap, tells us whether the
-      // corruption is already present at this exact point (implicating
-      // decode()/getLineAsRGB565/pngDrawCallback) or not yet (meaning
-      // something later in this function is the real cause). A padding
-      // fix on lineBuf didn't stop the crash, so this rules in or out
-      // whether decode() itself is even where to keep looking.
-      bool heapOkAfterDecode = heap_caps_check_integrity_all(true);
-      Serial.printf("[SpaceX] PNG heap integrity immediately after decode(): %s\n", heapOkAfterDecode ? "OK" : "CORRUPT");
 
       s_pngFinalBuf = nullptr;
       s_pngLineBuf = nullptr;
@@ -478,184 +440,21 @@ static bool decodeAndStorePng(uint8_t *buf, size_t bufLen) {
       if (finalBuf != nullptr) free(finalBuf);
     }
 
-    // Checkpoint logging through cleanup -- a heap corruption caught by
-    // CONFIG_HEAP_POISONING_LIGHT was observed right after a successful
-    // decode of a real photo, but its backtrace pointed at unrelated code
-    // on the other core (heap poisoning flags corruption at the NEXT
-    // allocation that touches the damaged region, not necessarily where
-    // the actual overwrite happened) -- so these checkpoints narrow down
-    // which specific free/close call in this sequence is the trigger.
-    Serial.println("[SpaceX] PNG cleanup: freeing lineBuf");
     if (lineBuf != nullptr) free(lineBuf);
-    Serial.println("[SpaceX] PNG cleanup: closing png");
     png->close();
-    Serial.println("[SpaceX] PNG cleanup: close done");
   } else {
     Serial.printf("[SpaceX] PNG openRAM failed, error=%d\n", png->getLastError());
   }
 
-  Serial.println("[SpaceX] PNG cleanup: destructing png object");
   png->~PNG();
-  Serial.println("[SpaceX] PNG cleanup: freeing pngMem");
   free(pngMem);
-  Serial.println("[SpaceX] PNG cleanup: done");
-  return success;
-}
-
-// TEMPORARY DIAGNOSTIC -- see the comment in spacex_launch_service.h.
-// Reuses the same JPEG decode pattern as decodeAndStoreJpeg() (fetch,
-// two-stage shrink) but writes into dedicated g_testJpeg* globals instead
-// of the real g_spacexImage* ones, so it can be displayed alongside the
-// real (PNG) image for a side-by-side comparison rather than replacing it.
-uint16_t* g_testJpegPixels = nullptr;
-int g_testJpegWidth = 0;
-int g_testJpegHeight = 0;
-bool g_testJpegValid = false;
-
-bool spacex_fetch_test_jpeg() {
-  if (!wifi_manager_is_connected()) return false;
-
-  String url = "https://placeholdpicsum.dev/1249x722.jpg";
-  HTTPClient http;
-  http.begin(url);
-  http.setTimeout(15000);
-  http.setUserAgent("esp32-home-dashboard/1.0");
-  http.useHTTP10(true);
-  int code = http.GET();
-  if (code != 200) {
-    Serial.printf("[SpaceX] test JPEG fetch HTTP %d\n", code);
-    http.end();
-    return false;
-  }
-
-  int len = http.getSize();
-  if (len <= 0 || len > 900000) {
-    Serial.printf("[SpaceX] test JPEG size invalid: %d\n", len);
-    http.end();
-    return false;
-  }
-
-  uint8_t *jpegBuf = (uint8_t *)heap_caps_malloc(len, MALLOC_CAP_SPIRAM);
-  if (jpegBuf == nullptr) {
-    Serial.println("[SpaceX] test JPEG buffer alloc failed");
-    http.end();
-    return false;
-  }
-
-  WiFiClient *stream = http.getStreamPtr();
-  size_t readTotal = 0;
-  uint32_t startMs = millis();
-  bool readError = false;
-  while (http.connected() && readTotal < (size_t)len && millis() - startMs < 15000) {
-    size_t avail = stream->available();
-    if (avail > 0) {
-      int toRead = (int)min((size_t)avail, (size_t)len - readTotal);
-      int r = stream->readBytes(jpegBuf + readTotal, toRead);
-      if (r <= 0) { readError = true; break; }
-      readTotal += r;
-    } else {
-      vTaskDelay(pdMS_TO_TICKS(5));
-    }
-  }
-  http.end();
-
-  if (readError || readTotal == 0) {
-    Serial.println("[SpaceX] test JPEG payload read error");
-    free(jpegBuf);
-    return false;
-  }
-
-  bool success = false;
-  JPEGDEC jpeg;
-  if (jpeg.openRAM(jpegBuf, (int)readTotal, jpegDrawCallback)) {
-    int w = jpeg.getWidth();
-    int h = jpeg.getHeight();
-    Serial.printf("[SpaceX] test JPEG source dimensions %dx%d\n", w, h);
-
-    int decodedW = w / 8;
-    int decodedH = h / 8;
-    uint16_t *decodeBuf = (uint16_t *)heap_caps_malloc((size_t)decodedW * decodedH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
-    if (decodeBuf != nullptr) {
-      s_decodeTarget = decodeBuf;
-      s_decodeTargetW = decodedW;
-      s_decodeTargetH = decodedH;
-      jpeg.decode(0, 0, JPEG_SCALE_EIGHTH);
-      s_decodeTarget = nullptr;
-
-      int targetH = 100;
-      int targetW = (int)((float)targetH * w / h);
-      if (targetW < 1) targetW = 1;
-
-      uint16_t *finalBuf = (uint16_t *)heap_caps_malloc((size_t)targetW * targetH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
-      if (finalBuf != nullptr) {
-        for (int dy = 0; dy < targetH; dy++) {
-          int srcY = dy * decodedH / targetH;
-          for (int dx = 0; dx < targetW; dx++) {
-            int srcX = dx * decodedW / targetW;
-            finalBuf[dy * targetW + dx] = decodeBuf[srcY * decodedW + srcX];
-          }
-        }
-
-        state_lock();
-        if (g_testJpegPixels != nullptr) {
-          free(g_testJpegPixels);
-          g_testJpegPixels = nullptr;
-          g_testJpegValid = false;
-        }
-        g_testJpegPixels = finalBuf;
-        g_testJpegWidth = targetW;
-        g_testJpegHeight = targetH;
-        g_testJpegValid = true;
-        state_unlock();
-        Serial.printf("[SpaceX] test JPEG decoded %dx%d, downsampled to %dx%d\n", decodedW, decodedH, targetW, targetH);
-        success = true;
-      } else {
-        Serial.println("[SpaceX] test JPEG final buffer alloc failed");
-      }
-      free(decodeBuf);
-    } else {
-      Serial.println("[SpaceX] test JPEG intermediate buffer alloc failed");
-    }
-    jpeg.close();
-  } else {
-    Serial.println("[SpaceX] test JPEG openRAM failed");
-  }
-
-  free(jpegBuf);
   return success;
 }
 
 bool spacex_fetch_next_image() {
-  // Diagnostic: heap integrity checked immediately on entry, before this
-  // function does anything at all. A heap corruption crash was observed
-  // whose own backtrace points at unrelated UI-task code (rmtInit() via
-  // draw_astro()) rather than anything in this file, and a check placed
-  // right after decode() came back clean -- both hints this may be a
-  // pre-existing bug elsewhere (possibly the same one CONFIG_HEAP_POISONING_LIGHT
-  // in platformio.ini was originally added to chase) that this function's
-  // large PSRAM allocations are just now reliably exposing, rather than
-  // something this function is causing. If this reports CORRUPT, that
-  // proves it.
-  bool heapOkOnEntry = heap_caps_check_integrity_all(true);
-  Serial.printf("[SpaceX] heap integrity on spacex_fetch_next_image() entry: %s\n", heapOkOnEntry ? "OK" : "CORRUPT");
-
-  // Watchpoint removed -- every bracket check leading up to finalBuf's
-  // malloc (imgBuf read, PNG object alloc, openRAM/getWidth/getHeight)
-  // has passed clean, and the watchpoint fires on ANY write to that
-  // address including legitimate reuse of a freed block, not just a
-  // genuinely bad write. It was very likely just catching itself, and
-  // pre-empting execution before the natural corruption-detection assert
-  // could fire on its own -- removing it so the next crash (if any) is
-  // the real one, not an artifact of our own instrumentation.
-
   if (!wifi_manager_is_connected()) return false;
   if (g_spacexLaunchCount == 0) return false;
   String url = g_spacexLaunches[0].imageUrl;
-  // Test-PNG override reverted -- the generic test PNG decoded and
-  // cleaned up completely successfully (no crash), proving the decode
-  // path itself is fine. The bug is specific to this real image's file
-  // content, so we're back to fetching the real launch photo, now with
-  // the IHDR header dump below to see exactly what's different about it.
   if (url.length() == 0) return false;
 
   HTTPClient http;
@@ -715,11 +514,6 @@ bool spacex_fetch_next_image() {
     return false;
   }
 
-  // Diagnostic: bracket check immediately after the imgBuf HTTP read
-  // completes -- narrows whether the corruption happens during the
-  // fetch/read itself, or later during PNG/JPEG decode setup.
-  Serial.printf("[SpaceX] heap integrity after imgBuf read: %s\n", heap_caps_check_integrity_all(true) ? "OK" : "CORRUPT");
-
   // Diagnostic kept from the earlier "JPEG openRAM failed" investigation --
   // it turned out LL2 mission images aren't always JPEG (a real capture
   // showed a PNG signature, 89 50 4E 47, arriving here). This now also
@@ -735,21 +529,6 @@ bool spacex_fetch_next_image() {
   if (readTotal >= 3 && imgBuf[0] == 0xFF && imgBuf[1] == 0xD8 && imgBuf[2] == 0xFF) {
     success = decodeAndStoreJpeg(imgBuf, readTotal);
   } else if (readTotal >= 4 && imgBuf[0] == 0x89 && imgBuf[1] == 0x50 && imgBuf[2] == 0x4E && imgBuf[3] == 0x47) {
-    // Diagnostic: raw IHDR chunk bytes, for manually comparing this PNG's
-    // actual bit depth / color type / interlace method against a known-
-    // working test PNG, since we can't fetch/inspect the real image file
-    // directly outside the board. Standard PNG layout: bytes 0-7 are the
-    // signature, bytes 8-11 are the IHDR chunk's length (always 13),
-    // bytes 12-15 are "IHDR", bytes 16-19 width, 20-23 height, byte 24
-    // bit depth, byte 25 color type, byte 26 compression method, byte 27
-    // filter method, byte 28 interlace method.
-    if (readTotal >= 29) {
-      Serial.printf("[SpaceX] PNG IHDR bytes 16-28: ");
-      for (int i = 16; i <= 28; i++) Serial.printf("%02X ", imgBuf[i]);
-      Serial.println();
-      Serial.printf("[SpaceX] PNG bit depth=%d color type=%d compression=%d filter=%d interlace=%d\n",
-                    imgBuf[24], imgBuf[25], imgBuf[26], imgBuf[27], imgBuf[28]);
-    }
     success = decodeAndStorePng(imgBuf, readTotal);
   } else {
     Serial.println("[SpaceX] image format not recognized (not JPEG or PNG)");

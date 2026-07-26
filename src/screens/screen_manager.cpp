@@ -3269,16 +3269,6 @@ static void draw_spacex() {
     screen.drawRGBBitmap(615, 60, g_spacexImagePixels, g_spacexImageWidth, g_spacexImageHeight);
   }
 
-  // TEMPORARY DIAGNOSTIC -- test JPEG drawn below the divider line (the
-  // real image above already uses all the room up to y=166), for a
-  // side-by-side comparison against the PNG decode crash. May overlap
-  // the launch list's own Starship/Super Heavy badges further down since
-  // this is a quick one-off test, not a permanent layout addition --
-  // remove this whole block once the PNG bug is resolved.
-  if (g_testJpegValid && g_testJpegPixels != nullptr) {
-    screen.drawRGBBitmap(615, 175, g_testJpegPixels, g_testJpegWidth, g_testJpegHeight);
-  }
-
   time_t t = (time_t)next.netUnix;
   struct tm* ti = localtime(&t);
   char dateBuf[8], timeBuf[8];
