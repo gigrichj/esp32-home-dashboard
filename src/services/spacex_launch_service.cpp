@@ -533,34 +533,42 @@ static String urlEncode(const String &s) {
   return encoded;
 }
 
-// Selects and decodes the embedded fallback image matching the most
-// recently known rocket type, used whenever the live SpaceX image fetch
-// fails for any reason (no WiFi, no launch data yet, HTTP failure,
-// oversized/invalid payload, read error, or a failed/unrecognized decode).
-// Falcon 9 is the default since it's SpaceX's most common launch.
+struct FallbackImage {
+  const uint8_t *buf;
+  size_t len;
+};
+
+// Selects a rocket-type-matched fallback set, then picks one of the 3
+// images at random, used whenever the live SpaceX image fetch fails for
+// any reason (no WiFi, no launch data yet, HTTP failure, oversized/invalid
+// payload, read error, or a failed/unrecognized decode). Falcon 9 is the
+// default set since it's SpaceX's most common launch.
 static bool useFallbackImage() {
   String rocketName = (g_spacexLaunchCount > 0) ? g_spacexLaunches[0].rocketName : "";
 
-  const uint8_t *buf;
-  size_t len;
   const char *label;
+  FallbackImage set[3];
 
   if (rocketName.indexOf("Starship") >= 0) {
-    buf = FALLBACK_STARSHIP_JPG;
-    len = FALLBACK_STARSHIP_JPG_len;
     label = "Starship";
+    set[0] = { FALLBACK_STARSHIP_1_JPG, FALLBACK_STARSHIP_1_JPG_len };
+    set[1] = { FALLBACK_STARSHIP_2_JPG, FALLBACK_STARSHIP_2_JPG_len };
+    set[2] = { FALLBACK_STARSHIP_3_JPG, FALLBACK_STARSHIP_3_JPG_len };
   } else if (rocketName.indexOf("Heavy") >= 0) {
-    buf = FALLBACK_FALCON_HEAVY_JPG;
-    len = FALLBACK_FALCON_HEAVY_JPG_len;
     label = "Falcon Heavy";
+    set[0] = { FALLBACK_FALCON_HEAVY_1_JPG, FALLBACK_FALCON_HEAVY_1_JPG_len };
+    set[1] = { FALLBACK_FALCON_HEAVY_2_JPG, FALLBACK_FALCON_HEAVY_2_JPG_len };
+    set[2] = { FALLBACK_FALCON_HEAVY_3_JPG, FALLBACK_FALCON_HEAVY_3_JPG_len };
   } else {
-    buf = FALLBACK_FALCON9_JPG;
-    len = FALLBACK_FALCON9_JPG_len;
     label = "Falcon 9";
+    set[0] = { FALLBACK_FALCON9_1_JPG, FALLBACK_FALCON9_1_JPG_len };
+    set[1] = { FALLBACK_FALCON9_2_JPG, FALLBACK_FALCON9_2_JPG_len };
+    set[2] = { FALLBACK_FALCON9_3_JPG, FALLBACK_FALCON9_3_JPG_len };
   }
 
-  Serial.printf("[SpaceX] live image unavailable, using embedded fallback (%s)\n", label);
-  return decodeAndStoreJpeg(const_cast<uint8_t*>(buf), len);
+  int pick = random(0, 3); // 0, 1, or 2
+  Serial.printf("[SpaceX] live image unavailable, using embedded fallback (%s, image %d/3)\n", label, pick + 1);
+  return decodeAndStoreJpeg(const_cast<uint8_t*>(set[pick].buf), set[pick].len);
 }
 
 bool spacex_fetch_next_image() {
