@@ -48,3 +48,14 @@ extern String g_spacexLandingLocation;
 extern String g_spacexLandingAbbrev;
 extern String g_spacexLandingType;
 bool spacex_fetch_next_landing_info(); // returns true only on a fully successful fetch/parse
+
+// TEMPORARY DIAGNOSTIC -- fetches a generic same-size test JPEG (separate
+// from the real launch image) to compare against the PNG decode path's
+// crash. Remove this whole block (globals, function, and its call site
+// in main.cpp / draw call in screen_manager.cpp) once the PNG bug is
+// resolved and this is no longer needed.
+extern uint16_t* g_testJpegPixels;
+extern int g_testJpegWidth;
+extern int g_testJpegHeight;
+extern bool g_testJpegValid;
+bool spacex_fetch_test_jpeg();

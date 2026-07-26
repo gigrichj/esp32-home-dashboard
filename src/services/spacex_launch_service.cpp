@@ -478,6 +478,129 @@ static bool decodeAndStorePng(uint8_t *buf, size_t bufLen) {
   return success;
 }
 
+// TEMPORARY DIAGNOSTIC -- see the comment in spacex_launch_service.h.
+// Reuses the same JPEG decode pattern as decodeAndStoreJpeg() (fetch,
+// two-stage shrink) but writes into dedicated g_testJpeg* globals instead
+// of the real g_spacexImage* ones, so it can be displayed alongside the
+// real (PNG) image for a side-by-side comparison rather than replacing it.
+uint16_t* g_testJpegPixels = nullptr;
+int g_testJpegWidth = 0;
+int g_testJpegHeight = 0;
+bool g_testJpegValid = false;
+
+bool spacex_fetch_test_jpeg() {
+  if (!wifi_manager_is_connected()) return false;
+
+  String url = "https://placeholdpicsum.dev/1249x722.jpg";
+  HTTPClient http;
+  http.begin(url);
+  http.setTimeout(15000);
+  http.setUserAgent("esp32-home-dashboard/1.0");
+  http.useHTTP10(true);
+  int code = http.GET();
+  if (code != 200) {
+    Serial.printf("[SpaceX] test JPEG fetch HTTP %d\n", code);
+    http.end();
+    return false;
+  }
+
+  int len = http.getSize();
+  if (len <= 0 || len > 900000) {
+    Serial.printf("[SpaceX] test JPEG size invalid: %d\n", len);
+    http.end();
+    return false;
+  }
+
+  uint8_t *jpegBuf = (uint8_t *)heap_caps_malloc(len, MALLOC_CAP_SPIRAM);
+  if (jpegBuf == nullptr) {
+    Serial.println("[SpaceX] test JPEG buffer alloc failed");
+    http.end();
+    return false;
+  }
+
+  WiFiClient *stream = http.getStreamPtr();
+  size_t readTotal = 0;
+  uint32_t startMs = millis();
+  bool readError = false;
+  while (http.connected() && readTotal < (size_t)len && millis() - startMs < 15000) {
+    size_t avail = stream->available();
+    if (avail > 0) {
+      int toRead = (int)min((size_t)avail, (size_t)len - readTotal);
+      int r = stream->readBytes(jpegBuf + readTotal, toRead);
+      if (r <= 0) { readError = true; break; }
+      readTotal += r;
+    } else {
+      vTaskDelay(pdMS_TO_TICKS(5));
+    }
+  }
+  http.end();
+
+  if (readError || readTotal == 0) {
+    Serial.println("[SpaceX] test JPEG payload read error");
+    free(jpegBuf);
+    return false;
+  }
+
+  bool success = false;
+  JPEGDEC jpeg;
+  if (jpeg.openRAM(jpegBuf, (int)readTotal, jpegDrawCallback)) {
+    int w = jpeg.getWidth();
+    int h = jpeg.getHeight();
+    Serial.printf("[SpaceX] test JPEG source dimensions %dx%d\n", w, h);
+
+    int decodedW = w / 8;
+    int decodedH = h / 8;
+    uint16_t *decodeBuf = (uint16_t *)heap_caps_malloc((size_t)decodedW * decodedH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+    if (decodeBuf != nullptr) {
+      s_decodeTarget = decodeBuf;
+      s_decodeTargetW = decodedW;
+      s_decodeTargetH = decodedH;
+      jpeg.decode(0, 0, JPEG_SCALE_EIGHTH);
+      s_decodeTarget = nullptr;
+
+      int targetH = 100;
+      int targetW = (int)((float)targetH * w / h);
+      if (targetW < 1) targetW = 1;
+
+      uint16_t *finalBuf = (uint16_t *)heap_caps_malloc((size_t)targetW * targetH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+      if (finalBuf != nullptr) {
+        for (int dy = 0; dy < targetH; dy++) {
+          int srcY = dy * decodedH / targetH;
+          for (int dx = 0; dx < targetW; dx++) {
+            int srcX = dx * decodedW / targetW;
+            finalBuf[dy * targetW + dx] = decodeBuf[srcY * decodedW + srcX];
+          }
+        }
+
+        state_lock();
+        if (g_testJpegPixels != nullptr) {
+          free(g_testJpegPixels);
+          g_testJpegPixels = nullptr;
+          g_testJpegValid = false;
+        }
+        g_testJpegPixels = finalBuf;
+        g_testJpegWidth = targetW;
+        g_testJpegHeight = targetH;
+        g_testJpegValid = true;
+        state_unlock();
+        Serial.printf("[SpaceX] test JPEG decoded %dx%d, downsampled to %dx%d\n", decodedW, decodedH, targetW, targetH);
+        success = true;
+      } else {
+        Serial.println("[SpaceX] test JPEG final buffer alloc failed");
+      }
+      free(decodeBuf);
+    } else {
+      Serial.println("[SpaceX] test JPEG intermediate buffer alloc failed");
+    }
+    jpeg.close();
+  } else {
+    Serial.println("[SpaceX] test JPEG openRAM failed");
+  }
+
+  free(jpegBuf);
+  return success;
+}
+
 bool spacex_fetch_next_image() {
   // Diagnostic: heap integrity checked immediately on entry, before this
   // function does anything at all. A heap corruption crash was observed
@@ -504,6 +627,11 @@ bool spacex_fetch_next_image() {
   if (!wifi_manager_is_connected()) return false;
   if (g_spacexLaunchCount == 0) return false;
   String url = g_spacexLaunches[0].imageUrl;
+  // TEMPORARY TEST -- override with a generic, same-size (1249x722) real
+  // photo from a placeholder/test service, to check whether the PNG
+  // decode path works on an "ordinary" PNG or specifically fails on this
+  // one. REVERT this override once we have an answer.
+  url = "https://placeholdpicsum.dev/1249x722.png";
   if (url.length() == 0) return false;
 
   HTTPClient http;
