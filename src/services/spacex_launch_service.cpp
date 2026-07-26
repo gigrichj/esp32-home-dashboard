@@ -129,7 +129,7 @@ static int pngDrawCallback(PNGDRAW *pDraw) {
   // decode in one uninterrupted burst. Runs for every row regardless of
   // whether this particular row is one we actually downsample (below),
   // since PNGdec still does real inflate/de-filter work on skipped rows.
-  if ((pDraw->y % 20) == 0) {
+  if ((pDraw->y % 5) == 0) {
     vTaskDelay(pdMS_TO_TICKS(1));
   }
 
