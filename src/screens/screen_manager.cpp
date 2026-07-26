@@ -2803,7 +2803,8 @@ static void draw_astro() {
 // plotted as zero, so a temporarily-missing feed doesn't fake a crash to
 // zero on the chart.
 static void drawTrendPanel(int x, int y, int w, int h, const char* title,
-                            bool (*getValue)(int idx, float* outValue), uint16_t lineColor) {
+                            bool (*getValue)(int idx, float* outValue), uint16_t lineColor,
+                            const char* unit = "") {
   screen.setTextSize(2);
   screen.setTextColor(colorAccent, colorBg);
   screen.setTextDatum(textdatum_t::top_left);
@@ -2880,8 +2881,12 @@ static void drawTrendPanel(int x, int y, int w, int h, const char* title,
   screen.setTextSize(1);
   screen.setTextColor(colorText, colorBg);
   screen.setTextDatum(textdatum_t::top_right);
-  char nowLabel[16];
-  snprintf(nowLabel, sizeof(nowLabel), "%.0f", lastValidValue);
+  char nowLabel[20];
+  if (unit[0] != '\0') {
+    snprintf(nowLabel, sizeof(nowLabel), "%.0f %s", lastValidValue, unit);
+  } else {
+    snprintf(nowLabel, sizeof(nowLabel), "%.0f", lastValidValue);
+  }
   screen.drawString(nowLabel, x + w - 4, y + 2);
   screen.setTextDatum(textdatum_t::top_left);
 }
@@ -2982,20 +2987,20 @@ static void draw_trends() {
   int col0X = 20, col1X = col0X + panelW + gap, col2X = col1X + panelW + gap, col3X = col2X + panelW + gap;
   int row1Y = 85, row2Y = row1Y + panelH + gap, row3Y = row2Y + panelH + gap;
 
-  drawTrendPanel(col0X, row1Y, panelW, panelH, "TEMP (F)", trendGetTemp, colorAccent);
+  drawTrendPanel(col0X, row1Y, panelW, panelH, "TEMP (F)", trendGetTemp, colorAccent, "F");
   drawTrendPanel(col1X, row1Y, panelW, panelH, "AQI", trendGetAqi, screen.color565(230, 130, 40));
   drawTrendPanel(col2X, row1Y, panelW, panelH, "AIRCRAFT", trendGetAircraft, screen.color565(90, 200, 255));
   drawTrendPanel(col3X, row1Y, panelW, panelH, "ASTRO QLTY", trendGetAstro, screen.color565(170, 120, 210));
 
-  drawTrendPanel(col0X, row2Y, panelW, panelH, "WEATHER AGE", trendGetWeatherAge, screen.color565(100, 180, 255));
-  drawTrendPanel(col1X, row2Y, panelW, panelH, "AQ AGE", trendGetAirQualityAge, screen.color565(200, 160, 60));
-  drawTrendPanel(col2X, row2Y, panelW, panelH, "ASTRO AGE", trendGetAstroAge, screen.color565(140, 100, 190));
-  drawTrendPanel(col3X, row2Y, panelW, panelH, "PRECIP AGE", trendGetPrecipAge, screen.color565(80, 160, 220));
+  drawTrendPanel(col0X, row2Y, panelW, panelH, "WEATHER AGE", trendGetWeatherAge, screen.color565(100, 180, 255), "MIN");
+  drawTrendPanel(col1X, row2Y, panelW, panelH, "AQ AGE", trendGetAirQualityAge, screen.color565(200, 160, 60), "MIN");
+  drawTrendPanel(col2X, row2Y, panelW, panelH, "ASTRO AGE", trendGetAstroAge, screen.color565(140, 100, 190), "MIN");
+  drawTrendPanel(col3X, row2Y, panelW, panelH, "PRECIP AGE", trendGetPrecipAge, screen.color565(80, 160, 220), "MIN");
 
-  drawTrendPanel(col0X, row3Y, panelW, panelH, "AVIATION AGE", trendGetAviationAge, screen.color565(60, 170, 220));
-  drawTrendPanel(col1X, row3Y, panelW, panelH, "ISS AGE", trendGetIssAge, screen.color565(150, 170, 235));
-  drawTrendPanel(col2X, row3Y, panelW, panelH, "SPACEX AGE", trendGetSpacexAge, screen.color565(220, 150, 60));
-  drawTrendPanel(col3X, row3Y, panelW, panelH, "SX DETAIL AGE", trendGetSpacexDetailAge, screen.color565(200, 100, 100));
+  drawTrendPanel(col0X, row3Y, panelW, panelH, "AVIATION AGE", trendGetAviationAge, screen.color565(60, 170, 220), "MIN");
+  drawTrendPanel(col1X, row3Y, panelW, panelH, "ISS AGE", trendGetIssAge, screen.color565(150, 170, 235), "MIN");
+  drawTrendPanel(col2X, row3Y, panelW, panelH, "SPACEX AGE", trendGetSpacexAge, screen.color565(220, 150, 60), "MIN");
+  drawTrendPanel(col3X, row3Y, panelW, panelH, "SPX DTL AGE", trendGetSpacexDetailAge, screen.color565(200, 100, 100), "MIN");
 }
 
 static void draw_placeholder(const char* label) {
