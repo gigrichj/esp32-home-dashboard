@@ -2109,7 +2109,11 @@ static void drawThickCircle(int cx, int cy, int r, uint16_t color) {
 }
 
 static void drawDebugBadge() {
-  int cx = WIDTH / 2;
+  // Moved from center (WIDTH/2) to far left -- frees the entire right side
+  // of the page for the legend, diagnostics text, and the easter-egg image
+  // with zero geometric overlap (the whole badge shape stays within
+  // roughly x:40-300 at this cx, well clear of anything on the right).
+  int cx = 170;
   static const int HEADER_H = 40;
   int shieldR = 130;                    // slightly smaller than before to fit below the header
   int shieldTopCy = HEADER_H + 10 + shieldR;  // top of the arc sits just below the header band
@@ -2245,15 +2249,15 @@ static void drawDebugBadge() {
 
 // Small legend explaining what each animated element's speed actually
 // tracks now that the badge doubles as a real system-health monitor
-// (see the metrics computed at the top of drawDebugBadge()). Placed in
-// the open left margin, which stays clear of the shield shape at every
+// (see the metrics computed at the top of drawDebugBadge()). Placed at
+// the far top-right, clear of the badge (now moved far left) at every
 // height on this page.
 static void drawDebugLegend() {
   uint16_t planeColor = screen.color565(120, 200, 150);
   uint16_t issColor = screen.color565(150, 170, 235);
   uint16_t galaxyColor = screen.color565(170, 120, 210);
 
-  int legX = 20;
+  int legX = 520;
   int legY = 55;
   int swatchSize = 12;
   int lineGap = 26;
@@ -2288,11 +2292,11 @@ static void draw_debug() {
   screen.setTextColor(colorDim, colorBg);
   char resetLine[48];
   snprintf(resetLine, sizeof(resetLine), "LAST RESET: %s", g_resetReasonStr);
-  screen.drawString(resetLine, 20, 145);
+  screen.drawString(resetLine, 520, 145); // aligned under the legend (also moved right) -- badge now lives far left
 
   char heapLine[48];
   snprintf(heapLine, sizeof(heapLine), "MIN FREE HEAP: %u KB", (unsigned)(g_minFreeHeapSeen / 1024));
-  screen.drawString(heapLine, 20, 163);
+  screen.drawString(heapLine, 520, 163);
 
   // Easter egg image, bottom-right corner, native 344x200 size, decoded
   // once at boot (see debug_easter_egg_init()). Flush to the corner with
