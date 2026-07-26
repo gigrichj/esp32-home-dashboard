@@ -3790,7 +3790,15 @@ static const int IMAGERY_TAB_INDEX = 6;
 // bypassing the normal 15-min rotation timer (see imagery_service.cpp) --
 // a manual "backdoor" for testing/browsing without waiting.
 static uint32_t lastImageryTapMs = 0;
-static const uint32_t IMAGERY_DOUBLE_TAP_MAX_GAP_MS = 400;
+static const uint32_t IMAGERY_DOUBLE_TAP_MAX_GAP_MS = 800; // widened from 400ms after
+                                                             // real-world testing showed gaps
+                                                             // of several seconds between
+                                                             // intended double-taps -- each tap
+                                                             // already takes 50-600ms of "held"
+                                                             // time to register at all, plus
+                                                             // this display's ~200ms touch
+                                                             // sampling interval, made 400ms too
+                                                             // tight for two real finger taps
 
 void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
   uint32_t now = millis();
