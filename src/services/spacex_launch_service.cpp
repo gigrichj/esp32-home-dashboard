@@ -79,7 +79,31 @@ static int pngDrawCallback(PNGDRAW *pDraw) {
   }
   if (!needed) return 1; // this source row isn't sampled by our downsample, skip the RGB565 conversion
 
-  s_pngObj->getLineAsRGB565(pDraw, s_pngLineBuf, PNG_RGB565_LITTLE_ENDIAN, 0xffffffff);
+  // Manual RGB565 conversion, bypassing PNGdec's own getLineAsRGB565() --
+  // the real launch photo (truecolor+alpha, PNG color type 6) crashed
+  // with a heap corruption 100% of the time, traced via extensive
+  // bracket-checking to somewhere in this decode step, while a same-size
+  // plain-RGB test photo (no alpha) decoded and cleaned up completely
+  // successfully every time. That strongly points to a bug specific to
+  // getLineAsRGB565()'s alpha-blending code path (only exercised when
+  // the source actually has alpha), which we can't patch directly since
+  // PlatformIO re-fetches this vendored library fresh on every build.
+  // Converting manually from the raw native pixels avoids that code path
+  // entirely. Only handles the two pixel types actually seen in practice
+  // (8-bit RGB and RGBA); anything else is skipped rather than risking a
+  // misread of an unfamiliar layout.
+  int bytesPerPixel = (pDraw->iPixelType == 6) ? 4 : (pDraw->iPixelType == 2) ? 3 : 0;
+  if (bytesPerPixel == 0) {
+    Serial.printf("[SpaceX] PNG pixel type %d not handled by manual RGB565 conversion, skipping line\n", pDraw->iPixelType);
+    return 1;
+  }
+  int lineWidth = pDraw->iWidth;
+  if (lineWidth > s_pngSrcW) lineWidth = s_pngSrcW; // safety clamp against s_pngLineBuf's allocated size
+  for (int x = 0; x < lineWidth; x++) {
+    uint8_t *px = pDraw->pPixels + (size_t)x * bytesPerPixel;
+    uint16_t r = px[0], g = px[1], b = px[2];
+    s_pngLineBuf[x] = (uint16_t)(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3));
+  }
 
   for (int ty = 0; ty < s_pngFinalH; ty++) {
     if ((ty * s_pngSrcH) / s_pngFinalH == srcY) {
