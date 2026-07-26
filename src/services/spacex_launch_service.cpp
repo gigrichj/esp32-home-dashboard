@@ -627,11 +627,11 @@ bool spacex_fetch_next_image() {
   if (!wifi_manager_is_connected()) return false;
   if (g_spacexLaunchCount == 0) return false;
   String url = g_spacexLaunches[0].imageUrl;
-  // TEMPORARY TEST -- override with a generic, same-size (1249x722) real
-  // photo from a placeholder/test service, to check whether the PNG
-  // decode path works on an "ordinary" PNG or specifically fails on this
-  // one. REVERT this override once we have an answer.
-  url = "https://placeholdpicsum.dev/1249x722.png";
+  // Test-PNG override reverted -- the generic test PNG decoded and
+  // cleaned up completely successfully (no crash), proving the decode
+  // path itself is fine. The bug is specific to this real image's file
+  // content, so we're back to fetching the real launch photo, now with
+  // the IHDR header dump below to see exactly what's different about it.
   if (url.length() == 0) return false;
 
   HTTPClient http;
@@ -711,6 +711,21 @@ bool spacex_fetch_next_image() {
   if (readTotal >= 3 && imgBuf[0] == 0xFF && imgBuf[1] == 0xD8 && imgBuf[2] == 0xFF) {
     success = decodeAndStoreJpeg(imgBuf, readTotal);
   } else if (readTotal >= 4 && imgBuf[0] == 0x89 && imgBuf[1] == 0x50 && imgBuf[2] == 0x4E && imgBuf[3] == 0x47) {
+    // Diagnostic: raw IHDR chunk bytes, for manually comparing this PNG's
+    // actual bit depth / color type / interlace method against a known-
+    // working test PNG, since we can't fetch/inspect the real image file
+    // directly outside the board. Standard PNG layout: bytes 0-7 are the
+    // signature, bytes 8-11 are the IHDR chunk's length (always 13),
+    // bytes 12-15 are "IHDR", bytes 16-19 width, 20-23 height, byte 24
+    // bit depth, byte 25 color type, byte 26 compression method, byte 27
+    // filter method, byte 28 interlace method.
+    if (readTotal >= 29) {
+      Serial.printf("[SpaceX] PNG IHDR bytes 16-28: ");
+      for (int i = 16; i <= 28; i++) Serial.printf("%02X ", imgBuf[i]);
+      Serial.println();
+      Serial.printf("[SpaceX] PNG bit depth=%d color type=%d compression=%d filter=%d interlace=%d\n",
+                    imgBuf[24], imgBuf[25], imgBuf[26], imgBuf[27], imgBuf[28]);
+    }
     success = decodeAndStorePng(imgBuf, readTotal);
   } else {
     Serial.println("[SpaceX] image format not recognized (not JPEG or PNG)");
