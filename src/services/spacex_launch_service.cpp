@@ -384,7 +384,11 @@ static bool decodeAndStorePng(uint8_t *buf, size_t bufLen) {
     int targetW = (int)((float)targetH * w / h);
     if (targetW < 1) targetW = 1;
 
+    // Diagnostic: the exact malloc call that crashed every time so far --
+    // bracketed directly, with nothing else running in between, to get a
+    // conclusive OK-to-CORRUPT (or not) reading across this one call.
     uint16_t *finalBuf = (uint16_t *)heap_caps_malloc((size_t)targetW * targetH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+    Serial.printf("[SpaceX] heap integrity immediately after finalBuf malloc: %s\n", heap_caps_check_integrity_all(true) ? "OK" : "CORRUPT");
     // Padded +16 pixels beyond the exact width -- every official PNGdec
     // example sizes this buffer generously (a fixed 320 or MAX_IMAGE_WIDTH
     // array), never tightly to the real image width like this originally
@@ -485,19 +489,14 @@ bool spacex_fetch_next_image() {
   bool heapOkOnEntry = heap_caps_check_integrity_all(true);
   Serial.printf("[SpaceX] heap integrity on spacex_fetch_next_image() entry: %s\n", heapOkOnEntry ? "OK" : "CORRUPT");
 
-  // Diagnostic: the exact same address (0x3c325c84) has shown up as the
-  // corrupted heap header across every single crash so far -- a fixed,
-  // repeatable address like this points to deterministic corruption tied
-  // to this run's allocation sequence, not a nondeterministic race with
-  // the UI task. Arming a hardware watchpoint on that specific address
-  // means the CPU halts the instant anything writes to it, giving a real
-  // backtrace of the actual culprit instruction instead of the
-  // misattributed one (rmtInit()/draw_astro()) seen in every crash so
-  // far. Left armed (not cleared) for the rest of this run so it catches
-  // the write whenever it actually happens, even if that's later than
-  // this function's own execution.
-  esp_err_t wpResult = esp_cpu_set_watchpoint(0, (void *)0x3c325c84, 4, ESP_CPU_WATCHPOINT_STORE); // this IDF version uses the ESP_CPU_ prefix, not the older ESP_WATCHPOINT_ name shown in some docs
-  Serial.printf("[SpaceX] watchpoint on 0x3c325c84 armed: %s\n", (wpResult == ESP_OK) ? "OK" : "FAILED");
+  // Watchpoint removed -- every bracket check leading up to finalBuf's
+  // malloc (imgBuf read, PNG object alloc, openRAM/getWidth/getHeight)
+  // has passed clean, and the watchpoint fires on ANY write to that
+  // address including legitimate reuse of a freed block, not just a
+  // genuinely bad write. It was very likely just catching itself, and
+  // pre-empting execution before the natural corruption-detection assert
+  // could fire on its own -- removing it so the next crash (if any) is
+  // the real one, not an artifact of our own instrumentation.
 
   if (!wifi_manager_is_connected()) return false;
   if (g_spacexLaunchCount == 0) return false;
