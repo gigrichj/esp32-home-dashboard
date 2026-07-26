@@ -362,10 +362,23 @@ static bool decodeAndStorePng(uint8_t *buf, size_t bufLen) {
   }
   PNG *png = new (pngMem) PNG();
 
+  // Diagnostic: bracket check right after the PNG object itself is
+  // constructed on PSRAM, before openRAM() touches anything.
+  Serial.printf("[SpaceX] heap integrity after PNG object alloc: %s\n", heap_caps_check_integrity_all(true) ? "OK" : "CORRUPT");
+
   if (png->openRAM(buf, (int)bufLen, pngDrawCallback) == PNG_SUCCESS) {
     int w = png->getWidth();
     int h = png->getHeight();
     Serial.printf("[SpaceX] PNG source dimensions %dx%d\n", w, h);
+
+    // Diagnostic: bracket check right after openRAM()/getWidth()/getHeight(),
+    // immediately before finalBuf's malloc -- the exact call that crashed
+    // last time. If this already reports CORRUPT, the damage happened
+    // during openRAM()'s IHDR parsing or earlier; if OK, the malloc call
+    // itself is where to keep looking (though note a watchpoint firing
+    // there could just be normal free-list reuse of an already-damaged
+    // block from something earlier).
+    Serial.printf("[SpaceX] heap integrity after openRAM/getWidth/getHeight: %s\n", heap_caps_check_integrity_all(true) ? "OK" : "CORRUPT");
 
     int targetH = 100;
     int targetW = (int)((float)targetH * w / h);
@@ -547,6 +560,11 @@ bool spacex_fetch_next_image() {
     free(imgBuf);
     return false;
   }
+
+  // Diagnostic: bracket check immediately after the imgBuf HTTP read
+  // completes -- narrows whether the corruption happens during the
+  // fetch/read itself, or later during PNG/JPEG decode setup.
+  Serial.printf("[SpaceX] heap integrity after imgBuf read: %s\n", heap_caps_check_integrity_all(true) ? "OK" : "CORRUPT");
 
   // Diagnostic kept from the earlier "JPEG openRAM failed" investigation --
   // it turned out LL2 mission images aren't always JPEG (a real capture
