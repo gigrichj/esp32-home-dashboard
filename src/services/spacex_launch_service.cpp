@@ -515,14 +515,39 @@ static bool decodeAndStorePng(uint8_t *buf, size_t bufLen) {
   return success;
 }
 
+// Percent-encodes a URL for safe use as the url= param when proxying
+// through wsrv.nl (https://wsrv.nl) for server-side PNG->JPEG conversion.
+static String urlEncode(const String &s) {
+  String encoded = "";
+  char buf[4];
+  for (size_t i = 0; i < s.length(); i++) {
+    char c = s.charAt(i);
+    if (isalnum((unsigned char)c) || c == '-' || c == '_' || c == '.' || c == '~') {
+      encoded += c;
+    } else {
+      snprintf(buf, sizeof(buf), "%%%02X", (unsigned char)c);
+      encoded += buf;
+    }
+  }
+  return encoded;
+}
+
 bool spacex_fetch_next_image() {
   if (!wifi_manager_is_connected()) return false;
   if (g_spacexLaunchCount == 0) return false;
   String url = g_spacexLaunches[0].imageUrl;
   if (url.length() == 0) return false;
 
+  // Route through wsrv.nl to convert PNG mission photos to JPEG server-side.
+  // Sidesteps PNGdec's getLineAsRGB565() alpha-blend crash on truecolor+alpha
+  // (color type 6) PNGs, and the persistent display flicker that starts after
+  // a PNG decode -- JPEGDEC's built-in 1/8-scale decode only processes ~90
+  // rows vs PNG's full-resolution decode. w=344 (2x final render width) gives
+  // quality headroom before our own downsample; q=85 is JPEG quality.
+  String proxiedUrl = "https://wsrv.nl/?url=" + urlEncode(url) + "&output=jpg&w=344&q=85";
+
   HTTPClient http;
-  http.begin(url);
+  http.begin(proxiedUrl);
   http.setTimeout(15000); // same fix as the list/landing fetches above
   http.setUserAgent("esp32-home-dashboard/1.0");
   http.useHTTP10(true); // required for the manual read-loop below --
