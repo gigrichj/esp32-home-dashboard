@@ -148,6 +148,14 @@ static uint16_t touchMaxX = 0;                  // largest X seen so far this ge
 // in the normal dimmed state rather than carrying over yesterday's toggle.
 static bool g_dimOverrideActive = false;
 
+// Moved up here (was declared much later, right before
+// screen_manager_draw()) -- drawHeader(), defined above that point in the
+// file, needed to read this too (for the centered LOCKED/BRIGHT-DIMMED
+// indicators), which a compiler error caught: "not declared in this
+// scope". Updated once per frame in screen_manager_draw(), alongside
+// night mode.
+static bool g_inDimWindowActive = false;
+
 static bool g_pageLocked = false;               // when true, navigation (swipe, tap-to-advance,
                                                  // idle auto-cycle) is suppressed -- the current
                                                  // page keeps drawing and updating live data
@@ -307,7 +315,7 @@ static void drawHeader() {
     indicatorCenterX = (issTitleRight + tabIndicatorX) / 2;
   }
   screen.setTextSize(1);
-  screen.setTextDatum(textdatum_t::top_center);
+  screen.setTextDatum(textdatum_t::middle_center); // no top_center in this project's textdatum_t
   if (g_pageLocked) {
     screen.setTextColor(colorDanger, colorAccent);
     screen.drawString("LOCKED", indicatorCenterX, 8);
@@ -3551,8 +3559,6 @@ static void draw_spacex() {
     screen.drawString("= Falcon 9/Heavy", legendIconX + 26, falconLegendY + 10);
   }
 }
-
-static bool g_inDimWindowActive = false; // updated once per frame below, alongside night mode
 
 void screen_manager_draw() {
   g_nightModeActive = computeNightModeActive();
