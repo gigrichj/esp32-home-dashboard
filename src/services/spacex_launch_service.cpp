@@ -573,9 +573,12 @@ bool spacex_fetch_next_image() {
   // Sidesteps PNGdec's getLineAsRGB565() alpha-blend crash on truecolor+alpha
   // (color type 6) PNGs, and the persistent display flicker that starts after
   // a PNG decode -- JPEGDEC's built-in 1/8-scale decode only processes ~90
-  // rows vs PNG's full-resolution decode. w=344 (2x final render width) gives
-  // quality headroom before our own downsample; q=85 is JPEG quality.
-  String proxiedUrl = "https://wsrv.nl/?url=" + urlEncode(url) + "&output=jpg&w=344&q=85";
+  // rows vs PNG's full-resolution decode. w=1376 (8x final 172px render
+  // width) accounts for that 1/8-scale decode -- requesting only 2x led to
+  // a tiny 43x24 decoded image stretched up to 172x100 (soft/blocky).
+  // 1376/8=172 lands the decode close to the actual target size. q=85 is
+  // JPEG quality.
+  String proxiedUrl = "https://wsrv.nl/?url=" + urlEncode(url) + "&output=jpg&w=1376&q=85";
 
   HTTPClient http;
   http.begin(proxiedUrl);
