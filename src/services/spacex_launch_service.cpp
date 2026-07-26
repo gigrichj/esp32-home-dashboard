@@ -69,6 +69,26 @@ static PNG* s_pngObj = nullptr;
 
 static int pngDrawCallback(PNGDRAW *pDraw) {
   if (s_pngFinalBuf == nullptr || s_pngLineBuf == nullptr || s_pngObj == nullptr) return 0;
+
+  // Yield periodically through the full-resolution decode -- unlike the
+  // JPEG path (JPEGDEC's built-in 1/8-scale decode only ever processes
+  // ~90 rows for a typical mission photo), PNGdec has no equivalent and
+  // decodes every one of this image's ~722 rows at full width before we
+  // get to shrink it down. That's a much longer sustained burst of PSRAM
+  // traffic (inflate + de-filter + our RGB565 conversion) than any JPEG
+  // this project has ever drawn, and was observed to trigger persistent
+  // display flicker across every page the first time a real PNG decoded
+  // successfully -- the RGB LCD's DMA refill also lives on the PSRAM
+  // bus, the same root-cause class as this project's original flicker
+  // bug. Yielding briefly every few rows gives the display DMA regular
+  // breathing room instead of PSRAM being monopolized for the whole
+  // decode in one uninterrupted burst. Runs for every row regardless of
+  // whether this particular row is one we actually downsample (below),
+  // since PNGdec still does real inflate/de-filter work on skipped rows.
+  if ((pDraw->y % 20) == 0) {
+    vTaskDelay(pdMS_TO_TICKS(1));
+  }
+
   int srcY = pDraw->y;
 
   bool needed = false;
