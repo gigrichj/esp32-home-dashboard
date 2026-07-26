@@ -12,6 +12,7 @@ struct TrendSample {
   int aqi = 0;            // 0 = no data yet at sample time
   int aircraftCount = 0;
   float astroBadness = -1; // 0..1, lower is better; -1 = no astro data yet
+  float uvIndex = -1;      // -1 = no data yet at sample time (0 is a legitimate reading, e.g. at night)
 
   // Fetch health -- minutes since each fetch type last succeeded, sampled
   // at the same 5-min cadence as everything else above. -1 = that fetch

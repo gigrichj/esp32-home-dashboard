@@ -2891,6 +2891,119 @@ static void drawTrendPanel(int x, int y, int w, int h, const char* title,
   screen.setTextDatum(textdatum_t::top_left);
 }
 
+// Two overlaid series in one panel, each independently normalized to fill
+// the same plot height -- AQI and UV Index have very different numeric
+// ranges (AQI can run 0-500+, UV Index 0-11), so sharing one y-scale
+// would flatten one of them into invisibility. Two titles side by side,
+// each with a matching-color underline; combined "AQI/UVI" current-value
+// label, right-aligned, three colored segments since a single drawString
+// call can't mix colors -- a missing series shows "-" in its slot so the
+// "/" separator position stays fixed.
+static void drawDualTrendPanel(int x, int y, int w, int h,
+                                const char* title1, bool (*getValue1)(int idx, float* outValue), uint16_t color1,
+                                const char* title2, bool (*getValue2)(int idx, float* outValue), uint16_t color2) {
+  screen.setTextSize(2);
+  screen.setTextDatum(textdatum_t::top_left);
+
+  screen.setTextColor(color1, colorBg);
+  screen.drawString(title1, x, y);
+  int title1Width = (int)strlen(title1) * 12;
+  screen.drawLine(x, y + 20, x + title1Width, y + 20, color1);
+
+  int title2X = x + title1Width + 14;
+  screen.setTextColor(color2, colorBg);
+  screen.drawString(title2, title2X, y);
+  int title2Width = (int)strlen(title2) * 12;
+  screen.drawLine(title2X, y + 20, title2X + title2Width, y + 20, color2);
+
+  int plotY = y + 30;
+  int plotH = h - 30;
+  screen.drawLine(x, plotY, x + w, plotY, colorDim);
+  screen.drawLine(x, plotY + plotH, x + w, plotY + plotH, colorDim);
+  screen.drawLine(x, plotY, x, plotY + plotH, colorDim);
+  screen.drawLine(x + w, plotY, x + w, plotY + plotH, colorDim);
+
+  if (g_trendSampleCount < 2) {
+    screen.setTextSize(2);
+    screen.setTextColor(colorDim, colorBg);
+    screen.setTextDatum(textdatum_t::middle_center);
+    screen.drawString("Collecting data...", x + w / 2, plotY + plotH / 2);
+    screen.setTextDatum(textdatum_t::top_left);
+    return;
+  }
+
+  int oldestIdx = (g_trendSampleCount < TREND_MAX_SAMPLES) ? 0 : g_trendNextWriteIdx;
+
+  float min1 = 1e9f, max1 = -1e9f; bool any1 = false;
+  float min2 = 1e9f, max2 = -1e9f; bool any2 = false;
+  for (int i = 0; i < g_trendSampleCount; i++) {
+    int idx = (oldestIdx + i) % TREND_MAX_SAMPLES;
+    float v;
+    if (getValue1(idx, &v)) { if (v < min1) min1 = v; if (v > max1) max1 = v; any1 = true; }
+    if (getValue2(idx, &v)) { if (v < min2) min2 = v; if (v > max2) max2 = v; any2 = true; }
+  }
+
+  if (!any1 && !any2) {
+    screen.setTextSize(2);
+    screen.setTextColor(colorDim, colorBg);
+    screen.setTextDatum(textdatum_t::middle_center);
+    screen.drawString("No data yet", x + w / 2, plotY + plotH / 2);
+    screen.setTextDatum(textdatum_t::top_left);
+    return;
+  }
+  if (max1 - min1 < 0.001f) { min1 -= 1.0f; max1 += 1.0f; }
+  if (max2 - min2 < 0.001f) { min2 -= 1.0f; max2 += 1.0f; }
+
+  float lastValid1 = 0, lastValid2 = 0;
+
+  if (any1) {
+    int prevPx = 0, prevPy = 0; bool havePrev = false;
+    for (int i = 0; i < g_trendSampleCount; i++) {
+      int idx = (oldestIdx + i) % TREND_MAX_SAMPLES;
+      float v;
+      if (!getValue1(idx, &v)) { havePrev = false; continue; }
+      lastValid1 = v;
+      int px = x + (int)((float)i / (float)(g_trendSampleCount - 1) * (w - 1));
+      float frac = (v - min1) / (max1 - min1);
+      int py = plotY + plotH - 1 - (int)(frac * (plotH - 1));
+      if (havePrev) screen.drawLine(prevPx, prevPy, px, py, color1);
+      prevPx = px; prevPy = py; havePrev = true;
+    }
+  }
+
+  if (any2) {
+    int prevPx = 0, prevPy = 0; bool havePrev = false;
+    for (int i = 0; i < g_trendSampleCount; i++) {
+      int idx = (oldestIdx + i) % TREND_MAX_SAMPLES;
+      float v;
+      if (!getValue2(idx, &v)) { havePrev = false; continue; }
+      lastValid2 = v;
+      int px = x + (int)((float)i / (float)(g_trendSampleCount - 1) * (w - 1));
+      float frac = (v - min2) / (max2 - min2);
+      int py = plotY + plotH - 1 - (int)(frac * (plotH - 1));
+      if (havePrev) screen.drawLine(prevPx, prevPy, px, py, color2);
+      prevPx = px; prevPy = py; havePrev = true;
+    }
+  }
+
+  screen.setTextSize(1);
+  screen.setTextDatum(textdatum_t::top_left);
+  char label1[8], label2[8];
+  if (any1) snprintf(label1, sizeof(label1), "%.0f", lastValid1); else snprintf(label1, sizeof(label1), "-");
+  if (any2) snprintf(label2, sizeof(label2), "%.0f", lastValid2); else snprintf(label2, sizeof(label2), "-");
+  const char* sep = "/";
+  int w1 = (int)strlen(label1) * 6;
+  int wSep = (int)strlen(sep) * 6;
+  int w2 = (int)strlen(label2) * 6;
+  int startX = (x + w - 4) - (w1 + wSep + w2);
+  screen.setTextColor(color1, colorBg);
+  screen.drawString(label1, startX, y + 2);
+  screen.setTextColor(colorText, colorBg);
+  screen.drawString(sep, startX + w1, y + 2);
+  screen.setTextColor(color2, colorBg);
+  screen.drawString(label2, startX + w1 + wSep, y + 2);
+}
+
 static bool trendGetTemp(int idx, float* outValue) {
   if (g_trendSamples[idx].tempF == 0) return false;
   *outValue = g_trendSamples[idx].tempF;
@@ -2899,6 +3012,11 @@ static bool trendGetTemp(int idx, float* outValue) {
 static bool trendGetAqi(int idx, float* outValue) {
   if (g_trendSamples[idx].aqi == 0) return false;
   *outValue = (float)g_trendSamples[idx].aqi;
+  return true;
+}
+static bool trendGetUvIndex(int idx, float* outValue) {
+  if (g_trendSamples[idx].uvIndex < 0) return false;
+  *outValue = g_trendSamples[idx].uvIndex;
   return true;
 }
 static bool trendGetAircraft(int idx, float* outValue) {
@@ -2988,7 +3106,9 @@ static void draw_trends() {
   int row1Y = 85, row2Y = row1Y + panelH + gap, row3Y = row2Y + panelH + gap;
 
   drawTrendPanel(col0X, row1Y, panelW, panelH, "TEMP (F)", trendGetTemp, colorAccent, "F");
-  drawTrendPanel(col1X, row1Y, panelW, panelH, "AQI", trendGetAqi, screen.color565(230, 130, 40));
+  drawDualTrendPanel(col1X, row1Y, panelW, panelH,
+                      "AQI", trendGetAqi, screen.color565(60, 120, 255),
+                      "UVI", trendGetUvIndex, screen.color565(230, 60, 60));
   drawTrendPanel(col2X, row1Y, panelW, panelH, "AIRCRAFT", trendGetAircraft, screen.color565(90, 200, 255));
   drawTrendPanel(col3X, row1Y, panelW, panelH, "ASTRO QLTY", trendGetAstro, screen.color565(170, 120, 210));
 

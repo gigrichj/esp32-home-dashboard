@@ -42,6 +42,7 @@ void trend_history_update() {
   s.tempF = g_weather.valid ? g_weather.tempF : 0.0f;
   s.aqi = g_airQuality.valid ? g_airQuality.aqi : 0;
   s.aircraftCount = g_aircraftCount;
+  s.uvIndex = g_weather.valid ? g_weather.uvIndex : -1.0f;
 
   // Astro badness: reuse the same composite score the Astro/Dashboard
   // pages already compute, based on whichever forecast point is nearest
