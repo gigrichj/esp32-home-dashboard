@@ -7,6 +7,7 @@
 #include <time.h>
 #include <JPEGDEC.h>
 #include <PNGdec.h>
+#include "../assets/fallback_images.h"
 #include <new>
 #include "../state_mutex.h"
 
@@ -532,11 +533,41 @@ static String urlEncode(const String &s) {
   return encoded;
 }
 
+// Selects and decodes the embedded fallback image matching the most
+// recently known rocket type, used whenever the live SpaceX image fetch
+// fails for any reason (no WiFi, no launch data yet, HTTP failure,
+// oversized/invalid payload, read error, or a failed/unrecognized decode).
+// Falcon 9 is the default since it's SpaceX's most common launch.
+static bool useFallbackImage() {
+  String rocketName = (g_spacexLaunchCount > 0) ? g_spacexLaunches[0].rocketName : "";
+
+  const uint8_t *buf;
+  size_t len;
+  const char *label;
+
+  if (rocketName.indexOf("Starship") >= 0) {
+    buf = FALLBACK_STARSHIP_JPG;
+    len = FALLBACK_STARSHIP_JPG_len;
+    label = "Starship";
+  } else if (rocketName.indexOf("Heavy") >= 0) {
+    buf = FALLBACK_FALCON_HEAVY_JPG;
+    len = FALLBACK_FALCON_HEAVY_JPG_len;
+    label = "Falcon Heavy";
+  } else {
+    buf = FALLBACK_FALCON9_JPG;
+    len = FALLBACK_FALCON9_JPG_len;
+    label = "Falcon 9";
+  }
+
+  Serial.printf("[SpaceX] live image unavailable, using embedded fallback (%s)\n", label);
+  return decodeAndStoreJpeg(const_cast<uint8_t*>(buf), len);
+}
+
 bool spacex_fetch_next_image() {
-  if (!wifi_manager_is_connected()) return false;
-  if (g_spacexLaunchCount == 0) return false;
+  if (!wifi_manager_is_connected()) return useFallbackImage();
+  if (g_spacexLaunchCount == 0) return false; // no cached data at all -- nothing to key a fallback off of yet
   String url = g_spacexLaunches[0].imageUrl;
-  if (url.length() == 0) return false;
+  if (url.length() == 0) return useFallbackImage();
 
   // Route through wsrv.nl to convert PNG mission photos to JPEG server-side.
   // Sidesteps PNGdec's getLineAsRGB565() alpha-blend crash on truecolor+alpha
@@ -559,7 +590,7 @@ bool spacex_fetch_next_image() {
   if (code != 200) {
     Serial.printf("[SpaceX] image fetch HTTP %d\n", code);
     http.end();
-    return false;
+    return useFallbackImage();
   }
 
   // Raised from 250000 -- real LL2 mission photos have been coming back
@@ -570,14 +601,14 @@ bool spacex_fetch_next_image() {
   if (len <= 0 || len > 900000) {
     Serial.printf("[SpaceX] image size invalid: %d\n", len);
     http.end();
-    return false;
+    return useFallbackImage();
   }
 
   uint8_t *imgBuf = (uint8_t *)heap_caps_malloc(len, MALLOC_CAP_SPIRAM);
   if (imgBuf == nullptr) {
     Serial.println("[SpaceX] image buffer alloc failed");
     http.end();
-    return false;
+    return useFallbackImage();
   }
 
   WiFiClient *stream = http.getStreamPtr();
@@ -600,7 +631,7 @@ bool spacex_fetch_next_image() {
   if (readError || readTotal == 0) {
     Serial.println("[SpaceX] image payload read error");
     free(imgBuf);
-    return false;
+    return useFallbackImage();
   }
 
   // Diagnostic kept from the earlier "JPEG openRAM failed" investigation --
@@ -624,7 +655,10 @@ bool spacex_fetch_next_image() {
   }
 
   free(imgBuf);
-  return success;
+  if (!success) {
+    return useFallbackImage();
+  }
+  return true;
 }
 
 // Booster landing info for the next launch -- only available via LL2's
