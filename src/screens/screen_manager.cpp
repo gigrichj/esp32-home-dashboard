@@ -3786,20 +3786,6 @@ static uint16_t lastTouchY = 0;
 static const int AVIATION_TAB_INDEX = 1;
 static const int IMAGERY_TAB_INDEX = 6;
 
-// Double-tap on the IMAGERY page swaps to a new random image immediately,
-// bypassing the normal 15-min rotation timer (see imagery_service.cpp) --
-// a manual "backdoor" for testing/browsing without waiting.
-static uint32_t lastImageryTapMs = 0;
-static const uint32_t IMAGERY_DOUBLE_TAP_MAX_GAP_MS = 800; // widened from 400ms after
-                                                             // real-world testing showed gaps
-                                                             // of several seconds between
-                                                             // intended double-taps -- each tap
-                                                             // already takes 50-600ms of "held"
-                                                             // time to register at all, plus
-                                                             // this display's ~200ms touch
-                                                             // sampling interval, made 400ms too
-                                                             // tight for two real finger taps
-
 void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
   uint32_t now = millis();
   if (touched) {
@@ -3894,19 +3880,15 @@ void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
       bool hitPollButton = false;
       bool hitAlertTestButton = false;
 
-      bool handledImageryDoubleTap = false;
-      if (currentTab == IMAGERY_TAB_INDEX) {
-        uint32_t gap = (lastImageryTapMs != 0) ? (now - lastImageryTapMs) : 0;
-        Serial.printf("[Imagery] tap registered, held=%lums, gap-since-last-tap=%lums (threshold=%lums)\n",
-                      (unsigned long)held, (unsigned long)gap, (unsigned long)IMAGERY_DOUBLE_TAP_MAX_GAP_MS);
-        if (lastImageryTapMs != 0 && now - lastImageryTapMs <= IMAGERY_DOUBLE_TAP_MAX_GAP_MS) {
-          Serial.println("[Imagery] DOUBLE-TAP DETECTED -- forcing new image");
-          imagery_update(); // swap to a new random image right now
-          lastImageryTapMs = 0; // reset so a third rapid tap doesn't chain into another double-tap
-          handledImageryDoubleTap = true;
-        } else {
-          lastImageryTapMs = now;
-        }
+      // Hidden hotspot in the banner's clear middle section (between the
+      // "IMAGERY" title on the left and TAP>/<SWIPE/WiFi icon on the
+      // right) forces a new random image immediately, bypassing the
+      // normal 15-min rotation timer (see imagery_service.cpp).
+      bool hitImageryHotspot = currentTab == IMAGERY_TAB_INDEX &&
+                                lastTouchX >= 150 && lastTouchX <= 650 &&
+                                lastTouchY >= 0 && lastTouchY <= 40;
+      if (hitImageryHotspot) {
+        imagery_update();
       }
 
       bool handledAviation = false;
@@ -3940,9 +3922,9 @@ void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
         cycleAviationPollInterval();
       } else if (hitAlertTestButton) {
         enqueueAlert("TEST ALERT - HIDDEN DEBUG TRIGGER", colorDanger);
-      } else if (handledImageryDoubleTap) {
+      } else if (hitImageryHotspot) {
         // Already handled above -- just prevents falling through to
-        // tap-to-advance on the second tap of the pair.
+        // tap-to-advance.
       } else if (!handledAviation && !g_pageLocked) {
         currentTab = (currentTab + 1) % TAB_COUNT;
       }
