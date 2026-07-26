@@ -12,7 +12,7 @@
 #include "services/iss_service.h"
 #include "services/trend_history_service.h"
 #include "services/spacex_launch_service.h"
-#include "services/debug_easter_egg.h"
+#include "services/imagery_service.h"
 #include "screens/screen_manager.h"
 #include "debug_log.h"
 #include "debug_controls.h"
@@ -189,6 +189,8 @@ void uiTask(void* param) {
 void networkTask(void* param) {
   uint32_t lastWeather = 0, lastAviation = 0, lastIss = 0, lastAirQuality = 0, lastAstro = 0, lastSpacex = 0;
   uint32_t lastPrecipRetry = 0;
+  uint32_t lastImagery = 0;
+  static const uint32_t IMAGERY_ROTATE_MS = 15UL * 60UL * 1000UL; // rotate the Imagery page's image every 15 minutes
   bool astroDataLoaded = false;
   bool weatherDataLoaded = false;
   bool spacexDataLoaded = false;
@@ -222,6 +224,14 @@ void networkTask(void* param) {
 
     uint32_t now = millis();
 
+    // Imagery page: rotate to a different random embedded image every 15
+    // minutes. Local JPEG decode only, no network fetch -- independent of
+    // the heavyFetchThisCycle bookkeeping below.
+    if (now - lastImagery > IMAGERY_ROTATE_MS) {
+      lastImagery = now;
+      imagery_update();
+    }
+
     // Set whenever a heavy Weather/Air Quality/Astro fetch runs this cycle,
     // so Aviation and ISS can defer to the next cycle instead of firing
     // back-to-back with one of those fetches -- landing two heavy HTTPS/JSON
@@ -238,6 +248,7 @@ void networkTask(void* param) {
       if (g_weather.valid) {
         weatherDataLoaded = true;
         weatherRetryCount = 0;
+        g_lastWeatherSuccessMs = now;
       } else if (!weatherDataLoaded) {
         weatherRetryCount++;
       }
@@ -256,6 +267,7 @@ void networkTask(void* param) {
       if (g_airQuality.valid) {
         airQualityDataLoaded = true;
         airQualityRetryCount = 0;
+        g_lastAirQualitySuccessMs = now;
       } else if (!airQualityDataLoaded) {
         airQualityRetryCount++;
       }
@@ -270,6 +282,7 @@ void networkTask(void* param) {
       astro_seeing_service_update();
       if (g_astroLastHttpCode == 200 && g_astroForecastCount > 0) {
         astroDataLoaded = true;
+        g_lastAstroSuccessMs = now;
       }
       debug_log("astro fetch done");
       vTaskDelay(pdMS_TO_TICKS(200)); // let the display catch its breath
@@ -286,6 +299,7 @@ void networkTask(void* param) {
       weather_service_update_precip_only();
       if (g_precipHourlyValid) {
         precipRetryCount = 0;
+        g_lastPrecipSuccessMs = now;
       } else {
         precipRetryCount++;
       }
@@ -298,6 +312,9 @@ void networkTask(void* param) {
       lastAviation = now;
       debug_log("aviation fetch start");
       aviation_service_update();
+      if (g_aviationStatus.lastHttpCode == 200) {
+        g_lastAviationSuccessMs = now;
+      }
       debug_log("aviation fetch done");
     }
     if (!heavyFetchThisCycle) {
@@ -307,6 +324,9 @@ void networkTask(void* param) {
       lastIss = now;
       debug_log("iss fetch start");
       iss_service_update();
+      if (g_iss.valid) {
+        g_lastIssSuccessMs = now;
+      }
       debug_log("iss fetch done");
     }
     // Not urgent -- deferred to the next cycle like Aviation/ISS rather
@@ -324,6 +344,7 @@ void networkTask(void* param) {
       if (g_spacexValid) {
         spacexDataLoaded = true;
         spacexRetryCount = 0;
+        g_lastSpacexSuccessMs = now;
       } else if (!spacexDataLoaded) {
         spacexRetryCount++;
       }
@@ -364,6 +385,7 @@ void networkTask(void* param) {
         if (imageOk && landingOk) {
           lastSpacexDetailLaunchId = g_spacexLaunches[0].launchId;
           spacexDetailRetryCount = 0;
+          g_lastSpacexDetailSuccessMs = now;
         } else {
           spacexDetailRetryCount++;
         }
@@ -410,7 +432,7 @@ void setup() {
   Serial.println("[boot] display ready");
 
   screen_manager_init();
-  debug_easter_egg_init(); // one-time local decode, no network/boot-order dependency
+  imagery_init(); // one-time local decode, no network/boot-order dependency
 
   wifi_manager_begin();
   setupModeActive = wifi_manager_in_setup_mode();

@@ -10,6 +10,22 @@ TrendSample g_trendSamples[TREND_MAX_SAMPLES];
 int g_trendSampleCount = 0;
 int g_trendNextWriteIdx = 0;
 
+uint32_t g_lastWeatherSuccessMs = 0;
+uint32_t g_lastAirQualitySuccessMs = 0;
+uint32_t g_lastAstroSuccessMs = 0;
+uint32_t g_lastPrecipSuccessMs = 0;
+uint32_t g_lastAviationSuccessMs = 0;
+uint32_t g_lastIssSuccessMs = 0;
+uint32_t g_lastSpacexSuccessMs = 0;
+uint32_t g_lastSpacexDetailSuccessMs = 0;
+
+// 0 (never succeeded) -> -1 sentinel (no data yet), same convention as
+// astroBadness above. Otherwise minutes since that fetch last succeeded.
+static float staleMinutesSince(uint32_t lastSuccessMs, uint32_t nowMs) {
+  if (lastSuccessMs == 0) return -1.0f;
+  return (float)(nowMs - lastSuccessMs) / 60000.0f;
+}
+
 void trend_history_update() {
   static uint32_t lastSampleMs = 0;
   uint32_t nowMs = millis();
@@ -39,6 +55,15 @@ void trend_history_update() {
   } else {
     s.astroBadness = -1;
   }
+
+  s.weatherStaleMin = staleMinutesSince(g_lastWeatherSuccessMs, nowMs);
+  s.airQualityStaleMin = staleMinutesSince(g_lastAirQualitySuccessMs, nowMs);
+  s.astroStaleMin = staleMinutesSince(g_lastAstroSuccessMs, nowMs);
+  s.precipStaleMin = staleMinutesSince(g_lastPrecipSuccessMs, nowMs);
+  s.aviationStaleMin = staleMinutesSince(g_lastAviationSuccessMs, nowMs);
+  s.issStaleMin = staleMinutesSince(g_lastIssSuccessMs, nowMs);
+  s.spacexStaleMin = staleMinutesSince(g_lastSpacexSuccessMs, nowMs);
+  s.spacexDetailStaleMin = staleMinutesSince(g_lastSpacexDetailSuccessMs, nowMs);
 
   // Locked as one block -- g_trendSampleCount/g_trendNextWriteIdx and
   // g_trendSamples[] must never be visible to a reader (the Trends page

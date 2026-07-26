@@ -9,7 +9,7 @@
 #include "../services/astro_seeing_service.h"
 #include "../services/trend_history_service.h"
 #include "../services/spacex_launch_service.h"
-#include "../services/debug_easter_egg.h"
+#include "../services/imagery_service.h"
 #include "secrets.h"
 #include "../debug_log.h"
 #include "../debug_controls.h"
@@ -22,7 +22,7 @@
 using namespace PanelDisplay;
 
 static const char* TAB_NAMES[] = {
-  "DASHBOARD", "AVIATION", "ASTRO", "SPACEX", "ISS", "WEATHER", "DEBUG", "TRENDS"
+  "DASHBOARD", "AVIATION", "ASTRO", "SPACEX", "ISS", "WEATHER", "IMAGERY", "TRENDS"
 };
 static const int TAB_COUNT = sizeof(TAB_NAMES) / sizeof(TAB_NAMES[0]);
 
@@ -140,10 +140,13 @@ static uint16_t touchMinX = 0;                  // smallest X seen so far this g
 static uint16_t touchMaxX = 0;                  // largest X seen so far this gesture (right excursion)
 
 // Auto-dim: screen dims (see Canvas::dimFrameBuffer()) between 10pm and
-// 8am, unless a swipe-up gesture has woken it -- g_dimWakeUntilMs holds
-// the millis() deadline until which full brightness is forced regardless
-// of the time-of-day window.
-static uint32_t g_dimWakeUntilMs = 0;
+// 8am, unless a bottom-to-top swipe has toggled the override active --
+// g_dimOverrideActive forces full brightness until toggled again with
+// another bottom-to-top swipe (no timer/auto-revert, unlike the old
+// 5-minute wake window this replaced). Automatically reset to false once
+// the window ends (see screen_manager_draw()), so each night starts back
+// in the normal dimmed state rather than carrying over yesterday's toggle.
+static bool g_dimOverrideActive = false;
 
 static bool g_pageLocked = false;               // when true, navigation (swipe, tap-to-advance,
                                                  // idle auto-cycle) is suppressed -- the current
@@ -213,6 +216,11 @@ static void drawHeader() {
   screen.setTextSize(2);
   screen.setTextColor(colorBg, colorAccent);
   screen.setTextDatum(textdatum_t::top_left);
+  int issTitleWidth = 0; // only set on the ISS page -- used below to center
+                         // the LOCKED/BRIGHT-DIMMED indicators in the gap
+                         // between this title and the tab indicator, since
+                         // this page's title is long enough to otherwise
+                         // collide with a fixed banner-center position.
   if (currentTab == 0) {
     // Nudged up from y=12 to y=3 -- makes room for the WiFi status row
     // added below (see the block near the end of this function), moved
@@ -229,6 +237,7 @@ static void drawHeader() {
     // like two dashes in a row rather than a separator + a negative sign).
     snprintf(issTitle, sizeof(issTitle), "ISS - LORTON,VA (%.4f, %.4f)", (double)HOME_LAT, (double)HOME_LON);
     screen.drawString(issTitle, 10, 12);
+    issTitleWidth = (int)strlen(issTitle) * 12; // same 12px/char estimate used elsewhere in this file
   } else {
     screen.drawString(TAB_NAMES[currentTab], 10, 12);
   }
@@ -236,8 +245,14 @@ static void drawHeader() {
   screen.setTextSize(1);
   screen.setTextColor(colorBg, colorAccent);
   screen.setTextDatum(textdatum_t::top_right);
-  char tabIndicator[16];
-  snprintf(tabIndicator, sizeof(tabIndicator), "%d/%d  TAP>", currentTab + 1, TAB_COUNT);
+  char tabIndicator[24];
+  if (currentTab == 0) {
+    // Dashboard has no room for a second line (title + WiFi row already
+    // fill the 40px banner), so SWIPE rides on the same line as TAP here.
+    snprintf(tabIndicator, sizeof(tabIndicator), "%d/%d  TAP>  SWIPE", currentTab + 1, TAB_COUNT);
+  } else {
+    snprintf(tabIndicator, sizeof(tabIndicator), "%d/%d  TAP>", currentTab + 1, TAB_COUNT);
+  }
 
   // Compact WiFi signal icon, flush with the banner's far-right edge --
   // same ascending-bar style and RSSI thresholds as the Dashboard page's
@@ -272,6 +287,36 @@ static void drawHeader() {
   int tabIndicatorX = (wifiIconW > 0) ? (WIDTH - 10 - wifiIconW - 8) : (WIDTH - 10);
   int tabIndicatorY = (currentTab == 0) ? 6 : 15;
   screen.drawString(tabIndicator, tabIndicatorX, tabIndicatorY);
+
+  // SWIPE hint, second line under TAP -- flush with the banner's plain
+  // right margin (not the icon-adjusted tabIndicatorX) since nothing else
+  // shares this lower row. Skipped on Dashboard, which folded it into the
+  // single combined line above instead.
+  if (currentTab != 0) {
+    screen.drawString("SWIPE", WIDTH - 10, tabIndicatorY + 12);
+  }
+
+  // LOCKED / BRIGHT-DIMMED indicators, centered in the banner. On every
+  // page except ISS, that's just the banner's horizontal center; on ISS,
+  // where the title (with live coordinates) runs long enough to otherwise
+  // collide with a fixed center point, it's centered in the actual gap
+  // between the title's right edge and the tab indicator instead.
+  int indicatorCenterX = WIDTH / 2;
+  if (currentTab == ISS_TAB_INDEX) {
+    int issTitleRight = 10 + issTitleWidth;
+    indicatorCenterX = (issTitleRight + tabIndicatorX) / 2;
+  }
+  screen.setTextSize(1);
+  screen.setTextDatum(textdatum_t::top_center);
+  if (g_pageLocked) {
+    screen.setTextColor(colorDanger, colorAccent);
+    screen.drawString("LOCKED", indicatorCenterX, 8);
+  }
+  if (g_inDimWindowActive) {
+    screen.setTextColor(g_dimOverrideActive ? colorSuccess : colorBg, colorAccent);
+    screen.drawString(g_dimOverrideActive ? "BRIGHT" : "DIMMED", indicatorCenterX, 20);
+  }
+  screen.setTextDatum(textdatum_t::top_left);
 
   // Dashboard-only: WiFi network + IP, relocated here from the page body
   // (previously drawn over the cloud background around y=50) -- a second
@@ -2279,33 +2324,16 @@ static void drawDebugLegend() {
   }
 }
 
-static void draw_debug() {
+static void draw_imagery() {
+  // Formerly the DEBUG page -- badge, legend, and crash diagnostics all
+  // removed, this is now a pure image gallery. Image rotates randomly
+  // every 15 minutes (see imagery_service.cpp), sized to 600x330 (75% of
+  // the 800x440 area below the top banner) and centered within it.
   StateLockGuard lockGuard;
-  drawDebugBadge();
-  drawDebugLegend();
-
-  // Real crash diagnostics -- reset reason and min-heap watermark, so
-  // next time there's a crash it can be read directly off the screen
-  // instead of guessed at.
-  screen.setTextSize(1);
-  screen.setTextDatum(textdatum_t::top_left);
-  screen.setTextColor(colorDim, colorBg);
-  char resetLine[48];
-  snprintf(resetLine, sizeof(resetLine), "LAST RESET: %s", g_resetReasonStr);
-  screen.drawString(resetLine, 520, 145); // aligned under the legend (also moved right) -- badge now lives far left
-
-  char heapLine[48];
-  snprintf(heapLine, sizeof(heapLine), "MIN FREE HEAP: %u KB", (unsigned)(g_minFreeHeapSeen / 1024));
-  screen.drawString(heapLine, 520, 163);
-
-  // Easter egg image, bottom-right corner, native 344x200 size, decoded
-  // once at boot (see debug_easter_egg_init()). Flush to the corner with
-  // a small margin -- pushing it further toward center would increase
-  // overlap with the compass ring/shield graphic above.
-  if (g_debugEasterEggValid && g_debugEasterEggPixels != nullptr) {
-    int eggX = WIDTH - g_debugEasterEggWidth - 10;
-    int eggY = HEIGHT - g_debugEasterEggHeight - 10;
-    screen.drawRGBBitmap(eggX, eggY, g_debugEasterEggPixels, g_debugEasterEggWidth, g_debugEasterEggHeight);
+  if (g_imageryValid && g_imageryPixels != nullptr) {
+    int imgX = (WIDTH - g_imageryWidth) / 2;
+    int imgY = 40 + (HEIGHT - 40 - g_imageryHeight) / 2;
+    screen.drawRGBBitmap(imgX, imgY, g_imageryPixels, g_imageryWidth, g_imageryHeight);
   }
 }
 
@@ -2857,7 +2885,51 @@ static bool trendGetAircraft(int idx, float* outValue) {
 }
 static bool trendGetAstro(int idx, float* outValue) {
   if (g_trendSamples[idx].astroBadness < 0) return false;
-  *outValue = g_trendSamples[idx].astroBadness * 100.0f; // 0..100 reads better than 0..1
+  *outValue = (1.0f - g_trendSamples[idx].astroBadness) * 100.0f; // inverted to a quality score, 0..100, higher is better
+  return true;
+}
+
+// Fetch-health "age" trackers -- minutes since each fetch type last
+// succeeded (see trend_history_service.cpp). -1 sentinel (never
+// succeeded yet) matches the astroBadness convention above.
+static bool trendGetWeatherAge(int idx, float* outValue) {
+  if (g_trendSamples[idx].weatherStaleMin < 0) return false;
+  *outValue = g_trendSamples[idx].weatherStaleMin;
+  return true;
+}
+static bool trendGetAirQualityAge(int idx, float* outValue) {
+  if (g_trendSamples[idx].airQualityStaleMin < 0) return false;
+  *outValue = g_trendSamples[idx].airQualityStaleMin;
+  return true;
+}
+static bool trendGetAstroAge(int idx, float* outValue) {
+  if (g_trendSamples[idx].astroStaleMin < 0) return false;
+  *outValue = g_trendSamples[idx].astroStaleMin;
+  return true;
+}
+static bool trendGetPrecipAge(int idx, float* outValue) {
+  if (g_trendSamples[idx].precipStaleMin < 0) return false;
+  *outValue = g_trendSamples[idx].precipStaleMin;
+  return true;
+}
+static bool trendGetAviationAge(int idx, float* outValue) {
+  if (g_trendSamples[idx].aviationStaleMin < 0) return false;
+  *outValue = g_trendSamples[idx].aviationStaleMin;
+  return true;
+}
+static bool trendGetIssAge(int idx, float* outValue) {
+  if (g_trendSamples[idx].issStaleMin < 0) return false;
+  *outValue = g_trendSamples[idx].issStaleMin;
+  return true;
+}
+static bool trendGetSpacexAge(int idx, float* outValue) {
+  if (g_trendSamples[idx].spacexStaleMin < 0) return false;
+  *outValue = g_trendSamples[idx].spacexStaleMin;
+  return true;
+}
+static bool trendGetSpacexDetailAge(int idx, float* outValue) {
+  if (g_trendSamples[idx].spacexDetailStaleMin < 0) return false;
+  *outValue = g_trendSamples[idx].spacexDetailStaleMin;
   return true;
 }
 
@@ -2884,15 +2956,29 @@ static void draw_trends() {
            (unsigned long)upHours, (unsigned long)upMins, g_trendSampleCount, hoursCovered);
   screen.drawString(header, 20, 50);
 
-  int panelW = (WIDTH - 60) / 2;
-  int panelH = 170;
-  int col1X = 20, col2X = 20 + panelW + 20;
-  int row1Y = 85, row2Y = row1Y + panelH + 20;
+  // 4x3 uniform grid -- the 4 original headline metrics (row 1, unchanged
+  // in meaning, just resized) plus 8 new fetch-health "age" trackers
+  // (rows 2-3, minutes since each fetch type last succeeded). Titles kept
+  // short to fit this panel width at textSize(2) (~12px/char).
+  int panelW = 178, panelH = 115;
+  int gap = 15;
+  int col0X = 20, col1X = col0X + panelW + gap, col2X = col1X + panelW + gap, col3X = col2X + panelW + gap;
+  int row1Y = 85, row2Y = row1Y + panelH + gap, row3Y = row2Y + panelH + gap;
 
-  drawTrendPanel(col1X, row1Y, panelW, panelH, "TEMP (F)", trendGetTemp, colorAccent);
-  drawTrendPanel(col2X, row1Y, panelW, panelH, "AIR QUALITY (AQI)", trendGetAqi, screen.color565(230, 130, 40));
-  drawTrendPanel(col1X, row2Y, panelW, panelH, "AIRCRAFT NEARBY", trendGetAircraft, screen.color565(90, 200, 255));
-  drawTrendPanel(col2X, row2Y, panelW, panelH, "ASTRO BADNESS (0=best)", trendGetAstro, screen.color565(170, 120, 210));
+  drawTrendPanel(col0X, row1Y, panelW, panelH, "TEMP (F)", trendGetTemp, colorAccent);
+  drawTrendPanel(col1X, row1Y, panelW, panelH, "AQI", trendGetAqi, screen.color565(230, 130, 40));
+  drawTrendPanel(col2X, row1Y, panelW, panelH, "AIRCRAFT", trendGetAircraft, screen.color565(90, 200, 255));
+  drawTrendPanel(col3X, row1Y, panelW, panelH, "ASTRO QLTY", trendGetAstro, screen.color565(170, 120, 210));
+
+  drawTrendPanel(col0X, row2Y, panelW, panelH, "WEATHER AGE", trendGetWeatherAge, screen.color565(100, 180, 255));
+  drawTrendPanel(col1X, row2Y, panelW, panelH, "AQ AGE", trendGetAirQualityAge, screen.color565(200, 160, 60));
+  drawTrendPanel(col2X, row2Y, panelW, panelH, "ASTRO AGE", trendGetAstroAge, screen.color565(140, 100, 190));
+  drawTrendPanel(col3X, row2Y, panelW, panelH, "PRECIP AGE", trendGetPrecipAge, screen.color565(80, 160, 220));
+
+  drawTrendPanel(col0X, row3Y, panelW, panelH, "AVIATION AGE", trendGetAviationAge, screen.color565(60, 170, 220));
+  drawTrendPanel(col1X, row3Y, panelW, panelH, "ISS AGE", trendGetIssAge, screen.color565(150, 170, 235));
+  drawTrendPanel(col2X, row3Y, panelW, panelH, "SPACEX AGE", trendGetSpacexAge, screen.color565(220, 150, 60));
+  drawTrendPanel(col3X, row3Y, panelW, panelH, "SX DETAIL AGE", trendGetSpacexDetailAge, screen.color565(200, 100, 100));
 }
 
 static void draw_placeholder(const char* label) {
@@ -3466,8 +3552,23 @@ static void draw_spacex() {
   }
 }
 
+static bool g_inDimWindowActive = false; // updated once per frame below, alongside night mode
+
 void screen_manager_draw() {
   g_nightModeActive = computeNightModeActive();
+
+  {
+    time_t nowUnix = time(nullptr);
+    bool inDimWindow = false;
+    if (nowUnix > 100000) {
+      struct tm* ti = localtime(&nowUnix);
+      inDimWindow = (ti->tm_hour >= 22 || ti->tm_hour < 8);
+    }
+    if (g_inDimWindowActive && !inDimWindow) {
+      g_dimOverrideActive = false; // window just ended -- start the next night back in the dimmed state
+    }
+    g_inDimWindowActive = inDimWindow;
+  }
   colorBg = g_nightModeActive ? colorBgNight : colorBgDay;
   colorText = g_nightModeActive ? colorTextNight : colorTextDay;
   colorDim = g_nightModeActive ? colorDimNight : colorDimDay;
@@ -3498,7 +3599,7 @@ void screen_manager_draw() {
     case 3: draw_spacex(); break;
     case 4: draw_iss(); break;
     case 5: draw_weather(); break;
-    case 6: draw_debug(); break;
+    case 6: draw_imagery(); break;
     case 7: draw_trends(); break;
   }
 
@@ -3513,35 +3614,23 @@ void screen_manager_draw() {
     screen.drawString("NIGHT", 10, HEIGHT - 14);
   }
 
-  if (g_pageLocked) {
-    screen.setTextSize(1);
-    screen.setTextColor(colorDanger, colorBg);
-    screen.setTextDatum(textdatum_t::top_right);
-    screen.drawString("LOCKED", WIDTH - 6, HEIGHT - 28);
-  }
+  // LOCKED and BRIGHT/DIMMED moved into the banner itself (see
+  // drawHeader()), centered rather than bottom-right.
 
   checkAlertTriggers();
   drawAlertBanner();
 
-  // Auto-dim: 10pm-8am, unless a swipe-up wake override is active. Dims
-  // the just-drawn frame in place, right before it's presented -- see
-  // Canvas::dimFrameBuffer() for why this is done at the buffer level
-  // instead of true backlight PWM (not available on this board's wiring).
-  {
-    time_t nowUnix = time(nullptr);
-    bool inDimWindow = false;
-    if (nowUnix > 100000) {
-      struct tm* ti = localtime(&nowUnix);
-      inDimWindow = (ti->tm_hour >= 22 || ti->tm_hour < 8);
-    }
-    bool wakeActive = millis() < g_dimWakeUntilMs;
-    if (inDimWindow && !wakeActive) {
-      screen.dimFrameBuffer();
-    }
+  // Auto-dim: 10pm-8am, unless a bottom-to-top swipe toggled the override
+  // active (g_dimOverrideActive, computed once per frame above alongside
+  // g_inDimWindowActive). Dims the just-drawn frame in place, right before
+  // it's presented -- see Canvas::dimFrameBuffer() for why this is done at
+  // the buffer level instead of true backlight PWM (not available on this
+  // board's wiring).
+  if (g_inDimWindowActive && !g_dimOverrideActive) {
+    screen.dimFrameBuffer();
   }
 }
 
-static const int DEBUG_TAB_INDEX = 6;
 static uint16_t lastTouchX = 0;
 static uint16_t lastTouchY = 0;
 
@@ -3608,22 +3697,18 @@ void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
       // auto-cycle) until swiped down again.
       g_pageLocked = !g_pageLocked;
     } else if (isVerticalSwipeUp) {
-      // Bottom-to-top swipe wakes the screen from night auto-dim for 5
-      // minutes, regardless of page lock -- not page navigation, same
-      // category as the night-mode long-press.
-      g_dimWakeUntilMs = now + (5UL * 60UL * 1000UL);
+      // Bottom-to-top swipe toggles the auto-dim override, regardless of
+      // page lock -- not page navigation, same category as the
+      // night-mode long-press. Persists until swiped again (no timer),
+      // replacing the old 5-minute temporary wake.
+      g_dimOverrideActive = !g_dimOverrideActive;
     } else if (isHorizontalSwipe) {
-      // Horizontal swipe pages left/right, suppressed while page-locked --
-      // the whole point of the lock is to stay put until it's explicitly
-      // unlocked. Whichever direction had the larger excursion wins, in
-      // case both got a little jitter -- moving left advances forward,
-      // matching the usual photo-gallery convention.
+      // Horizontal swipe always goes back a page now, regardless of
+      // direction (left or right) -- suppressed while page-locked, same
+      // as before (the point of the lock is to stay put until it's
+      // explicitly unlocked).
       if (!g_pageLocked) {
-        if (leftExcursion > rightExcursion) {
-          currentTab = (currentTab + 1) % TAB_COUNT;
-        } else {
-          currentTab = (currentTab - 1 + TAB_COUNT) % TAB_COUNT;
-        }
+        currentTab = (currentTab - 1 + TAB_COUNT) % TAB_COUNT;
       }
     } else if (held >= LONGPRESS_MIN_MS) {
       // Long press anywhere toggles night mode on/off directly -- no
@@ -3635,20 +3720,15 @@ void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
       // selection and the Debug page's hidden buttons aren't page
       // navigation, so there's no reason to block them. Only the final
       // tap-to-advance fallback at the bottom is suppressed.
-      bool hitNextButton = currentTab == DEBUG_TAB_INDEX &&
-                            lastTouchX >= 600 && lastTouchX <= 780 &&
-                            lastTouchY >= 400 && lastTouchY <= 460;
-      bool hitPollButton = currentTab == DEBUG_TAB_INDEX &&
-                            lastTouchX >= 230 && lastTouchX <= 410 &&
-                            lastTouchY >= 310 && lastTouchY <= 370;
-      // Hidden test button for the alert takeover banner -- bottom-left
-      // corner of the Debug page, same invisible-touch-zone convention as
-      // the two buttons above. Lets the banner/dismiss behavior be
-      // verified on demand instead of waiting for a real condition
-      // transition (astro-good, storm-risk-high, emergency squawk).
-      bool hitAlertTestButton = currentTab == DEBUG_TAB_INDEX &&
-                                lastTouchX >= 20 && lastTouchX <= 200 &&
-                                lastTouchY >= 400 && lastTouchY <= 460;
+      // Hidden test buttons disabled -- this page is now the Imagery
+      // gallery, not Debug, so these dev-only triggers (bounce-buffer
+      // cycle test, aviation poll-interval cycle test, alert banner test)
+      // no longer have a home here. Kept as always-false rather than
+      // removed outright, so the consuming if/else-if chain below (which
+      // also handles tap-to-advance) doesn't need restructuring.
+      bool hitNextButton = false;
+      bool hitPollButton = false;
+      bool hitAlertTestButton = false;
 
       bool handledAviation = false;
       if (currentTab == AVIATION_TAB_INDEX) {
