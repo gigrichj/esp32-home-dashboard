@@ -10,6 +10,50 @@
 #include <new>
 #include "../state_mutex.h"
 
+// ============================================================================
+// PNG MISSION IMAGE: ROOT CAUSE HISTORY (for future reference)
+// ============================================================================
+// LL2 mission images aren't always JPEG -- some launches (this one included)
+// serve a PNG instead. Adding PNG support (below) surfaced two separate,
+// serious bugs, both now fixed:
+//
+// BUG 1 -- Heap corruption crash (reboot every time on a real PNG):
+//   Root cause: PNGdec's own getLineAsRGB565() function has a bug specific
+//   to its alpha-blending code path, only exercised by truecolor+alpha PNGs
+//   (color type 6) -- confirmed via an IHDR dump that the real mission image
+//   is color type 6, while a generic test PNG (no alpha) decoded perfectly
+//   every time. Since PlatformIO re-fetches this vendored library fresh on
+//   every build, we can't patch it directly -- instead, pngDrawCallback()
+//   bypasses getLineAsRGB565() entirely and does its own manual RGB565
+//   conversion straight from the raw decoded pixels (pDraw->pPixels),
+//   handling both RGB and RGBA source formats.
+//   Diagnostic note: the ON-DEVICE exception decoder (pio device monitor's
+//   esp32_exception_decoder) gave WRONG function/line attribution for every
+//   single crash this bug caused, because our workflow flashes a merged
+//   binary built on GitHub Actions via esptool.py directly -- never a local
+//   `pio run` -- so the local .pio/build/.../firmware.elf used for on-device
+//   symbolication was stale/mismatched. Resolving the same backtrace
+//   addresses with `addr2line -e <the actual uploaded firmware.elf> -f -C -i
+//   <address>` gave correct, trustworthy attribution and was what actually
+//   cracked this. If a crash's on-device backtrace ever looks like it's
+//   pointing at unrelated code, re-resolve it against the real ELF before
+//   trusting it.
+//
+// BUG 2 -- Persistent display flicker on every page, first triggered the
+//   moment a real PNG successfully decoded and displayed:
+//   Root cause: unlike the JPEG path (JPEGDEC's built-in 1/8-scale decode
+//   only ever processes ~90 rows), PNGdec has no equivalent and decodes
+//   every row of the image at full resolution (~722 rows here) before we
+//   get to shrink it. That's a much longer sustained burst of PSRAM traffic
+//   than any JPEG this project has drawn -- and the RGB LCD's DMA refill
+//   also lives on the PSRAM bus, so this is the same root-cause class as
+//   this project's original display-flicker bug (see platformio.ini's
+//   bounce-buffer history). Fixed with a periodic vTaskDelay() yield inside
+//   pngDrawCallback() (see below) so the display DMA gets regular breathing
+//   room during the decode instead of PSRAM being monopolized in one
+//   uninterrupted burst.
+// ============================================================================
+
 SpacexLaunch g_spacexLaunches[SPACEX_MAX_LAUNCHES];
 int g_spacexLaunchCount = 0;
 bool g_spacexValid = false;
