@@ -252,6 +252,16 @@ void networkTask(void* param) {
       } else if (!weatherDataLoaded) {
         weatherRetryCount++;
       }
+      // Precip rides along with this main bundle and is usually already
+      // valid by the time it gets here (see comment below on the dedicated
+      // fast-retry block) -- that block's g_lastPrecipSuccessMs update
+      // only fires while precip *hasn't* loaded yet, so once it succeeds
+      // here first, that block never runs again and PRECIP AGE was stuck
+      // showing no data forever. Checked independently of g_weather.valid
+      // since precip has its own validity flag.
+      if (g_precipHourlyValid) {
+        g_lastPrecipSuccessMs = now;
+      }
       debug_log("weather fetch done");
       heavyFetchThisCycle = true;
     }

@@ -302,8 +302,14 @@ static void drawHeader() {
   // two used different right-edges). Skipped on Dashboard, which folded
   // it into the single combined line above instead.
   if (currentTab != 0) {
-    int tapTextWidth = (int)strlen(tabIndicator) * 6; // ~6px/char at size1, same estimate used elsewhere in this file
-    int swipeCenterX = tabIndicatorX - tapTextWidth / 2; // center of the TAP> text block above
+    // Center specifically under the "TAP>" word, not the whole
+    // "X/8  TAP>" string above it -- since that string is right-aligned,
+    // "TAP>" only occupies its rightmost portion (4 chars out of 9), so
+    // centering under the full string previously pulled <SWIPE too far
+    // left. screen.textWidth() matches the Canvas class's own internal
+    // width formula exactly, rather than approximating it.
+    int tapWordWidth = screen.textWidth("TAP>");
+    int swipeCenterX = tabIndicatorX - tapWordWidth / 2;
     screen.setTextDatum(textdatum_t::middle_center);
     screen.drawString("<SWIPE", swipeCenterX, tabIndicatorY + 17);
     screen.setTextDatum(textdatum_t::top_right); // restore -- rest of this function expects it
@@ -2934,13 +2940,17 @@ static void drawDualTrendPanel(int x, int y, int w, int h,
 
   int oldestIdx = (g_trendSampleCount < TREND_MAX_SAMPLES) ? 0 : g_trendNextWriteIdx;
 
-  float min1 = 1e9f, max1 = -1e9f; bool any1 = false;
-  float min2 = 1e9f, max2 = -1e9f; bool any2 = false;
+  // Shared scale across both series -- AQI (OpenWeatherMap's 1-5 index)
+  // and UV Index (roughly 0-11) are genuinely comparable ranges, unlike
+  // the earlier independent-per-series normalization this replaced (which
+  // made two flat-ish lines land on the exact same pixels, so the second
+  // one drawn completely hid the first).
+  float minV = 1e9f, maxV = -1e9f; bool any1 = false, any2 = false;
   for (int i = 0; i < g_trendSampleCount; i++) {
     int idx = (oldestIdx + i) % TREND_MAX_SAMPLES;
     float v;
-    if (getValue1(idx, &v)) { if (v < min1) min1 = v; if (v > max1) max1 = v; any1 = true; }
-    if (getValue2(idx, &v)) { if (v < min2) min2 = v; if (v > max2) max2 = v; any2 = true; }
+    if (getValue1(idx, &v)) { if (v < minV) minV = v; if (v > maxV) maxV = v; any1 = true; }
+    if (getValue2(idx, &v)) { if (v < minV) minV = v; if (v > maxV) maxV = v; any2 = true; }
   }
 
   if (!any1 && !any2) {
@@ -2951,8 +2961,7 @@ static void drawDualTrendPanel(int x, int y, int w, int h,
     screen.setTextDatum(textdatum_t::top_left);
     return;
   }
-  if (max1 - min1 < 0.001f) { min1 -= 1.0f; max1 += 1.0f; }
-  if (max2 - min2 < 0.001f) { min2 -= 1.0f; max2 += 1.0f; }
+  if (maxV - minV < 0.001f) { minV -= 1.0f; maxV += 1.0f; }
 
   float lastValid1 = 0, lastValid2 = 0;
 
@@ -2964,7 +2973,7 @@ static void drawDualTrendPanel(int x, int y, int w, int h,
       if (!getValue1(idx, &v)) { havePrev = false; continue; }
       lastValid1 = v;
       int px = x + (int)((float)i / (float)(g_trendSampleCount - 1) * (w - 1));
-      float frac = (v - min1) / (max1 - min1);
+      float frac = (v - minV) / (maxV - minV);
       int py = plotY + plotH - 1 - (int)(frac * (plotH - 1));
       if (havePrev) screen.drawLine(prevPx, prevPy, px, py, color1);
       prevPx = px; prevPy = py; havePrev = true;
@@ -2979,7 +2988,7 @@ static void drawDualTrendPanel(int x, int y, int w, int h,
       if (!getValue2(idx, &v)) { havePrev = false; continue; }
       lastValid2 = v;
       int px = x + (int)((float)i / (float)(g_trendSampleCount - 1) * (w - 1));
-      float frac = (v - min2) / (max2 - min2);
+      float frac = (v - minV) / (maxV - minV);
       int py = plotY + plotH - 1 - (int)(frac * (plotH - 1));
       if (havePrev) screen.drawLine(prevPx, prevPy, px, py, color2);
       prevPx = px; prevPy = py; havePrev = true;
@@ -2991,7 +3000,7 @@ static void drawDualTrendPanel(int x, int y, int w, int h,
   char label1[8], label2[8];
   if (any1) snprintf(label1, sizeof(label1), "%.0f", lastValid1); else snprintf(label1, sizeof(label1), "-");
   if (any2) snprintf(label2, sizeof(label2), "%.0f", lastValid2); else snprintf(label2, sizeof(label2), "-");
-  const char* sep = "/";
+  const char* sep = " / "; // spaces on both sides, per follow-up feedback
   int w1 = (int)strlen(label1) * 6;
   int wSep = (int)strlen(sep) * 6;
   int w2 = (int)strlen(label2) * 6;
@@ -3879,7 +3888,11 @@ void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
 
       bool handledImageryDoubleTap = false;
       if (currentTab == IMAGERY_TAB_INDEX) {
+        uint32_t gap = (lastImageryTapMs != 0) ? (now - lastImageryTapMs) : 0;
+        Serial.printf("[Imagery] tap registered, held=%lums, gap-since-last-tap=%lums (threshold=%lums)\n",
+                      (unsigned long)held, (unsigned long)gap, (unsigned long)IMAGERY_DOUBLE_TAP_MAX_GAP_MS);
         if (lastImageryTapMs != 0 && now - lastImageryTapMs <= IMAGERY_DOUBLE_TAP_MAX_GAP_MS) {
+          Serial.println("[Imagery] DOUBLE-TAP DETECTED -- forcing new image");
           imagery_update(); // swap to a new random image right now
           lastImageryTapMs = 0; // reset so a third rapid tap doesn't chain into another double-tap
           handledImageryDoubleTap = true;
