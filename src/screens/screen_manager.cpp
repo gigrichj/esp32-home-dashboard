@@ -9,6 +9,7 @@
 #include "../services/astro_seeing_service.h"
 #include "../services/trend_history_service.h"
 #include "../services/spacex_launch_service.h"
+#include "../services/debug_easter_egg.h"
 #include "secrets.h"
 #include "../debug_log.h"
 #include "../debug_controls.h"
@@ -2292,6 +2293,16 @@ static void draw_debug() {
   char heapLine[48];
   snprintf(heapLine, sizeof(heapLine), "MIN FREE HEAP: %u KB", (unsigned)(g_minFreeHeapSeen / 1024));
   screen.drawString(heapLine, 20, 163);
+
+  // Easter egg image, bottom-right corner, native 344x200 size, decoded
+  // once at boot (see debug_easter_egg_init()). Flush to the corner with
+  // a small margin -- pushing it further toward center would increase
+  // overlap with the compass ring/shield graphic above.
+  if (g_debugEasterEggValid && g_debugEasterEggPixels != nullptr) {
+    int eggX = WIDTH - g_debugEasterEggWidth - 10;
+    int eggY = HEIGHT - g_debugEasterEggHeight - 10;
+    screen.drawRGBBitmap(eggX, eggY, g_debugEasterEggPixels, g_debugEasterEggWidth, g_debugEasterEggHeight);
+  }
 }
 
 // Finds the first astro forecast point at or after tonight's sunset --

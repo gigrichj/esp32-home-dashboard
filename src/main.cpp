@@ -12,6 +12,7 @@
 #include "services/iss_service.h"
 #include "services/trend_history_service.h"
 #include "services/spacex_launch_service.h"
+#include "services/debug_easter_egg.h"
 #include "screens/screen_manager.h"
 #include "debug_log.h"
 #include "debug_controls.h"
@@ -409,6 +410,7 @@ void setup() {
   Serial.println("[boot] display ready");
 
   screen_manager_init();
+  debug_easter_egg_init(); // one-time local decode, no network/boot-order dependency
 
   wifi_manager_begin();
   setupModeActive = wifi_manager_in_setup_mode();
