@@ -15,6 +15,7 @@
 #include "services/imagery_service.h"
 #include "services/aurora_service.h"
 #include "services/wv_astro_service.h"
+#include "services/wv_clearsky_image_service.h"
 #include "screens/screen_manager.h"
 #include "debug_log.h"
 #include "debug_controls.h"
@@ -106,6 +107,11 @@ static const uint32_t AURORA_POLL_MS     = 30UL * 60UL * 1000UL;
 static const uint32_t AURORA_RETRY_MS    = 95UL * 1000UL; // staggered from the other retry intervals
 static const uint32_t WV_ASTRO_POLL_MS   = 35UL * 60UL * 1000UL; // deliberately offset from ASTRO_POLL_MS/AURORA_POLL_MS
 static const uint32_t WV_ASTRO_RETRY_MS  = 125UL * 1000UL; // staggered from the other retry intervals
+// Clear Sky Chart image doesn't change more than a few times a day --
+// same fast-retry-until-first-success pattern as the rest, but the slow
+// interval can be long since there's no benefit to fetching more often.
+static const uint32_t WV_CLEARSKY_POLL_MS  = 40UL * 60UL * 1000UL;
+static const uint32_t WV_CLEARSKY_RETRY_MS = 140UL * 1000UL; // staggered from the other retry intervals
 static const uint32_t DRAW_INTERVAL_MS   = 200UL;
 
 bool wasInSetupMode = false;
@@ -198,7 +204,7 @@ void uiTask(void* param) {
 }
 
 void networkTask(void* param) {
-  uint32_t lastWeather = 0, lastAviation = 0, lastIss = 0, lastAirQuality = 0, lastAstro = 0, lastSpacex = 0, lastAurora = 0, lastWvAstro = 0;
+  uint32_t lastWeather = 0, lastAviation = 0, lastIss = 0, lastAirQuality = 0, lastAstro = 0, lastSpacex = 0, lastAurora = 0, lastWvAstro = 0, lastWvClearSky = 0;
   uint32_t lastPrecipRetry = 0;
   uint32_t lastImagery = 0;
   static const uint32_t IMAGERY_ROTATE_MS = 15UL * 60UL * 1000UL; // rotate the Imagery page's image every 15 minutes
@@ -207,6 +213,7 @@ void networkTask(void* param) {
   bool spacexDataLoaded = false;
   bool auroraDataLoaded = false;
   bool wvAstroDataLoaded = false;
+  bool wvClearSkyDataLoaded = false;
   int spacexRetryCount = 0;
   uint32_t lastSpacexDetail = 0;
   int spacexDetailRetryCount = 0;
@@ -372,6 +379,16 @@ void networkTask(void* param) {
         wvAstroDataLoaded = true;
       }
       debug_log("wv astro fetch done");
+      heavyFetchThisCycle = true;
+    }
+    uint32_t wvClearSkyInterval = wvClearSkyDataLoaded ? WV_CLEARSKY_POLL_MS : WV_CLEARSKY_RETRY_MS;
+    if (!heavyFetchThisCycle && now - lastWvClearSky > wvClearSkyInterval) {
+      lastWvClearSky = now;
+      debug_log("wv clearsky fetch start");
+      if (wv_clearsky_fetch_image()) {
+        wvClearSkyDataLoaded = true;
+      }
+      debug_log("wv clearsky fetch done");
       heavyFetchThisCycle = true;
     }
     // Not urgent -- deferred to the next cycle like Aviation/ISS rather

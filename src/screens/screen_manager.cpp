@@ -11,6 +11,7 @@
 #include "../services/spacex_launch_service.h"
 #include "../services/aurora_service.h"
 #include "../services/wv_astro_service.h"
+#include "../services/wv_clearsky_image_service.h"
 #include "../services/imagery_service.h"
 #include "secrets.h"
 #include "../debug_log.h"
@@ -4044,6 +4045,25 @@ static void draw_wv_astro() {
     }
     cloudX += 20; // glyph width + gap
     screen.drawString(" cloud", cloudX, cloudY);
+  }
+
+  // Clear Sky Chart image -- the classic astronomer's forecast grid,
+  // fetched via wv_clearsky_image_service.cpp (GIF source converted to
+  // JPEG server-side through wsrv.nl, same established pattern as the
+  // SpaceX page's PNG mission photos). Drawn in the space below the
+  // 5-day columns that was previously empty.
+  {
+    int chartY = 310;
+    screen.setTextSize(1);
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString("SPRUCE KNOB CLEAR SKY CHART", 20, chartY - 16);
+    if (g_wvClearSkyImageValid && g_wvClearSkyImagePixels != nullptr) {
+      screen.drawRGBBitmap(20, chartY, g_wvClearSkyImagePixels, g_wvClearSkyImageWidth, g_wvClearSkyImageHeight);
+    } else {
+      char chartHttpLine[32];
+      snprintf(chartHttpLine, sizeof(chartHttpLine), "Chart not loaded (HTTP %d)", g_wvClearSkyImageLastHttpCode);
+      screen.drawString(chartHttpLine, 20, chartY);
+    }
   }
 
   screen.setTextSize(1);
