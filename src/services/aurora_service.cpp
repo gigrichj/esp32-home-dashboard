@@ -74,17 +74,25 @@ static bool readHttpBodySafely(HTTPClient& http, String& outPayload, const char*
 // since these are explicitly UTC timestamps, not local device time.
 static uint32_t parseNoaaTimeTag(const char* tag) {
   if (tag == nullptr) return 0;
-  struct tm t = {};
   int year, month, day, hour, minute, second;
   int matched = sscanf(tag, "%d-%d-%d %d:%d:%d", &year, &month, &day, &hour, &minute, &second);
   if (matched < 6) return 0;
-  t.tm_year = year - 1900;
-  t.tm_mon = month - 1;
-  t.tm_mday = day;
-  t.tm_hour = hour;
-  t.tm_min = minute;
-  t.tm_sec = second;
-  return (uint32_t)timegm(&t);
+
+  // Manual UTC civil-calendar -> unix time conversion, same algorithm as
+  // astro_seeing_service.cpp's utcTmToUnix() -- timegm() is not available
+  // on this ESP32/newlib toolchain (confirmed by a real build failure:
+  // "'timegm' was not declared in this scope"), so struct tm + timegm()
+  // can't be used here the way it normally would for an explicit UTC
+  // timestamp.
+  int y = year;
+  int m = month;
+  y -= m <= 2;
+  long era = (y >= 0 ? y : y - 399) / 400;
+  int yoe = (int)(y - era * 400);
+  int doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + day - 1;
+  int doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+  long daysSinceEpoch = era * 146097L + doe - 719468L;
+  return (uint32_t)(daysSinceEpoch * 86400L + (long)hour * 3600L + (long)minute * 60L + (long)second);
 }
 
 static bool fetchObservedKp() {
