@@ -111,14 +111,15 @@ static bool decodeAndStoreClearSkyJpeg(uint8_t *buf, size_t bufLen) {
     // (~148 -> ~295 after the crop), so the yield frequency below is
     // tightened accordingly as extra insurance against the flicker this
     // decode-volume class of bug caused before.
-    // Cropped another 1/4in off the right (cumulative 1/2in, 80px at
-    // native resolution now) -- same bounds-check trick as the vertical
-    // crop above. Still a full-resolution decode (no JPEGDEC scale-down
-    // at all), so this remains the sharpest data available from the
-    // currently-fetched source; getting genuinely more detail beyond
-    // this would require fetching a higher-resolution source image
-    // entirely, a separate lever from cropping.
-    int decodedW = w - 80;
+    // Cropped a third 1/4in off the right (cumulative 3/4in, 120px at
+    // native resolution now). Decode is still full resolution -- no
+    // JPEGDEC scale-down (JPEG_SCALE_EIGHTH/QUARTER/HALF) applied at
+    // all, so this is already the maximum real detail available from
+    // the currently-fetched 1600px-wide source. Cropping doesn't change
+    // decode quality, just how much of the source is shown at the fixed
+    // 800px display width -- genuinely more detail beyond this would
+    // require fetching a higher-resolution source image instead.
+    int decodedW = w - 120;
     int decodedH = croppedH;
 
     uint16_t *decodeBuf = (uint16_t *)heap_caps_malloc((size_t)decodedW * decodedH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
