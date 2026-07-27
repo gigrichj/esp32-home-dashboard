@@ -44,7 +44,7 @@ static int jpegDrawCallback(JPEGDRAW *pDraw) {
     }
   }
   s_yieldCounter++;
-  if (s_yieldCounter >= 4) {
+  if (s_yieldCounter >= 2) {
     s_yieldCounter = 0;
     vTaskDelay(pdMS_TO_TICKS(1));
   }
@@ -96,18 +96,30 @@ static bool decodeAndStoreClearSkyJpeg(uint8_t *buf, size_t bufLen) {
     // a buffer shorter than the full decoded height; jpegDrawCallback
     // already drops any row past s_decodeTargetH, so no new crop logic
     // is needed, just a smaller target height computed from croppedH.
-    float cropKeepFraction = 0.92f;
+    // Cropped further than before (0.92 -> 0.81) -- trims into the
+    // Wind/Humidity/Temperature rows at the very bottom, which duplicate
+    // data already shown on the home Weather page anyway. Freed-up
+    // vertical budget lets the display grow wider (see targetW below)
+    // without overlapping the diagnostic HTTP-code line drawn beneath it.
+    float cropKeepFraction = 0.81f;
     int croppedH = (int)(h * cropKeepFraction);
 
-    int decodedW = w / 2;
-    int decodedH = croppedH / 2;
+    // Full resolution (no JPEGDEC scale-down at all) -- extracts every
+    // bit of real detail already present in the fetched 1600px-wide
+    // JPEG, the maximum possible sharpness without fetching a larger
+    // source image. Roughly doubles the row count again vs HALF-scale
+    // (~148 -> ~295 after the crop), so the yield frequency below is
+    // tightened accordingly as extra insurance against the flicker this
+    // decode-volume class of bug caused before.
+    int decodedW = w;
+    int decodedH = croppedH;
 
     uint16_t *decodeBuf = (uint16_t *)heap_caps_malloc((size_t)decodedW * decodedH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
     if (decodeBuf != nullptr) {
       s_decodeTarget = decodeBuf;
       s_decodeTargetW = decodedW;
       s_decodeTargetH = decodedH;
-      jpeg.decode(0, 0, JPEG_SCALE_HALF);
+      jpeg.decode(0, 0, 0);
       s_decodeTarget = nullptr;
 
       // Target box widened to use the visible space on the right side of
@@ -115,10 +127,12 @@ static bool decodeAndStoreClearSkyJpeg(uint8_t *buf, size_t bufLen) {
       // width is now the primary dimension, height follows from the
       // CROPPED aspect ratio so the kept portion fills the frame with no
       // blank gap where the cropped legend line used to be.
-      int targetW = 770;
+      int targetW = 785;
       int targetH = (int)((float)targetW * croppedH / w);
       if (targetH < 1) targetH = 1;
-      if (targetH > 220) targetH = 220; // safety cap in case of an unexpected aspect ratio
+      if (targetH > 160) targetH = 160; // safety cap -- keeps clear of the
+                                          // diagnostic HTTP-code line drawn
+                                          // below the image on the page
 
       uint16_t *finalBuf = (uint16_t *)heap_caps_malloc((size_t)targetW * targetH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
       if (finalBuf != nullptr) {

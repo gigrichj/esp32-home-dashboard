@@ -4053,10 +4053,14 @@ static void draw_wv_astro() {
   // SpaceX page's PNG mission photos). Drawn in the space below the
   // 5-day columns that was previously empty.
   {
-    int chartY = 310;
+    // No separate label drawn here -- the chart's own title ("Spruce
+    // Knob Mountain Center Clear Sky Chart") is already baked into the
+    // image itself, so a duplicate label would be redundant.
+    int chartY = 274; // shifted up to close the gap after the day columns,
+                        // now that no label sits above the image, and to
+                        // guarantee clearance above the diagnostic HTTP line
     screen.setTextSize(1);
     screen.setTextColor(colorDim, colorBg);
-    screen.drawString("SPRUCE KNOB CLEAR SKY CHART", 20, chartY - 16);
     if (g_wvClearSkyImageValid && g_wvClearSkyImagePixels != nullptr) {
       screen.drawRGBBitmap(20, chartY, g_wvClearSkyImagePixels, g_wvClearSkyImageWidth, g_wvClearSkyImageHeight);
     } else {
