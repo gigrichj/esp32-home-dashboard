@@ -209,8 +209,12 @@ bool wv_clearsky_fetch_image() {
   // not a photo, so JPEG's lossy compression was likely softening the
   // hard edges between blocks; max quality should sharpen those edges
   // at the cost of a somewhat larger fetch.
+  // sharp=1 -- wsrv.nl's sharpen filter (accurate sharpen of the L
+  // channel in LAB color space), sigma=1 as a moderate starting value.
+  // Should help sharpen the hard edges between color blocks that JPEG's
+  // lossy compression can soften, on top of the quality/resolution bump.
   String sourceUrl = "https://www.cleardarksky.com/c/spruce_WVcsk.gif?c=2372454";
-  String proxiedUrl = "https://wsrv.nl/?url=" + urlEncode(sourceUrl) + "&output=jpg&w=2400&q=100";
+  String proxiedUrl = "https://wsrv.nl/?url=" + urlEncode(sourceUrl) + "&output=jpg&w=2400&q=100&sharp=1";
 
   HTTPClient http;
   http.begin(proxiedUrl);
