@@ -21,6 +21,15 @@ static uint16_t* s_decodeTarget = nullptr;
 static int s_decodeTargetW = 0;
 static int s_decodeTargetH = 0;
 
+// Periodic yield counter -- HALF-scale decode processes roughly double
+// the rows that EIGHTH/QUARTER-scale did, edging closer to the PSRAM-
+// contention territory that caused this project's original display-
+// flicker bug (see pngDrawCallback()'s history elsewhere in this
+// project). Yielding every few callback invocations gives the display
+// DMA regular breathing room during the decode, same fix pattern, added
+// here preemptively rather than waiting to confirm a regression.
+static int s_yieldCounter = 0;
+
 static int jpegDrawCallback(JPEGDRAW *pDraw) {
   if (s_decodeTarget == nullptr) return 0;
   for (int row = 0; row < pDraw->iHeight; row++) {
@@ -33,6 +42,11 @@ static int jpegDrawCallback(JPEGDRAW *pDraw) {
       if (destX < 0 || destX >= s_decodeTargetW) continue;
       destRow[destX] = srcRow[col];
     }
+  }
+  s_yieldCounter++;
+  if (s_yieldCounter >= 4) {
+    s_yieldCounter = 0;
+    vTaskDelay(pdMS_TO_TICKS(1));
   }
   return 1;
 }
@@ -69,41 +83,42 @@ static bool decodeAndStoreClearSkyJpeg(uint8_t *buf, size_t bufLen) {
     int h = jpeg.getHeight();
     Serial.printf("[WV ClearSky] JPEG source dimensions %dx%d\n", w, h);
 
-    // JPEG_SCALE_QUARTER instead of EIGHTH -- with the actual source
-    // dimensions logged on-device (1600x364), an eighth-scale decode
-    // (200x45) had to be upscaled ~3.7x to reach the ~747x170 render
-    // size, producing visibly blocky output. Quarter-scale (400x91) cuts
-    // that to ~1.87x upscale while keeping row count (~91) close to the
-    // SpaceX page's own established ~90-row precedent for this decode
-    // pattern, so it shouldn't reintroduce the flicker that full-
-    // resolution PNG decodes caused elsewhere in this project.
-    int decodedW = w / 4;
-    int decodedH = h / 4;
+    // HALF-scale instead of QUARTER -- extracts genuinely more real
+    // detail from the same already-fetched 1600x364 JPEG (not just
+    // re-interpolating), landing decodedW/H close enough to the final
+    // target that little to no upscaling is needed. See jpegDrawCallback()
+    // above for the periodic yield added alongside this change (HALF-scale
+    // roughly doubles the row count vs QUARTER, so the yield is a
+    // preemptive safety measure against reintroducing display flicker).
+    //
+    // Also crops the bottom ~8% of the source (a small copyright/legend
+    // text line baked into the original chart) -- works by decoding into
+    // a buffer shorter than the full decoded height; jpegDrawCallback
+    // already drops any row past s_decodeTargetH, so no new crop logic
+    // is needed, just a smaller target height computed from croppedH.
+    float cropKeepFraction = 0.92f;
+    int croppedH = (int)(h * cropKeepFraction);
+
+    int decodedW = w / 2;
+    int decodedH = croppedH / 2;
 
     uint16_t *decodeBuf = (uint16_t *)heap_caps_malloc((size_t)decodedW * decodedH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
     if (decodeBuf != nullptr) {
       s_decodeTarget = decodeBuf;
       s_decodeTargetW = decodedW;
       s_decodeTargetH = decodedH;
-      jpeg.decode(0, 0, JPEG_SCALE_QUARTER);
+      jpeg.decode(0, 0, JPEG_SCALE_HALF);
       s_decodeTarget = nullptr;
 
-      // Target box for the previously-empty space below the 5-day
-      // column strip on the WV Astro page. Height picked to fit that
-      // space; width derived from the real source aspect ratio rather
-      // than assumed, capped to the page's usable width.
-      int targetH = 170;
-      int targetW = (int)((float)targetH * w / h);
-      if (targetW < 1) targetW = 1;
-      // BUG FIX: clamping targetW without also shrinking targetH would
-      // squash/distort the image if the source is wider than this page
-      // has room for -- recompute targetH from the clamped width instead
-      // so the aspect ratio is preserved (smaller image, not a squished one).
-      if (targetW > 760) {
-        targetW = 760;
-        targetH = (int)((float)targetW * h / w);
-        if (targetH < 1) targetH = 1;
-      }
+      // Target box widened to use the visible space on the right side of
+      // the page (previously only ~747px of the available ~780px) --
+      // width is now the primary dimension, height follows from the
+      // CROPPED aspect ratio so the kept portion fills the frame with no
+      // blank gap where the cropped legend line used to be.
+      int targetW = 770;
+      int targetH = (int)((float)targetW * croppedH / w);
+      if (targetH < 1) targetH = 1;
+      if (targetH > 220) targetH = 220; // safety cap in case of an unexpected aspect ratio
 
       uint16_t *finalBuf = (uint16_t *)heap_caps_malloc((size_t)targetW * targetH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
       if (finalBuf != nullptr) {
