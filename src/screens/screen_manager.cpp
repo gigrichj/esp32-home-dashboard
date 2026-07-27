@@ -3747,6 +3747,17 @@ static int findBestWvIndexForLocalDay(int dayOffset, float* outBadness) {
   return bestIdx;
 }
 
+// Maps a condition label ("GOOD"/"FAIR"/"POOR"/"BAD"/"--") to the same
+// 4-color scheme used for verdict/cloud coloring elsewhere on this page --
+// green/yellow/orange/red, dim for the no-data fallback.
+static uint16_t conditionLabelColor(const char* label) {
+  if (strcmp(label, "GOOD") == 0) return colorSuccess;
+  if (strcmp(label, "FAIR") == 0) return screen.color565(230, 200, 40);
+  if (strcmp(label, "POOR") == 0) return screen.color565(230, 130, 40);
+  if (strcmp(label, "BAD") == 0) return colorDanger;
+  return colorDim;
+}
+
 // 5-day astrophotography trip-planning forecast for Spruce Knob, WV
 // (Bortle 2 vs Bortle 7.4 at home), plus the aurora/Kp indicator -- same
 // Kp value applies to both locations, shown once rather than duplicated.
@@ -3865,13 +3876,39 @@ static void draw_wv_astro() {
     screen.drawString(verdict, x, colY + 30);
 
     screen.setTextSize(1);
-    screen.setTextColor(colorDim, colorBg);
-    char detailLine[40];
-    snprintf(detailLine, sizeof(detailLine), "S:%s T:%s C:%s",
-             astro_seeing_label(g_wvAstroForecast[idx].seeing),
-             astro_transparency_label(g_wvAstroForecast[idx].transparency),
-             astro_cloudcover_label(g_wvAstroForecast[idx].cloudcover));
-    screen.drawString(detailLine, x, colY + 60);
+    {
+      // Each condition word gets its own color (GOOD=green, FAIR=yellow,
+      // POOR=orange, BAD=red) instead of one flat dim line -- the "S:"/
+      // "T:"/"C:" prefixes (including the colon) stay white throughout.
+      // screen.textWidth() gives the exact pixel width per segment (per
+      // this file's own convention for precise text positioning) so
+      // segments sit flush against each other with no guessed spacing.
+      const char* seeingLabel = astro_seeing_label(g_wvAstroForecast[idx].seeing);
+      const char* transparencyLabel = astro_transparency_label(g_wvAstroForecast[idx].transparency);
+      const char* cloudLabel = astro_cloudcover_label(g_wvAstroForecast[idx].cloudcover);
+      int lineX = x;
+      int lineY = colY + 60;
+
+      screen.setTextColor(colorText, colorBg);
+      screen.drawString("S:", lineX, lineY);
+      lineX += screen.textWidth("S:");
+      screen.setTextColor(conditionLabelColor(seeingLabel), colorBg);
+      screen.drawString(seeingLabel, lineX, lineY);
+      lineX += screen.textWidth(seeingLabel);
+
+      screen.setTextColor(colorText, colorBg);
+      screen.drawString(" T:", lineX, lineY);
+      lineX += screen.textWidth(" T:");
+      screen.setTextColor(conditionLabelColor(transparencyLabel), colorBg);
+      screen.drawString(transparencyLabel, lineX, lineY);
+      lineX += screen.textWidth(transparencyLabel);
+
+      screen.setTextColor(colorText, colorBg);
+      screen.drawString(" C:", lineX, lineY);
+      lineX += screen.textWidth(" C:");
+      screen.setTextColor(conditionLabelColor(cloudLabel), colorBg);
+      screen.drawString(cloudLabel, lineX, lineY);
+    }
   }
 
   // Days 4-5: cloud-only, Open-Meteo -- deliberately dimmer styling and no
