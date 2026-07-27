@@ -31,8 +31,11 @@ static const ImageryImage IMAGERY_IMAGES[] = {
   { IMAGERY_8_JPG, IMAGERY_8_JPG_len },
   { IMAGERY_9_JPG, IMAGERY_9_JPG_len },
   { IMAGERY_10_JPG, IMAGERY_10_JPG_len },
-  { IMAGERY_11_JPG, IMAGERY_11_JPG_len },
-  { IMAGERY_12_JPG, IMAGERY_12_JPG_len },
+  // IMAGERY_11_JPG and IMAGERY_12_JPG (the two rocket-height-comparison
+  // infographics, multiple rockets lined up side by side) removed from
+  // rotation per follow-up feedback. Byte arrays still sit unreferenced
+  // in imagery_images.h -- left in place rather than editing that large
+  // generated file, negligible flash cost either way.
   { IMAGERY_13_JPG, IMAGERY_13_JPG_len },
   { IMAGERY_14_JPG, IMAGERY_14_JPG_len },
   { IMAGERY_15_JPG, IMAGERY_15_JPG_len },
@@ -48,6 +51,27 @@ static const ImageryImage IMAGERY_IMAGES[] = {
   { IMAGERY_25_JPG, IMAGERY_25_JPG_len },
   { IMAGERY_26_JPG, IMAGERY_26_JPG_len },
   { IMAGERY_27_JPG, IMAGERY_27_JPG_len },
+  { IMAGERY_28_JPG, IMAGERY_28_JPG_len },
+  { IMAGERY_29_JPG, IMAGERY_29_JPG_len },
+  { IMAGERY_30_JPG, IMAGERY_30_JPG_len },
+  { IMAGERY_31_JPG, IMAGERY_31_JPG_len },
+  { IMAGERY_32_JPG, IMAGERY_32_JPG_len },
+  { IMAGERY_33_JPG, IMAGERY_33_JPG_len },
+  // IMAGERY_34-37: SpaceX/rocket photos (Dream Chaser night launch, Falcon
+  // Heavy on pad, 4-panel SLS/lander/Dream Chaser/Starship collage, Falcon 9
+  // booster landing burn). IMAGERY_38-41: Porsche photos (963/GT3 studio,
+  // GT3 Cup on track, 911 Targa red, 911 silver profile). IMAGERY_42-43:
+  // Starship pad explosion (aerial) and 3-panel explosion sequence.
+  { IMAGERY_34_JPG, IMAGERY_34_JPG_len },
+  { IMAGERY_35_JPG, IMAGERY_35_JPG_len },
+  { IMAGERY_36_JPG, IMAGERY_36_JPG_len },
+  { IMAGERY_37_JPG, IMAGERY_37_JPG_len },
+  { IMAGERY_38_JPG, IMAGERY_38_JPG_len },
+  { IMAGERY_39_JPG, IMAGERY_39_JPG_len },
+  { IMAGERY_40_JPG, IMAGERY_40_JPG_len },
+  { IMAGERY_41_JPG, IMAGERY_41_JPG_len },
+  { IMAGERY_42_JPG, IMAGERY_42_JPG_len },
+  { IMAGERY_43_JPG, IMAGERY_43_JPG_len },
 };
 static const int IMAGERY_IMAGE_COUNT = sizeof(IMAGERY_IMAGES) / sizeof(IMAGERY_IMAGES[0]);
 
