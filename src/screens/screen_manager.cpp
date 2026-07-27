@@ -220,6 +220,7 @@ static String formatCurrentDateTime() {
 }
 
 static const int ISS_TAB_INDEX = 4;
+static const int ASTRO_TAB_INDEX = 2;
 
 static void drawHeader() {
   screen.fillRect(0, 0, WIDTH, 40, colorAccent);
@@ -248,6 +249,11 @@ static void drawHeader() {
     snprintf(issTitle, sizeof(issTitle), "ISS - LORTON,VA (%.4f, %.4f)", (double)HOME_LAT, (double)HOME_LON);
     screen.drawString(issTitle, 10, 12);
     issTitleWidth = (int)strlen(issTitle) * 12; // same 12px/char estimate used elsewhere in this file
+  } else if (currentTab == ASTRO_TAB_INDEX) {
+    // Shorter than the ISS title (no live coordinates), so it stays well
+    // clear of the centered LOCKED/DIMMED indicator without needing the
+    // same title-width tracking ISS needed.
+    screen.drawString("ASTRO - LORTON, VA", 10, 12);
   } else {
     screen.drawString(TAB_NAMES[currentTab], 10, 12);
   }
@@ -3757,12 +3763,42 @@ static void draw_wv_astro() {
   screen.setTextColor(colorAccent, colorBg);
   screen.drawString("SPRUCE KNOB, WV - 5 DAY FORECAST", 20, 50);
 
-  screen.setTextSize(1);
-  screen.setTextColor(colorDim, colorBg);
-  char bortleLine[64];
-  snprintf(bortleLine, sizeof(bortleLine), "Bortle %.1f (vs Bortle %.1f at home)",
-           (double)WV_BORTLE_CLASS, (double)HOME_BORTLE_CLASS);
-  screen.drawString(bortleLine, 20, 78);
+  // Bortle scale comparison, same gradient-bar + pointer treatment as the
+  // home Astro page's Bortle indicator -- two markers here instead of
+  // one, so the whole point of this page (WV is MUCH darker than home)
+  // is visible at a glance instead of requiring the viewer to already
+  // know what a 5-point Bortle gap actually looks like.
+  {
+    screen.setTextSize(1);
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString("Bortle scale (dark-sky quality, 1=best):", 20, 80);
+
+    static const uint8_t bortleStops[5][3] = {
+      {80, 200, 120}, {160, 200, 60}, {230, 200, 40}, {230, 130, 40}, {220, 60, 60}
+    };
+    int barX = 20, barY = 100, barW = 300, barH = 8;
+    for (int px = 0; px < barW; px += 2) {
+      float frac = (float)px / (float)(barW - 1);
+      screen.fillRect(barX + px, barY, 2, barH, multiStopGradient(frac, bortleStops, 5));
+    }
+    float wvFrac = constrain((WV_BORTLE_CLASS - 1.0f) / 8.0f, 0.0f, 1.0f);
+    int wvPointerX = barX + (int)(wvFrac * (barW - 1));
+    screen.fillTriangle(wvPointerX - 4, barY - 5, wvPointerX + 4, barY - 5, wvPointerX, barY - 1, colorSuccess);
+
+    float homeFrac = constrain((HOME_BORTLE_CLASS - 1.0f) / 8.0f, 0.0f, 1.0f);
+    int homePointerX = barX + (int)(homeFrac * (barW - 1));
+    screen.fillTriangle(homePointerX - 4, barY + barH + 5, homePointerX + 4, barY + barH + 5, homePointerX, barY + barH + 1, colorDim);
+
+    char wvLabel[24];
+    snprintf(wvLabel, sizeof(wvLabel), "WV %.1f", (double)WV_BORTLE_CLASS);
+    screen.setTextColor(colorSuccess, colorBg);
+    screen.drawString(wvLabel, barX, barY + barH + 12);
+
+    char homeLabel[24];
+    snprintf(homeLabel, sizeof(homeLabel), "Home %.1f", (double)HOME_BORTLE_CLASS);
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString(homeLabel, barX + 70, barY + barH + 12);
+  }
 
   // Aurora/Kp -- single planetary value, identical for WV and home, so
   // shown once here rather than duplicated per forecast day.
@@ -3776,24 +3812,24 @@ static void draw_wv_astro() {
     }
     screen.setTextSize(2);
     screen.setTextColor(colorAccent, colorBg);
-    screen.drawString(auroraLine, 20, 100);
+    screen.drawString(auroraLine, 20, 145);
   }
 
   if (g_wvAstroForecastCount == 0) {
     screen.setTextSize(2);
     screen.setTextColor(colorDim, colorBg);
-    screen.drawString("No WV astro data yet", 20, 160);
+    screen.drawString("No WV astro data yet", 20, 195);
     char httpLine[48];
     snprintf(httpLine, sizeof(httpLine), "Last HTTP result: %d", g_wvAstroLastHttpCode);
-    screen.drawString(httpLine, 20, 188);
+    screen.drawString(httpLine, 20, 223);
     screen.setTextSize(1);
-    screen.drawString(g_wvAstroLastFailureReason, 20, 216);
+    screen.drawString(g_wvAstroLastFailureReason, 20, 251);
     return;
   }
 
   int colW = (WIDTH - 40) / 5;
   int colStartX = 20;
-  int colY = 150;
+  int colY = 195;
   const char* dayLabels[5] = {"TONIGHT", "TOMORROW", "DAY 3", "DAY 4", "DAY 5"};
 
   // Days 1-3: real 7Timer seeing/transparency data, same verdict scoring

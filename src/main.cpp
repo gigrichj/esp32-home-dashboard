@@ -97,13 +97,15 @@ static const uint32_t PRECIP_RETRY_MS       = 105UL * 1000UL;
 static const int MAX_FAST_RETRIES = 5;
 
 static const uint32_t ISS_POLL_MS        = 60UL * 1000UL;
-// Kp and multi-day astro forecasts don't change fast, so both use a
-// single slow interval with no fast-retry escalation -- unlike Weather/
-// Air Quality/Astro/Precip, a slow first successful fetch after boot
-// isn't costly here (nobody needs an aurora reading or a WV trip-planning
-// forecast within the first few minutes of the board powering on).
+// Kp and multi-day astro forecasts don't change fast, so both settle into
+// a slow poll interval once loaded -- same fast-retry-until-first-success
+// pattern as Weather/Astro/Air Quality (a 30-35 min wait for the FIRST
+// fetch after every reboot was too long in practice; a short fast retry
+// gets real data on screen within ~1.5-2 min instead).
 static const uint32_t AURORA_POLL_MS     = 30UL * 60UL * 1000UL;
+static const uint32_t AURORA_RETRY_MS    = 95UL * 1000UL; // staggered from the other retry intervals
 static const uint32_t WV_ASTRO_POLL_MS   = 35UL * 60UL * 1000UL; // deliberately offset from ASTRO_POLL_MS/AURORA_POLL_MS
+static const uint32_t WV_ASTRO_RETRY_MS  = 125UL * 1000UL; // staggered from the other retry intervals
 static const uint32_t DRAW_INTERVAL_MS   = 200UL;
 
 bool wasInSetupMode = false;
@@ -203,6 +205,8 @@ void networkTask(void* param) {
   bool astroDataLoaded = false;
   bool weatherDataLoaded = false;
   bool spacexDataLoaded = false;
+  bool auroraDataLoaded = false;
+  bool wvAstroDataLoaded = false;
   int spacexRetryCount = 0;
   uint32_t lastSpacexDetail = 0;
   int spacexDetailRetryCount = 0;
@@ -348,17 +352,25 @@ void networkTask(void* param) {
       }
       debug_log("iss fetch done");
     }
-    if (!heavyFetchThisCycle && now - lastAurora > AURORA_POLL_MS) {
+    uint32_t auroraInterval = auroraDataLoaded ? AURORA_POLL_MS : AURORA_RETRY_MS;
+    if (!heavyFetchThisCycle && now - lastAurora > auroraInterval) {
       lastAurora = now;
       debug_log("aurora fetch start");
       aurora_service_update();
+      if (g_kpObservedValid) {
+        auroraDataLoaded = true;
+      }
       debug_log("aurora fetch done");
       heavyFetchThisCycle = true;
     }
-    if (!heavyFetchThisCycle && now - lastWvAstro > WV_ASTRO_POLL_MS) {
+    uint32_t wvAstroInterval = wvAstroDataLoaded ? WV_ASTRO_POLL_MS : WV_ASTRO_RETRY_MS;
+    if (!heavyFetchThisCycle && now - lastWvAstro > wvAstroInterval) {
       lastWvAstro = now;
       debug_log("wv astro fetch start");
       wv_astro_service_update();
+      if (g_wvAstroForecastCount > 0) {
+        wvAstroDataLoaded = true;
+      }
       debug_log("wv astro fetch done");
       heavyFetchThisCycle = true;
     }
