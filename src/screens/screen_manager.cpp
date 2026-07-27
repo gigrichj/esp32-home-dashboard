@@ -3774,20 +3774,35 @@ static void draw_wv_astro() {
   screen.setTextColor(colorAccent, colorBg);
   screen.drawString("SPRUCE KNOB, WV - 5 DAY FORECAST", 20, 50);
 
-  // Bortle scale comparison, same gradient-bar + pointer treatment as the
-  // home Astro page's Bortle indicator -- two markers here instead of
-  // one, so the whole point of this page (WV is MUCH darker than home)
-  // is visible at a glance instead of requiring the viewer to already
-  // know what a 5-point Bortle gap actually looks like.
+  // Bortle scale comparison, moved to the right edge (matching the home
+  // Astro page's Bortle-indicator placement) to free up left-side space
+  // for the Best Night callout below. Two markers instead of one, so the
+  // whole point of this page (WV is MUCH darker than home) is visible at
+  // a glance instead of requiring the viewer to already know what a
+  // 5-point Bortle gap actually looks like.
   {
+    int barX = 520, barY = 76, barW = 260, barH = 8;
+
     screen.setTextSize(1);
+    int labelX = barX;
+    int labelY = 55;
+    screen.setTextColor(colorSuccess, colorBg);
+    screen.drawString("WV", labelX, labelY);
+    labelX += screen.textWidth("WV");
+    char wvNum[12];
+    snprintf(wvNum, sizeof(wvNum), " %.1f", (double)WV_BORTLE_CLASS);
+    screen.drawString(wvNum, labelX, labelY);
+    labelX += screen.textWidth(wvNum);
     screen.setTextColor(colorDim, colorBg);
-    screen.drawString("Bortle scale (dark-sky quality, 1=best):", 20, 80);
+    screen.drawString(" vs Home ", labelX, labelY);
+    labelX += screen.textWidth(" vs Home ");
+    char homeNum[12];
+    snprintf(homeNum, sizeof(homeNum), "%.1f", (double)HOME_BORTLE_CLASS);
+    screen.drawString(homeNum, labelX, labelY);
 
     static const uint8_t bortleStops[5][3] = {
       {80, 200, 120}, {160, 200, 60}, {230, 200, 40}, {230, 130, 40}, {220, 60, 60}
     };
-    int barX = 20, barY = 100, barW = 300, barH = 8;
     for (int px = 0; px < barW; px += 2) {
       float frac = (float)px / (float)(barW - 1);
       screen.fillRect(barX + px, barY, 2, barH, multiStopGradient(frac, bortleStops, 5));
@@ -3799,16 +3814,40 @@ static void draw_wv_astro() {
     float homeFrac = constrain((HOME_BORTLE_CLASS - 1.0f) / 8.0f, 0.0f, 1.0f);
     int homePointerX = barX + (int)(homeFrac * (barW - 1));
     screen.fillTriangle(homePointerX - 4, barY + barH + 5, homePointerX + 4, barY + barH + 5, homePointerX, barY + barH + 1, colorDim);
+  }
 
-    char wvLabel[24];
-    snprintf(wvLabel, sizeof(wvLabel), "WV %.1f", (double)WV_BORTLE_CLASS);
-    screen.setTextColor(colorSuccess, colorBg);
-    screen.drawString(wvLabel, barX, barY + barH + 12);
+  // Best Night across the 3 real-data days -- days 4-5 have no seeing/
+  // transparency score to compare against, so they're deliberately
+  // excluded from this callout. Same colored-badness pattern as the home
+  // Astro page's "Best: <date> <time>".
+  {
+    int bestOverallIdx = -1;
+    float bestOverallBadness = 2.0f;
+    for (int d = 0; d < 3; d++) {
+      float badness = 1.0f;
+      int idx = findBestWvIndexForLocalDay(d, &badness);
+      if (idx >= 0 && badness < bestOverallBadness) {
+        bestOverallBadness = badness;
+        bestOverallIdx = idx;
+      }
+    }
+    if (bestOverallIdx >= 0) {
+      uint16_t bestColor;
+      if (bestOverallBadness < 0.25f) bestColor = colorSuccess;
+      else if (bestOverallBadness < 0.5f) bestColor = screen.color565(230, 200, 40);
+      else if (bestOverallBadness < 0.75f) bestColor = screen.color565(230, 130, 40);
+      else bestColor = colorDanger;
 
-    char homeLabel[24];
-    snprintf(homeLabel, sizeof(homeLabel), "Home %.1f", (double)HOME_BORTLE_CLASS);
-    screen.setTextColor(colorDim, colorBg);
-    screen.drawString(homeLabel, barX + 70, barY + barH + 12);
+      char bestDateBuf[16];
+      char bestTimeBuf[16];
+      formatPassDate(g_wvAstroForecast[bestOverallIdx].unixTime, bestDateBuf, sizeof(bestDateBuf));
+      formatPassTime(g_wvAstroForecast[bestOverallIdx].unixTime, bestTimeBuf, sizeof(bestTimeBuf));
+      char bestLine[40];
+      snprintf(bestLine, sizeof(bestLine), "Best: %s %s", bestDateBuf, bestTimeBuf);
+      screen.setTextSize(2);
+      screen.setTextColor(bestColor, colorBg);
+      screen.drawString(bestLine, 20, 80);
+    }
   }
 
   // Aurora/Kp -- single planetary value, identical for WV and home, so
@@ -3823,28 +3862,30 @@ static void draw_wv_astro() {
     }
     screen.setTextSize(2);
     screen.setTextColor(colorAccent, colorBg);
-    screen.drawString(auroraLine, 20, 145);
+    screen.drawString(auroraLine, 20, 105);
   }
 
   if (g_wvAstroForecastCount == 0) {
     screen.setTextSize(2);
     screen.setTextColor(colorDim, colorBg);
-    screen.drawString("No WV astro data yet", 20, 195);
+    screen.drawString("No WV astro data yet", 20, 150);
     char httpLine[48];
     snprintf(httpLine, sizeof(httpLine), "Last HTTP result: %d", g_wvAstroLastHttpCode);
-    screen.drawString(httpLine, 20, 223);
+    screen.drawString(httpLine, 20, 178);
     screen.setTextSize(1);
-    screen.drawString(g_wvAstroLastFailureReason, 20, 251);
+    screen.drawString(g_wvAstroLastFailureReason, 20, 206);
     return;
   }
 
   int colW = (WIDTH - 40) / 5;
   int colStartX = 20;
-  int colY = 195;
+  int colY = 145;
   const char* dayLabels[5] = {"TONIGHT", "TOMORROW", "DAY 3", "DAY 4", "DAY 5"};
 
   // Days 1-3: real 7Timer seeing/transparency data, same verdict scoring
-  // as the home Astro page.
+  // as the home Astro page, now with the calendar date, storm risk, and
+  // precip type also shown -- all three were being fetched already but
+  // not displayed anywhere on this page.
   for (int d = 0; d < 3; d++) {
     float badness = 1.0f;
     int idx = findBestWvIndexForLocalDay(d, &badness);
@@ -3861,6 +3902,12 @@ static void draw_wv_astro() {
       continue;
     }
 
+    char dateBuf[16];
+    formatPassDate(g_wvAstroForecast[idx].unixTime, dateBuf, sizeof(dateBuf));
+    screen.setTextSize(1);
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString(dateBuf, x, colY + 18);
+
     const char* verdict = astro_tonight_verdict(
         g_wvAstroForecast[idx].cloudcover, g_wvAstroForecast[idx].seeing,
         g_wvAstroForecast[idx].transparency, g_moonIllumPercent, &badness);
@@ -3873,7 +3920,7 @@ static void draw_wv_astro() {
 
     screen.setTextSize(2);
     screen.setTextColor(verdictColor, colorBg);
-    screen.drawString(verdict, x, colY + 30);
+    screen.drawString(verdict, x, colY + 38);
 
     screen.setTextSize(1);
     {
@@ -3887,7 +3934,7 @@ static void draw_wv_astro() {
       const char* transparencyLabel = astro_transparency_label(g_wvAstroForecast[idx].transparency);
       const char* cloudLabel = astro_cloudcover_label(g_wvAstroForecast[idx].cloudcover);
       int lineX = x;
-      int lineY = colY + 60;
+      int lineY = colY + 68;
 
       screen.setTextColor(colorText, colorBg);
       screen.drawString("S:", lineX, lineY);
@@ -3909,6 +3956,29 @@ static void draw_wv_astro() {
       screen.setTextColor(conditionLabelColor(cloudLabel), colorBg);
       screen.drawString(cloudLabel, lineX, lineY);
     }
+
+    // Storm risk -- same 4-tier thresholds and astro_instability_label()
+    // as the home Astro page's STORM RISK section, just without its
+    // legend line (no room per-column in this 5-column layout).
+    {
+      int li = g_wvAstroForecast[idx].liftedindex;
+      uint16_t stormColor;
+      if (li > 0) stormColor = colorSuccess;
+      else if (li > -4) stormColor = screen.color565(230, 200, 40);
+      else if (li > -8) stormColor = screen.color565(230, 130, 40);
+      else stormColor = colorDanger;
+      screen.setTextColor(stormColor, colorBg);
+      screen.drawString(astro_instability_label(li), x, colY + 88);
+    }
+
+    // Precip -- only drawn when there's actually something to warn about,
+    // same "prectype != none" gate as the home Astro page.
+    if (g_wvAstroForecast[idx].prectype != "none") {
+      char precipLine[24];
+      snprintf(precipLine, sizeof(precipLine), "Precip: %s", g_wvAstroForecast[idx].prectype.c_str());
+      screen.setTextColor(colorDim, colorBg);
+      screen.drawString(precipLine, x, colY + 104);
+    }
   }
 
   // Days 4-5: cloud-only, Open-Meteo -- deliberately dimmer styling and no
@@ -3920,12 +3990,20 @@ static void draw_wv_astro() {
     screen.setTextColor(colorDim, colorBg);
     screen.drawString(dayLabels[3 + n], x, colY);
 
+    if (g_wvCloudOnlyValid && g_wvCloudOnlyNights[n].nightDateUnix > 0) {
+      char dateBuf[16];
+      formatPassDate(g_wvCloudOnlyNights[n].nightDateUnix, dateBuf, sizeof(dateBuf));
+      screen.setTextSize(1);
+      screen.setTextColor(colorDim, colorBg);
+      screen.drawString(dateBuf, x, colY + 18);
+    }
+
     screen.setTextSize(1);
     screen.setTextColor(colorDim, colorBg);
-    screen.drawString("(cloud only)", x, colY + 22);
+    screen.drawString("(cloud only)", x, colY + 34);
 
     if (!g_wvCloudOnlyValid || g_wvCloudOnlyNights[n].avgCloudcoverPct < 0) {
-      screen.drawString("no data", x, colY + 44);
+      screen.drawString("no data", x, colY + 52);
       continue;
     }
 
@@ -3936,11 +4014,14 @@ static void draw_wv_astro() {
     else if (pct < 75) cloudColor = screen.color565(230, 130, 40);
     else cloudColor = colorDanger;
 
+    // "%" isn't in this project's custom bitmap font (same limitation
+    // documented for the moon-phase display's "PCT" workaround on the
+    // home Astro page) -- renders as a fallback "?" glyph if used here.
     char cloudLine[24];
-    snprintf(cloudLine, sizeof(cloudLine), "%.0f%% cloud", (double)pct);
+    snprintf(cloudLine, sizeof(cloudLine), "%.0f PCT cloud", (double)pct);
     screen.setTextSize(2);
     screen.setTextColor(cloudColor, colorBg);
-    screen.drawString(cloudLine, x, colY + 44);
+    screen.drawString(cloudLine, x, colY + 52);
   }
 
   screen.setTextSize(1);
