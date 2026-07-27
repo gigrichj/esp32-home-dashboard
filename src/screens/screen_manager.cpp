@@ -3715,6 +3715,9 @@ void screen_manager_draw() {
     }
     if (g_inDimWindowActive && !inDimWindow) {
       g_dimOverrideActive = false; // window just ended -- start the next night back in the dimmed state
+    } else if (!g_inDimWindowActive && inDimWindow) {
+      g_dimOverrideActive = false; // window just started -- force dim regardless of any
+                                    // daytime toggle that may have been left set
     }
     g_inDimWindowActive = inDimWindow;
   }
