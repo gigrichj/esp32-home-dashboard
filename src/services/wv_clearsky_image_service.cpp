@@ -111,17 +111,14 @@ static bool decodeAndStoreClearSkyJpeg(uint8_t *buf, size_t bufLen) {
     // (~148 -> ~295 after the crop), so the yield frequency below is
     // tightened accordingly as extra insurance against the flicker this
     // decode-volume class of bug caused before.
-    // Crop 1/4in off the right side of the source (40px at native
-    // resolution, matching this project's 80px/in convention scaled by
-    // the ~2x downscale factor used below) -- same bounds-check trick as
-    // the vertical crop above: jpegDrawCallback already drops any column
-    // past s_decodeTargetW, so a smaller decodedW here is all that's
-    // needed. Keeping targetW at the full 800px display width below
-    // means slightly less source content is stretched across the same
-    // space, so the remaining chart appears a bit larger (~2.5% zoom) --
-    // a small, known deviation from the exact 2.0x ratio used elsewhere,
-    // not the same kind of distortion a large crop would cause.
-    int decodedW = w - 40;
+    // Cropped another 1/4in off the right (cumulative 1/2in, 80px at
+    // native resolution now) -- same bounds-check trick as the vertical
+    // crop above. Still a full-resolution decode (no JPEGDEC scale-down
+    // at all), so this remains the sharpest data available from the
+    // currently-fetched source; getting genuinely more detail beyond
+    // this would require fetching a higher-resolution source image
+    // entirely, a separate lever from cropping.
+    int decodedW = w - 80;
     int decodedH = croppedH;
 
     uint16_t *decodeBuf = (uint16_t *)heap_caps_malloc((size_t)decodedW * decodedH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
