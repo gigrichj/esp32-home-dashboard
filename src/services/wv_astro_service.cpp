@@ -229,31 +229,51 @@ static bool fetchOpenMeteoWvExtension() {
   }
 
   // 7Timer's 3-day window (days 0-2) is already covered by real
-  // seeing/transparency data -- only hours from day index 3 onward are
-  // used here. "Day index" is computed relative to this response's own
-  // first timestamp (hour 0 of day 0), not current wall-clock time, so
-  // it stays correct regardless of what hour this fetch happens to run.
-  const char* firstTimeStr = times[0] | "";
-  int fy, fm, fd, fh, fmin;
-  sscanf(firstTimeStr, "%d-%d-%dT%d:%d", &fy, &fm, &fd, &fh, &fmin);
-  uint32_t day0Start = utcTmToUnix(fy, fm, fd, 0);
+  // seeing/transparency data -- only hours from LOCAL day index 3 onward
+  // are used here. IMPORTANT: this must use the same LOCAL-time day-
+  // counting convention as the real days (findBestWvIndexForLocalDay() in
+  // screen_manager.cpp), not a UTC calendar-day boundary -- an earlier
+  // version anchored to this response's own UTC "day 0" (hour 0 of the
+  // first returned timestamp), which silently disagreed with the local-
+  // time-based real days by up to a full day depending on what time of
+  // day the fetch happened to run (Eastern time is 4-5 hours behind UTC),
+  // causing Day 3 and Day 4 to show duplicate dates on-screen. Confirmed
+  // by an actual on-device screenshot showing Day 3 and Day 4 both
+  // labeled "JUL29".
+  time_t nowUnixForDayCalc = time(nullptr);
+  struct tm nowTmForDayCalc = *localtime(&nowUnixForDayCalc);
+  int todayYdayForDayCalc = nowTmForDayCalc.tm_yday;
+  int todayYearForDayCalc = nowTmForDayCalc.tm_year;
 
   float nightSum[WV_CLOUD_ONLY_NIGHTS] = {0, 0};
   int nightCount[WV_CLOUD_ONLY_NIGHTS] = {0, 0};
+  uint32_t nightAnchorUnix[WV_CLOUD_ONLY_NIGHTS] = {0, 0}; // first matched hour, for date labeling
 
   for (size_t i = 0; i < total; i++) {
     const char* timeStr = times[i] | "";
     int year, month, day, hour, minute;
     if (sscanf(timeStr, "%d-%d-%dT%d:%d", &year, &month, &day, &hour, &minute) != 5) continue;
-    uint32_t thisUnix = utcTmToUnix(year, month, day, hour);
-    int dayIndex = (int)((thisUnix - day0Start) / 86400UL);
-    int nightIdx = dayIndex - 3; // days 0-2 covered by 7Timer; night 0 = day index 3
+    uint32_t thisUnixUtc = utcTmToUnix(year, month, day, hour);
+
+    // Convert to LOCAL time and compare against LOCAL "today" -- same
+    // yday-delta technique used for the real 7Timer days, so both
+    // branches agree on where one calendar day ends and the next begins.
+    time_t thisTimeT = (time_t)thisUnixUtc;
+    struct tm thisLocalTm = *localtime(&thisTimeT);
+    bool isNightLocal = (thisLocalTm.tm_hour >= 20 || thisLocalTm.tm_hour < 6);
+    if (!isNightLocal) continue;
+
+    int ydayDelta = thisLocalTm.tm_yday - todayYdayForDayCalc;
+    if (thisLocalTm.tm_year != todayYearForDayCalc) {
+      ydayDelta += (thisLocalTm.tm_year > todayYearForDayCalc) ? 365 : -365;
+    }
+    int nightIdx = ydayDelta - 3; // days 0-2 covered by 7Timer; night 0 = local day index 3
     if (nightIdx < 0 || nightIdx >= WV_CLOUD_ONLY_NIGHTS) continue;
-    if (hour < 2 || hour >= 8) continue; // approximate nighttime window (UTC)
 
     float cloudcoverPct = cloudcovers[i] | 0.0f;
     nightSum[nightIdx] += cloudcoverPct;
     nightCount[nightIdx]++;
+    if (nightAnchorUnix[nightIdx] == 0) nightAnchorUnix[nightIdx] = thisUnixUtc;
   }
 
   state_lock();
@@ -261,7 +281,7 @@ static bool fetchOpenMeteoWvExtension() {
   for (int n = 0; n < WV_CLOUD_ONLY_NIGHTS; n++) {
     if (nightCount[n] > 0) {
       g_wvCloudOnlyNights[n].avgCloudcoverPct = nightSum[n] / nightCount[n];
-      g_wvCloudOnlyNights[n].nightDateUnix = day0Start + (uint32_t)(n + 3) * 86400UL;
+      g_wvCloudOnlyNights[n].nightDateUnix = nightAnchorUnix[n];
       anyValid = true;
     } else {
       g_wvCloudOnlyNights[n].avgCloudcoverPct = -1;

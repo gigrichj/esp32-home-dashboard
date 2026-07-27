@@ -3862,24 +3862,24 @@ static void draw_wv_astro() {
     }
     screen.setTextSize(2);
     screen.setTextColor(colorAccent, colorBg);
-    screen.drawString(auroraLine, 20, 105);
+    screen.drawString(auroraLine, 20, 145);
   }
 
   if (g_wvAstroForecastCount == 0) {
     screen.setTextSize(2);
     screen.setTextColor(colorDim, colorBg);
-    screen.drawString("No WV astro data yet", 20, 150);
+    screen.drawString("No WV astro data yet", 20, 190);
     char httpLine[48];
     snprintf(httpLine, sizeof(httpLine), "Last HTTP result: %d", g_wvAstroLastHttpCode);
-    screen.drawString(httpLine, 20, 178);
+    screen.drawString(httpLine, 20, 218);
     screen.setTextSize(1);
-    screen.drawString(g_wvAstroLastFailureReason, 20, 206);
+    screen.drawString(g_wvAstroLastFailureReason, 20, 246);
     return;
   }
 
   int colW = (WIDTH - 40) / 5;
   int colStartX = 20;
-  int colY = 145;
+  int colY = 190;
   const char* dayLabels[5] = {"TONIGHT", "TOMORROW", "DAY 3", "DAY 4", "DAY 5"};
 
   // Days 1-3: real 7Timer seeing/transparency data, same verdict scoring
@@ -3958,8 +3958,10 @@ static void draw_wv_astro() {
     }
 
     // Storm risk -- same 4-tier thresholds and astro_instability_label()
-    // as the home Astro page's STORM RISK section, just without its
-    // legend line (no room per-column in this 5-column layout).
+    // as the home Astro page's STORM RISK section (just without its
+    // legend line -- no room per-column in this 5-column layout), now
+    // with a white "STORM: " prefix, same segmented-coloring technique
+    // as the S:/T:/C: line above.
     {
       int li = g_wvAstroForecast[idx].liftedindex;
       uint16_t stormColor;
@@ -3967,8 +3969,13 @@ static void draw_wv_astro() {
       else if (li > -4) stormColor = screen.color565(230, 200, 40);
       else if (li > -8) stormColor = screen.color565(230, 130, 40);
       else stormColor = colorDanger;
+
+      int stormX = x;
+      screen.setTextColor(colorText, colorBg);
+      screen.drawString("STORM: ", stormX, colY + 88);
+      stormX += screen.textWidth("STORM: ");
       screen.setTextColor(stormColor, colorBg);
-      screen.drawString(astro_instability_label(li), x, colY + 88);
+      screen.drawString(astro_instability_label(li), stormX, colY + 88);
     }
 
     // Precip -- only drawn when there's actually something to warn about,
@@ -4014,14 +4021,29 @@ static void draw_wv_astro() {
     else if (pct < 75) cloudColor = screen.color565(230, 130, 40);
     else cloudColor = colorDanger;
 
-    // "%" isn't in this project's custom bitmap font (same limitation
-    // documented for the moon-phase display's "PCT" workaround on the
-    // home Astro page) -- renders as a fallback "?" glyph if used here.
-    char cloudLine[24];
-    snprintf(cloudLine, sizeof(cloudLine), "%.0f PCT cloud", (double)pct);
+    // Hand-drawn percent glyph (two dots + a diagonal stroke), same
+    // technique already used for humidity on the Weather page -- this
+    // font's charset doesn't render '%' correctly (shows as a fallback
+    // "?" glyph), so the number, glyph, and " cloud" text are drawn as
+    // three separate pieces with screen.textWidth() tracking the exact
+    // x position between them.
+    char pctNum[8];
+    snprintf(pctNum, sizeof(pctNum), "%.0f", (double)pct);
     screen.setTextSize(2);
     screen.setTextColor(cloudColor, colorBg);
-    screen.drawString(cloudLine, x, colY + 52);
+    int cloudX = x;
+    int cloudY = colY + 52;
+    screen.drawString(pctNum, cloudX, cloudY);
+    cloudX += screen.textWidth(pctNum);
+    {
+      int gx = cloudX + 4;
+      int gy = cloudY;
+      screen.fillCircle(gx, gy + 3, 2, cloudColor);
+      screen.fillCircle(gx + 10, gy + 11, 2, cloudColor);
+      screen.drawLine(gx - 1, gy + 13, gx + 11, gy + 1, cloudColor);
+    }
+    cloudX += 20; // glyph width + gap
+    screen.drawString(" cloud", cloudX, cloudY);
   }
 
   screen.setTextSize(1);
