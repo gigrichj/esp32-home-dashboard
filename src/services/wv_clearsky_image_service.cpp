@@ -111,15 +111,16 @@ static bool decodeAndStoreClearSkyJpeg(uint8_t *buf, size_t bufLen) {
     // (~148 -> ~295 after the crop), so the yield frequency below is
     // tightened accordingly as extra insurance against the flicker this
     // decode-volume class of bug caused before.
-    // Cropped a third 1/4in off the right (cumulative 3/4in, 120px at
-    // native resolution now). Decode is still full resolution -- no
-    // JPEGDEC scale-down (JPEG_SCALE_EIGHTH/QUARTER/HALF) applied at
-    // all, so this is already the maximum real detail available from
-    // the currently-fetched 1600px-wide source. Cropping doesn't change
-    // decode quality, just how much of the source is shown at the fixed
-    // 800px display width -- genuinely more detail beyond this would
-    // require fetching a higher-resolution source image instead.
-    int decodedW = w - 120;
+    // Right-edge crop expressed as a fraction of source width (7.5%,
+    // matching the previous cumulative 3/4in crop at the old 1600px
+    // fetch width) rather than a fixed pixel count -- now that the
+    // source fetch width itself changed (1600 -> 2400), a flat "120px"
+    // offset would represent a smaller, wrong proportion of the new,
+    // wider source. This scales correctly regardless of what width we
+    // request going forward. Decode is still full resolution -- no
+    // JPEGDEC scale-down at all -- so this remains the maximum real
+    // detail available from whatever gets fetched.
+    int decodedW = (int)(w * 0.925f);
     int decodedH = croppedH;
 
     uint16_t *decodeBuf = (uint16_t *)heap_caps_malloc((size_t)decodedW * decodedH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
@@ -200,16 +201,16 @@ bool wv_clearsky_fetch_image() {
 
   // Spruce Knob Mountain Center Clear Sky Chart -- source is a GIF,
   // routed through wsrv.nl to get a JPEG back, same established pattern
-  // as spacex_launch_service.cpp's PNG->JPEG conversion. w=1600 is a
-  // starting guess for JPEGDEC's 1/8-scale decode requirement -- the
-  // Serial log line above ("JPEG source dimensions...") will show the
-  // real source size on first successful fetch, which may mean this
-  // width needs tuning once we see actual on-device numbers (the Clear
-  // Sky Chart's real aspect ratio -- wide, multi-day hour grid -- is
-  // quite different from the SpaceX mission photos this pattern was
-  // originally built for).
+  // as spacex_launch_service.cpp's PNG->JPEG conversion.
+  // w=2400 (up from 1600) -- testing whether the true underlying chart
+  // has more real detail than the previous request captured; check the
+  // "JPEG source dimensions" Serial log line to see what actually comes
+  // back. q=100 (up from 85) -- this chart is solid-color rectangles,
+  // not a photo, so JPEG's lossy compression was likely softening the
+  // hard edges between blocks; max quality should sharpen those edges
+  // at the cost of a somewhat larger fetch.
   String sourceUrl = "https://www.cleardarksky.com/c/spruce_WVcsk.gif?c=2372454";
-  String proxiedUrl = "https://wsrv.nl/?url=" + urlEncode(sourceUrl) + "&output=jpg&w=1600&q=85";
+  String proxiedUrl = "https://wsrv.nl/?url=" + urlEncode(sourceUrl) + "&output=jpg&w=2400&q=100";
 
   HTTPClient http;
   http.begin(proxiedUrl);

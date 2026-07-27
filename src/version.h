@@ -1,2 +1,2 @@
 #pragma once
-#define FIRMWARE_VERSION "v327"
+#define FIRMWARE_VERSION "v328"
