@@ -4065,7 +4065,7 @@ static void draw_wv_astro() {
     // chartY lowered ~1/4in (20px, this project's 80px/in convention)
     // per follow-up feedback -- still leaves a ~10px gap above the
     // diagnostic HTTP line at the image's actual ~145px height.
-    int chartY = 294;
+    int chartY = 276; // raised ~18px to make room for the extra row now kept (crop backed off from 0.81 to 0.90)
     screen.setTextSize(1);
     screen.setTextColor(colorDim, colorBg);
     // x=0 -- full width, edge-to-edge with the top banner (which also
@@ -4080,11 +4080,6 @@ static void draw_wv_astro() {
     }
   }
 
-  screen.setTextSize(1);
-  screen.setTextColor(colorDim, colorBg);
-  char diagLine[24];
-  snprintf(diagLine, sizeof(diagLine), "HTTP %d", g_wvAstroLastHttpCode);
-  screen.drawString(diagLine, 20, HEIGHT - 30);
 }
 
 void screen_manager_draw() {
