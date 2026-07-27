@@ -13,6 +13,8 @@
 #include "services/trend_history_service.h"
 #include "services/spacex_launch_service.h"
 #include "services/imagery_service.h"
+#include "services/aurora_service.h"
+#include "services/wv_astro_service.h"
 #include "screens/screen_manager.h"
 #include "debug_log.h"
 #include "debug_controls.h"
@@ -95,6 +97,13 @@ static const uint32_t PRECIP_RETRY_MS       = 105UL * 1000UL;
 static const int MAX_FAST_RETRIES = 5;
 
 static const uint32_t ISS_POLL_MS        = 60UL * 1000UL;
+// Kp and multi-day astro forecasts don't change fast, so both use a
+// single slow interval with no fast-retry escalation -- unlike Weather/
+// Air Quality/Astro/Precip, a slow first successful fetch after boot
+// isn't costly here (nobody needs an aurora reading or a WV trip-planning
+// forecast within the first few minutes of the board powering on).
+static const uint32_t AURORA_POLL_MS     = 30UL * 60UL * 1000UL;
+static const uint32_t WV_ASTRO_POLL_MS   = 35UL * 60UL * 1000UL; // deliberately offset from ASTRO_POLL_MS/AURORA_POLL_MS
 static const uint32_t DRAW_INTERVAL_MS   = 200UL;
 
 bool wasInSetupMode = false;
@@ -187,7 +196,7 @@ void uiTask(void* param) {
 }
 
 void networkTask(void* param) {
-  uint32_t lastWeather = 0, lastAviation = 0, lastIss = 0, lastAirQuality = 0, lastAstro = 0, lastSpacex = 0;
+  uint32_t lastWeather = 0, lastAviation = 0, lastIss = 0, lastAirQuality = 0, lastAstro = 0, lastSpacex = 0, lastAurora = 0, lastWvAstro = 0;
   uint32_t lastPrecipRetry = 0;
   uint32_t lastImagery = 0;
   static const uint32_t IMAGERY_ROTATE_MS = 15UL * 60UL * 1000UL; // rotate the Imagery page's image every 15 minutes
@@ -338,6 +347,20 @@ void networkTask(void* param) {
         g_lastIssSuccessMs = now;
       }
       debug_log("iss fetch done");
+    }
+    if (!heavyFetchThisCycle && now - lastAurora > AURORA_POLL_MS) {
+      lastAurora = now;
+      debug_log("aurora fetch start");
+      aurora_service_update();
+      debug_log("aurora fetch done");
+      heavyFetchThisCycle = true;
+    }
+    if (!heavyFetchThisCycle && now - lastWvAstro > WV_ASTRO_POLL_MS) {
+      lastWvAstro = now;
+      debug_log("wv astro fetch start");
+      wv_astro_service_update();
+      debug_log("wv astro fetch done");
+      heavyFetchThisCycle = true;
     }
     // Not urgent -- deferred to the next cycle like Aviation/ISS rather
     // than forcing itself in alongside a heavy fetch already running.

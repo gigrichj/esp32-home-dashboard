@@ -9,6 +9,8 @@
 #include "../services/astro_seeing_service.h"
 #include "../services/trend_history_service.h"
 #include "../services/spacex_launch_service.h"
+#include "../services/aurora_service.h"
+#include "../services/wv_astro_service.h"
 #include "../services/imagery_service.h"
 #include "secrets.h"
 #include "../debug_log.h"
@@ -22,7 +24,7 @@
 using namespace PanelDisplay;
 
 static const char* TAB_NAMES[] = {
-  "DASHBOARD", "AVIATION", "ASTRO", "SPACEX", "ISS", "WEATHER", "IMAGERY", "TRENDS"
+  "DASHBOARD", "AVIATION", "ASTRO", "SPACEX", "ISS", "WEATHER", "IMAGERY", "TRENDS", "WV ASTRO"
 };
 static const int TAB_COUNT = sizeof(TAB_NAMES) / sizeof(TAB_NAMES[0]);
 
@@ -3703,6 +3705,178 @@ static void draw_spacex() {
   }
 }
 
+// Finds the best (lowest-badness) forecast point within a given LOCAL
+// calendar day (0=today, 1=tomorrow, 2=day after), restricted to
+// nighttime hours -- same isNight convention used elsewhere in this file
+// (tm_hour >= 20 || tm_hour < 6). 7Timer's timepoints are UTC-based, so
+// this converts each point to local time via localtime() before checking
+// which calendar day and hour it falls in, rather than doing raw unix-
+// time arithmetic that would misplace points near local midnight.
+static int findBestWvIndexForLocalDay(int dayOffset, float* outBadness) {
+  time_t nowUnix = time(nullptr);
+  struct tm nowTm = *localtime(&nowUnix);
+  int todayYday = nowTm.tm_yday;
+  int todayYear = nowTm.tm_year;
+
+  int bestIdx = -1;
+  float bestBadness = 2.0f;
+  for (int i = 0; i < g_wvAstroForecastCount; i++) {
+    time_t t = (time_t)g_wvAstroForecast[i].unixTime;
+    struct tm ti = *localtime(&t);
+    bool isNight = (ti.tm_hour >= 20 || ti.tm_hour < 6);
+    if (!isNight) continue;
+    int ydayDelta = ti.tm_yday - todayYday;
+    if (ti.tm_year != todayYear) ydayDelta += (ti.tm_year > todayYear) ? 365 : -365;
+    if (ydayDelta != dayOffset) continue;
+
+    float badness = 0;
+    astro_tonight_verdict(g_wvAstroForecast[i].cloudcover, g_wvAstroForecast[i].seeing,
+                           g_wvAstroForecast[i].transparency, g_moonIllumPercent, &badness);
+    if (badness < bestBadness) {
+      bestBadness = badness;
+      bestIdx = i;
+    }
+  }
+  if (outBadness) *outBadness = bestBadness;
+  return bestIdx;
+}
+
+// 5-day astrophotography trip-planning forecast for Spruce Knob, WV
+// (Bortle 2 vs Bortle 7.4 at home), plus the aurora/Kp indicator -- same
+// Kp value applies to both locations, shown once rather than duplicated.
+// Days 1-3 use real 7Timer seeing/transparency data via the same
+// astro_tonight_verdict() scoring as the home Astro page. Days 4-5 are
+// Open-Meteo cloud-cover-only (no free source has real seeing data this
+// far out) and are deliberately styled dimmer/simpler to signal lower
+// confidence -- see wv_astro_service.h for the reasoning.
+static void draw_wv_astro() {
+  StateLockGuard lockGuard;
+  screen.setTextDatum(textdatum_t::top_left);
+
+  screen.setTextSize(2);
+  screen.setTextColor(colorAccent, colorBg);
+  screen.drawString("SPRUCE KNOB, WV - 5 DAY FORECAST", 20, 50);
+
+  screen.setTextSize(1);
+  screen.setTextColor(colorDim, colorBg);
+  char bortleLine[64];
+  snprintf(bortleLine, sizeof(bortleLine), "Bortle %.1f (vs Bortle %.1f at home)",
+           (double)WV_BORTLE_CLASS, (double)HOME_BORTLE_CLASS);
+  screen.drawString(bortleLine, 20, 78);
+
+  // Aurora/Kp -- single planetary value, identical for WV and home, so
+  // shown once here rather than duplicated per forecast day.
+  {
+    char auroraLine[64];
+    if (g_kpObservedValid) {
+      snprintf(auroraLine, sizeof(auroraLine), "AURORA (Kp %.1f): %s",
+               (double)g_currentKp, aurora_visibility_label(g_currentKp));
+    } else {
+      snprintf(auroraLine, sizeof(auroraLine), "AURORA: no data yet");
+    }
+    screen.setTextSize(2);
+    screen.setTextColor(colorAccent, colorBg);
+    screen.drawString(auroraLine, 20, 100);
+  }
+
+  if (g_wvAstroForecastCount == 0) {
+    screen.setTextSize(2);
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString("No WV astro data yet", 20, 160);
+    char httpLine[48];
+    snprintf(httpLine, sizeof(httpLine), "Last HTTP result: %d", g_wvAstroLastHttpCode);
+    screen.drawString(httpLine, 20, 188);
+    screen.setTextSize(1);
+    screen.drawString(g_wvAstroLastFailureReason, 20, 216);
+    return;
+  }
+
+  int colW = (WIDTH - 40) / 5;
+  int colStartX = 20;
+  int colY = 150;
+  const char* dayLabels[5] = {"TONIGHT", "TOMORROW", "DAY 3", "DAY 4", "DAY 5"};
+
+  // Days 1-3: real 7Timer seeing/transparency data, same verdict scoring
+  // as the home Astro page.
+  for (int d = 0; d < 3; d++) {
+    float badness = 1.0f;
+    int idx = findBestWvIndexForLocalDay(d, &badness);
+    int x = colStartX + d * colW;
+
+    screen.setTextSize(2);
+    screen.setTextColor(colorText, colorBg);
+    screen.drawString(dayLabels[d], x, colY);
+
+    if (idx < 0) {
+      screen.setTextSize(1);
+      screen.setTextColor(colorDim, colorBg);
+      screen.drawString("no data", x, colY + 30);
+      continue;
+    }
+
+    const char* verdict = astro_tonight_verdict(
+        g_wvAstroForecast[idx].cloudcover, g_wvAstroForecast[idx].seeing,
+        g_wvAstroForecast[idx].transparency, g_moonIllumPercent, &badness);
+
+    uint16_t verdictColor;
+    if (badness < 0.25f) verdictColor = colorSuccess;
+    else if (badness < 0.5f) verdictColor = screen.color565(230, 200, 40);
+    else if (badness < 0.75f) verdictColor = screen.color565(230, 130, 40);
+    else verdictColor = colorDanger;
+
+    screen.setTextSize(2);
+    screen.setTextColor(verdictColor, colorBg);
+    screen.drawString(verdict, x, colY + 30);
+
+    screen.setTextSize(1);
+    screen.setTextColor(colorDim, colorBg);
+    char detailLine[40];
+    snprintf(detailLine, sizeof(detailLine), "S:%s T:%s C:%s",
+             astro_seeing_label(g_wvAstroForecast[idx].seeing),
+             astro_transparency_label(g_wvAstroForecast[idx].transparency),
+             astro_cloudcover_label(g_wvAstroForecast[idx].cloudcover));
+    screen.drawString(detailLine, x, colY + 60);
+  }
+
+  // Days 4-5: cloud-only, Open-Meteo -- deliberately dimmer styling and no
+  // verdict word, since this is lower-confidence data than days 1-3.
+  for (int n = 0; n < WV_CLOUD_ONLY_NIGHTS; n++) {
+    int x = colStartX + (3 + n) * colW;
+
+    screen.setTextSize(2);
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString(dayLabels[3 + n], x, colY);
+
+    screen.setTextSize(1);
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString("(cloud only)", x, colY + 22);
+
+    if (!g_wvCloudOnlyValid || g_wvCloudOnlyNights[n].avgCloudcoverPct < 0) {
+      screen.drawString("no data", x, colY + 44);
+      continue;
+    }
+
+    float pct = g_wvCloudOnlyNights[n].avgCloudcoverPct;
+    uint16_t cloudColor;
+    if (pct < 25) cloudColor = colorSuccess;
+    else if (pct < 50) cloudColor = screen.color565(230, 200, 40);
+    else if (pct < 75) cloudColor = screen.color565(230, 130, 40);
+    else cloudColor = colorDanger;
+
+    char cloudLine[24];
+    snprintf(cloudLine, sizeof(cloudLine), "%.0f%% cloud", (double)pct);
+    screen.setTextSize(2);
+    screen.setTextColor(cloudColor, colorBg);
+    screen.drawString(cloudLine, x, colY + 44);
+  }
+
+  screen.setTextSize(1);
+  screen.setTextColor(colorDim, colorBg);
+  char diagLine[24];
+  snprintf(diagLine, sizeof(diagLine), "HTTP %d", g_wvAstroLastHttpCode);
+  screen.drawString(diagLine, 20, HEIGHT - 30);
+}
+
 void screen_manager_draw() {
   g_nightModeActive = computeNightModeActive();
 
@@ -3753,6 +3927,7 @@ void screen_manager_draw() {
     case 5: draw_weather(); break;
     case 6: draw_imagery(); break;
     case 7: draw_trends(); break;
+    case 8: draw_wv_astro(); break;
   }
 
   screen.setTextSize(1);

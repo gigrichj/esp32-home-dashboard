@@ -40,6 +40,9 @@ jobs:
           #define HOME_LAT ${HOME_LAT:-38.704282}
           #define HOME_LON ${HOME_LON:--77.227760}
           #define HOME_BORTLE_CLASS 7.4f
+          #define WV_LAT 38.6993
+          #define WV_LON -79.5321
+          #define WV_BORTLE_CLASS 2.0f
           #define ADSBX_API_KEY "${ADSBX_API_KEY}"
           #define FLIGHTAWARE_API_KEY ""
           #define FAVORITE_AIRPORTS {"KIAD", "KDCA"}
