@@ -127,7 +127,8 @@ static bool decodeAndStoreClearSkyJpeg(uint8_t *buf, size_t bufLen) {
       // width is now the primary dimension, height follows from the
       // CROPPED aspect ratio so the kept portion fills the frame with no
       // blank gap where the cropped legend line used to be.
-      int targetW = 785;
+      int targetW = 788; // slightly wider, paired with moving the left edge
+                           // in from x=20 to x=6 on the drawing side
       int targetH = (int)((float)targetW * croppedH / w);
       if (targetH < 1) targetH = 1;
       if (targetH > 160) targetH = 160; // safety cap -- keeps clear of the

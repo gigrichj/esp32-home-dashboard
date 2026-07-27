@@ -4056,17 +4056,24 @@ static void draw_wv_astro() {
     // No separate label drawn here -- the chart's own title ("Spruce
     // Knob Mountain Center Clear Sky Chart") is already baked into the
     // image itself, so a duplicate label would be redundant.
-    int chartY = 274; // shifted up to close the gap after the day columns,
-                        // now that no label sits above the image, and to
-                        // guarantee clearance above the diagnostic HTTP line
+    // Left edge moved in from x=20 to x=6 -- at the previous 785px width
+    // drawn from x=20, the right edge landed at x=805, past the actual
+    // 800px screen width (silently clipped rather than crashing, which is
+    // why it looked "maximized" on the right while leaving the left side
+    // comparatively empty). Starting further left uses the space evenly
+    // on both sides instead.
+    // chartY lowered ~1/4in (20px, this project's 80px/in convention)
+    // per follow-up feedback -- still leaves a ~10px gap above the
+    // diagnostic HTTP line at the image's actual ~145px height.
+    int chartY = 294;
     screen.setTextSize(1);
     screen.setTextColor(colorDim, colorBg);
     if (g_wvClearSkyImageValid && g_wvClearSkyImagePixels != nullptr) {
-      screen.drawRGBBitmap(20, chartY, g_wvClearSkyImagePixels, g_wvClearSkyImageWidth, g_wvClearSkyImageHeight);
+      screen.drawRGBBitmap(6, chartY, g_wvClearSkyImagePixels, g_wvClearSkyImageWidth, g_wvClearSkyImageHeight);
     } else {
       char chartHttpLine[32];
       snprintf(chartHttpLine, sizeof(chartHttpLine), "Chart not loaded (HTTP %d)", g_wvClearSkyImageLastHttpCode);
-      screen.drawString(chartHttpLine, 20, chartY);
+      screen.drawString(chartHttpLine, 6, chartY);
     }
   }
 
