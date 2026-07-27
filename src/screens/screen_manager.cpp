@@ -3863,24 +3863,24 @@ static void draw_wv_astro() {
     }
     screen.setTextSize(2);
     screen.setTextColor(colorAccent, colorBg);
-    screen.drawString(auroraLine, 20, 145);
+    screen.drawString(auroraLine, 20, 120);
   }
 
   if (g_wvAstroForecastCount == 0) {
     screen.setTextSize(2);
     screen.setTextColor(colorDim, colorBg);
-    screen.drawString("No WV astro data yet", 20, 190);
+    screen.drawString("No WV astro data yet", 20, 165);
     char httpLine[48];
     snprintf(httpLine, sizeof(httpLine), "Last HTTP result: %d", g_wvAstroLastHttpCode);
-    screen.drawString(httpLine, 20, 218);
+    screen.drawString(httpLine, 20, 193);
     screen.setTextSize(1);
-    screen.drawString(g_wvAstroLastFailureReason, 20, 246);
+    screen.drawString(g_wvAstroLastFailureReason, 20, 221);
     return;
   }
 
   int colW = (WIDTH - 40) / 5;
   int colStartX = 20;
-  int colY = 190;
+  int colY = 165;
   const char* dayLabels[5] = {"TONIGHT", "TOMORROW", "DAY 3", "DAY 4", "DAY 5"};
 
   // Days 1-3: real 7Timer seeing/transparency data, same verdict scoring

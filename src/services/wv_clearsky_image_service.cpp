@@ -69,15 +69,23 @@ static bool decodeAndStoreClearSkyJpeg(uint8_t *buf, size_t bufLen) {
     int h = jpeg.getHeight();
     Serial.printf("[WV ClearSky] JPEG source dimensions %dx%d\n", w, h);
 
-    int decodedW = w / 8;
-    int decodedH = h / 8;
+    // JPEG_SCALE_QUARTER instead of EIGHTH -- with the actual source
+    // dimensions logged on-device (1600x364), an eighth-scale decode
+    // (200x45) had to be upscaled ~3.7x to reach the ~747x170 render
+    // size, producing visibly blocky output. Quarter-scale (400x91) cuts
+    // that to ~1.87x upscale while keeping row count (~91) close to the
+    // SpaceX page's own established ~90-row precedent for this decode
+    // pattern, so it shouldn't reintroduce the flicker that full-
+    // resolution PNG decodes caused elsewhere in this project.
+    int decodedW = w / 4;
+    int decodedH = h / 4;
 
     uint16_t *decodeBuf = (uint16_t *)heap_caps_malloc((size_t)decodedW * decodedH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
     if (decodeBuf != nullptr) {
       s_decodeTarget = decodeBuf;
       s_decodeTargetW = decodedW;
       s_decodeTargetH = decodedH;
-      jpeg.decode(0, 0, JPEG_SCALE_EIGHTH);
+      jpeg.decode(0, 0, JPEG_SCALE_QUARTER);
       s_decodeTarget = nullptr;
 
       // Target box for the previously-empty space below the 5-day
@@ -87,7 +95,15 @@ static bool decodeAndStoreClearSkyJpeg(uint8_t *buf, size_t bufLen) {
       int targetH = 170;
       int targetW = (int)((float)targetH * w / h);
       if (targetW < 1) targetW = 1;
-      if (targetW > 760) targetW = 760;
+      // BUG FIX: clamping targetW without also shrinking targetH would
+      // squash/distort the image if the source is wider than this page
+      // has room for -- recompute targetH from the clamped width instead
+      // so the aspect ratio is preserved (smaller image, not a squished one).
+      if (targetW > 760) {
+        targetW = 760;
+        targetH = (int)((float)targetW * h / w);
+        if (targetH < 1) targetH = 1;
+      }
 
       uint16_t *finalBuf = (uint16_t *)heap_caps_malloc((size_t)targetW * targetH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
       if (finalBuf != nullptr) {
