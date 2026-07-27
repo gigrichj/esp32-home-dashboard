@@ -127,11 +127,20 @@ static bool decodeAndStoreClearSkyJpeg(uint8_t *buf, size_t bufLen) {
       // width is now the primary dimension, height follows from the
       // CROPPED aspect ratio so the kept portion fills the frame with no
       // blank gap where the cropped legend line used to be.
-      int targetW = 788; // slightly wider, paired with moving the left edge
-                           // in from x=20 to x=6 on the drawing side
+      // Full screen width (800px), edge-to-edge with the top banner --
+      // matches the banner's own x=0 to x=WIDTH span exactly. At the
+      // source's native 1600px width, this is a PRECISE 2.0x downsize
+      // ratio (1600/800), not an arbitrary fraction -- and since
+      // croppedH/2 lands on a whole number too, both dimensions shrink
+      // by the exact same clean 2.0x factor. No mismatched down-then-up
+      // scaling anywhere: this decode is already at full native
+      // resolution (JPEG_SCALE full, not EIGHTH/QUARTER/HALF), so every
+      // pixel written to the final buffer is a real downsample, never
+      // an upsample guess.
+      int targetW = 800;
       int targetH = (int)((float)targetW * croppedH / w);
       if (targetH < 1) targetH = 1;
-      if (targetH > 160) targetH = 160; // safety cap -- keeps clear of the
+      if (targetH > 170) targetH = 170; // safety cap -- keeps clear of the
                                           // diagnostic HTTP-code line drawn
                                           // below the image on the page
 

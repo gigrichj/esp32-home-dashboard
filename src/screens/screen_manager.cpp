@@ -4068,12 +4068,15 @@ static void draw_wv_astro() {
     int chartY = 294;
     screen.setTextSize(1);
     screen.setTextColor(colorDim, colorBg);
+    // x=0 -- full width, edge-to-edge with the top banner (which also
+    // spans x=0 to WIDTH with no margin), matching the exact 800px
+    // display width computed in wv_clearsky_image_service.cpp.
     if (g_wvClearSkyImageValid && g_wvClearSkyImagePixels != nullptr) {
-      screen.drawRGBBitmap(6, chartY, g_wvClearSkyImagePixels, g_wvClearSkyImageWidth, g_wvClearSkyImageHeight);
+      screen.drawRGBBitmap(0, chartY, g_wvClearSkyImagePixels, g_wvClearSkyImageWidth, g_wvClearSkyImageHeight);
     } else {
       char chartHttpLine[32];
       snprintf(chartHttpLine, sizeof(chartHttpLine), "Chart not loaded (HTTP %d)", g_wvClearSkyImageLastHttpCode);
-      screen.drawString(chartHttpLine, 6, chartY);
+      screen.drawString(chartHttpLine, 20, chartY);
     }
   }
 
