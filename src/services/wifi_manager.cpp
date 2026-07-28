@@ -1,5 +1,6 @@
 #include "wifi_manager.h"
 #include "secrets.h"
+#include "../services/trips_service.h"
 #include <WiFi.h>
 #include <WebServer.h>
 #include <DNSServer.h>
@@ -103,6 +104,26 @@ static void handleReconfigure() {
   ESP.restart();
 }
 
+// PUT /trips -- accepts a raw JSON body (see trips_service.cpp for the
+// expected format), pushed locally from the user's Mac via curl. Reuses
+// this already-running WebServer instance rather than starting a second
+// server on another port -- server.handleClient() is already called every
+// networkTask iteration (see wifi_manager_loop() below), so this gets
+// serviced within milliseconds of the request arriving, no separate
+// polling loop needed.
+static void handlePutTrips() {
+  if (!server.hasArg("plain")) {
+    server.send(400, "text/plain", "Missing request body\n");
+    return;
+  }
+  String body = server.arg("plain");
+  if (trips_service_save_json(body)) {
+    server.send(200, "text/plain", "OK\n");
+  } else {
+    server.send(400, "text/plain", "Rejected -- see device serial log for the reason\n");
+  }
+}
+
 static bool connectWithSavedCredentials() {
   String ssid = prefs.getString("ssid", "");
   String pass = prefs.getString("pass", "");
@@ -143,6 +164,7 @@ void wifi_manager_begin() {
     }
     server.on("/", handleStatusRoot);
     server.on("/reconfigure", HTTP_POST, handleReconfigure);
+    server.on("/trips", HTTP_PUT, handlePutTrips);
     server.begin();
   } else {
     startConfigPortal();

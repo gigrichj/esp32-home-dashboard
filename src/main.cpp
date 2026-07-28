@@ -16,6 +16,8 @@
 #include "services/aurora_service.h"
 #include "services/wv_astro_service.h"
 #include "services/wv_clearsky_image_service.h"
+#include "services/trips_service.h"
+#include "services/world_trips_banner_service.h"
 #include "screens/screen_manager.h"
 #include "debug_log.h"
 #include "debug_controls.h"
@@ -114,6 +116,12 @@ static const uint32_t WV_CLEARSKY_POLL_MS  = 60UL * 60UL * 1000UL; // underlying
 static const uint32_t WV_CLEARSKY_RETRY_MS = 140UL * 1000UL; // staggered from the other retry intervals
 static const uint32_t DRAW_INTERVAL_MS   = 200UL;
 
+// World Trips banner: rotates to a different embedded image every 3 hours
+// -- pure local decode, no network fetch, same "IMAGERY_ROTATE_MS" pattern
+// as the Imagery page's 15-minute rotation, just on a far slower cadence
+// since these banners are meant to change occasionally, not frequently.
+static const uint32_t WORLD_TRIPS_BANNER_ROTATE_MS = 3UL * 60UL * 60UL * 1000UL;
+
 bool wasInSetupMode = false;
 bool setupModeActive = false;
 
@@ -208,6 +216,7 @@ void networkTask(void* param) {
   uint32_t lastPrecipRetry = 0;
   uint32_t lastImagery = 0;
   static const uint32_t IMAGERY_ROTATE_MS = 15UL * 60UL * 1000UL; // rotate the Imagery page's image every 15 minutes
+  uint32_t lastWorldTripsBanner = 0;
   bool astroDataLoaded = false;
   bool weatherDataLoaded = false;
   bool spacexDataLoaded = false;
@@ -250,6 +259,13 @@ void networkTask(void* param) {
     if (now - lastImagery > IMAGERY_ROTATE_MS) {
       lastImagery = now;
       imagery_update();
+    }
+
+    // World Trips banner: same local-decode-only rotation pattern as
+    // Imagery above, just on a 3-hour cadence instead of 15 minutes.
+    if (now - lastWorldTripsBanner > WORLD_TRIPS_BANNER_ROTATE_MS) {
+      lastWorldTripsBanner = now;
+      world_trips_banner_update();
     }
 
     // Set whenever a heavy Weather/Air Quality/Astro fetch runs this cycle,
@@ -495,9 +511,15 @@ void setup() {
 
   screen_manager_init();
   imagery_init(); // one-time local decode, no network/boot-order dependency
+  world_trips_banner_init(); // same -- one-time local decode of the embedded banner image
 
   wifi_manager_begin();
   setupModeActive = wifi_manager_in_setup_mode();
+
+  // Loads any previously-pushed trip list from NVS -- a local read, so
+  // this runs unconditionally regardless of WiFi/setup-mode state, unlike
+  // every _service_update() call below which needs an actual connection.
+  trips_service_begin();
 
   xTaskCreatePinnedToCore(uiTask, "uiTask", 8192, nullptr, 1, nullptr, 1);
 

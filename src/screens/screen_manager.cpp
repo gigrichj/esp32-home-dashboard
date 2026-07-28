@@ -13,6 +13,8 @@
 #include "../services/wv_astro_service.h"
 #include "../services/wv_clearsky_image_service.h"
 #include "../services/imagery_service.h"
+#include "../services/trips_service.h"
+#include "../services/world_trips_banner_service.h"
 #include "secrets.h"
 #include "../debug_log.h"
 #include "../debug_controls.h"
@@ -25,7 +27,7 @@
 using namespace PanelDisplay;
 
 static const char* TAB_NAMES[] = {
-  "DASHBOARD", "AVIATION", "ASTRO", "SPACEX", "ISS", "WEATHER", "IMAGERY", "TRENDS", "WV ASTRO"
+  "DASHBOARD", "AVIATION", "ASTRO", "SPACEX", "ISS", "WEATHER", "IMAGERY", "TRENDS", "WV ASTRO", "WORLD TRIPS"
 };
 static const int TAB_COUNT = sizeof(TAB_NAMES) / sizeof(TAB_NAMES[0]);
 
@@ -710,7 +712,9 @@ static void draw_dashboard() {
   y += 40;
 
   // AIRCRAFT + ISS column -- the second of 2 even columns.
-  int y2 = 207;
+  // Aligned with the WEATHER column's start (y=147, was 207) so both
+  // columns begin flush at the top, per follow-up feedback.
+  int y2 = 147;
   screen.setTextSize(2);
   screen.setTextColor(colorAccent, colorBg);
   screen.drawString("OVERHEAD", rightX, y2);
@@ -753,6 +757,36 @@ static void draw_dashboard() {
       }
     }
   }
+  {
+    // Aurora/Kp teaser, added under OVERHEAD below the Next Pass line --
+    // same data/color/threshold convention as the WV_ASTRO page's
+    // "AURORA (Kp X.X): LABEL" line (aurora_visibility_label(), same
+    // Likely/Possible/Slight Chance/Unlikely color ramp), just condensed
+    // to fit this column's width.
+    char auroraPrefix[32];
+    const char* auroraLabel = nullptr;
+    uint16_t auroraLabelColor = colorText;
+    if (g_kpObservedValid) {
+      snprintf(auroraPrefix, sizeof(auroraPrefix), "Aurora (Kp %.1f): ", (double)g_currentKp);
+      auroraLabel = aurora_visibility_label(g_currentKp);
+      if (strcmp(auroraLabel, "Likely") == 0) auroraLabelColor = colorSuccess;
+      else if (strcmp(auroraLabel, "Possible") == 0) auroraLabelColor = screen.color565(230, 200, 40);
+      else if (strcmp(auroraLabel, "Slight Chance") == 0) auroraLabelColor = screen.color565(230, 130, 40);
+      else auroraLabelColor = colorDanger;
+    } else {
+      snprintf(auroraPrefix, sizeof(auroraPrefix), "Aurora: no data yet");
+    }
+    screen.setTextSize(2);
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString(auroraPrefix, rightX, y2);
+    if (auroraLabel != nullptr) {
+      int labelX = rightX + screen.textWidth(auroraPrefix);
+      screen.setTextColor(auroraLabelColor, colorBg);
+      screen.drawString(auroraLabel, labelX, y2);
+    }
+  }
+  y2 += 34;
+
   y2 += 44; // a couple spaces below the last OVERHEAD line
 
   // ASTRO: seeing + transparency + tonight's verdict, stacked below
@@ -4092,7 +4126,7 @@ static void draw_wv_astro() {
     // from visual inspection of a device photo, not precisely measured --
     // right edge clips off-screen silently past x=800, same established
     // safe-clipping behavior as the earlier left-edge adjustment above.
-    int chartX = 63;
+    int chartX = 60;
     // Reverted from the reserved-column approach (x=156, 640px image)
     // back to the full-width x=0 layout that was already working well --
     // our own row labels are now drawn overlaid directly on the image
@@ -4135,11 +4169,26 @@ static void draw_wv_astro() {
       // Smoke, Wind, Humidity, Temperature.
       const int rowPixelAdjust[9] = {
         -1, 0, 2, 2, 3,
-        0, 1, 2, 5
+        0, 1, 2, 3
       };
       screen.setTextColor(colorText, colorBg);
+      // Group headers -- "SKY" above the top group (Cloud Cvr..Darkness)
+      // and "GROUND" above the bottom group (Smoke..Temp), using the
+      // same rowFracs/rowPixelAdjust math as the row labels themselves
+      // so they stay correctly positioned if those values are ever
+      // tuned again. Blue/green reuse colorAccent/colorSuccess (already
+      // blue and green respectively) rather than introducing new colors.
+      {
+        int skyHeaderY = chartY + 20 + (int)(rowFracs[0] * g_wvClearSkyImageHeight) - 6 + rowPixelAdjust[0] - 16;
+        int groundHeaderY = chartY + 20 + (int)(rowFracs[5] * g_wvClearSkyImageHeight) - 6 + rowPixelAdjust[5] - 16;
+        screen.setTextColor(colorAccent, colorBg);
+        screen.drawString("SKY", 4, skyHeaderY);
+        screen.setTextColor(colorSuccess, colorBg);
+        screen.drawString("GROUND", 4, groundHeaderY);
+      }
       for (int i = 0; i < 9; i++) {
         int labelY = chartY + 20 + (int)(rowFracs[i] * g_wvClearSkyImageHeight) - 6 + rowPixelAdjust[i];
+        screen.setTextColor(colorText, colorBg);
         screen.drawString(rowLabels[i], 4, labelY);
       }
     } else {
@@ -4149,6 +4198,165 @@ static void draw_wv_astro() {
     }
   }
 
+}
+
+static void draw_world_trips() {
+  StateLockGuard lockGuard;
+  int centerX = WIDTH / 2;
+
+  screen.setTextDatum(textdatum_t::top_left);
+
+  // Real photo banner (embedded, decoded once at boot -- see
+  // world_trips_banner_service.cpp), replacing the earlier hand-drawn
+  // sun/palm-tree icon per follow-up feedback. Drawn flush under the
+  // top header banner (y=40), full 800px width.
+  int bannerY = 40;
+  if (g_worldTripsBannerValid && g_worldTripsBannerPixels != nullptr) {
+    screen.drawRGBBitmap(0, bannerY, g_worldTripsBannerPixels, g_worldTripsBannerWidth, g_worldTripsBannerHeight);
+  }
+  int bannerBottom = bannerY + (g_worldTripsBannerValid ? g_worldTripsBannerHeight : 0);
+
+  int nextIdx = trips_service_next_index();
+  bool ongoing = (nextIdx >= 0) && trips_service_is_ongoing(nextIdx);
+
+  // Countdown block -- DAYS / HOURS / MINUTES. Vertical spacing
+  // compressed from the original design (tuned for the smaller
+  // hand-drawn icon) now that the real banner (160px after cropping)
+  // takes noticeably more room -- first-pass estimate, likely needs
+  // fine-tuning once seen on-device, same as every other page's layout.
+  int countdownY = bannerBottom + 25;
+  if (nextIdx >= 0 && !ongoing) {
+    time_t now = time(nullptr);
+    time_t target = g_trips[nextIdx].departUnix;
+    uint32_t secsUntil = (target > now) ? (uint32_t)(target - now) : 0;
+    int days = secsUntil / 86400;
+    int hours = (secsUntil % 86400) / 3600;
+    int mins = (secsUntil % 3600) / 60;
+
+    char daysStr[8], hoursStr[8], minsStr[8];
+    snprintf(daysStr, sizeof(daysStr), "%d", days);
+    snprintf(hoursStr, sizeof(hoursStr), "%d", hours);
+    snprintf(minsStr, sizeof(minsStr), "%d", mins);
+
+    int colSpacing = 150;
+    int col1 = centerX - colSpacing, col2 = centerX, col3 = centerX + colSpacing;
+
+    screen.setTextSize(4);
+    screen.setTextColor(colorAccent, colorBg);
+    screen.setTextDatum(textdatum_t::middle_center);
+    screen.drawString(daysStr, col1, countdownY);
+    screen.drawString(hoursStr, col2, countdownY);
+    screen.drawString(minsStr, col3, countdownY);
+
+    screen.setTextSize(2);
+    screen.setTextColor(colorDim, colorBg);
+    int labelY = countdownY + 30;
+    screen.drawString("DAYS", col1, labelY);
+    screen.drawString("HOURS", col2, labelY);
+    screen.drawString("MINS", col3, labelY);
+  } else if (ongoing) {
+    screen.setTextSize(3);
+    screen.setTextColor(colorSuccess, colorBg);
+    screen.setTextDatum(textdatum_t::middle_center);
+    screen.drawString("CURRENTLY TRAVELING!", centerX, countdownY);
+  } else {
+    screen.setTextSize(2);
+    screen.setTextColor(colorDim, colorBg);
+    screen.setTextDatum(textdatum_t::middle_center);
+    screen.drawString("NO UPCOMING TRIPS", centerX, countdownY);
+  }
+
+  // Caption -- size2 rather than size3 (was, in the original spacious
+  // design) to save vertical room for the trip list below.
+  screen.setTextSize(2);
+  screen.setTextColor(colorText, colorBg);
+  screen.setTextDatum(textdatum_t::middle_center);
+  screen.drawString("UNTIL OUR HOLIDAY", centerX, countdownY + 58);
+  screen.setTextDatum(textdatum_t::top_left);
+
+  int midY = countdownY + 85;
+
+  // Next trip details -- order per follow-up feedback: Dates, Name,
+  // Location. All size2 (name was size3 in the original design) to
+  // keep this block compact enough to leave room for the list below.
+  if (nextIdx >= 0) {
+    Trip& t = g_trips[nextIdx];
+    char dateLine[48];
+    snprintf(dateLine, sizeof(dateLine), "%s to %s", t.depart.c_str(), t.returnDate.c_str());
+
+    screen.setTextSize(2);
+    screen.setTextColor(colorAccent, colorBg);
+    screen.setTextDatum(textdatum_t::middle_center);
+    screen.drawString(dateLine, centerX, midY);
+    midY += 28;
+
+    screen.setTextColor(colorText, colorBg);
+    screen.drawString(t.name.c_str(), centerX, midY);
+    midY += 28;
+
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString(t.location.c_str(), centerX, midY);
+    midY += 28;
+    screen.setTextDatum(textdatum_t::top_left);
+  } else {
+    midY += 28;
+  }
+
+  // Future trips list -- everything else in g_trips within 3 years,
+  // smaller font, sorted soonest-first, excluding whichever trip is
+  // already shown as "next" above. Simple insertion sort of indices --
+  // TRIPS_MAX (20) is small enough that this is negligible cost, and it
+  // means trips can be added to the JSON file in any order.
+  //
+  // NOTE: with the real banner taking 160px (vs. the earlier small
+  // hand-drawn icon), there's only room for roughly 1-2 list entries
+  // below the "next trip" details before hitting the bottom of the
+  // screen -- the listY < HEIGHT-20 loop bound below handles this
+  // gracefully (list just truncates) rather than overflowing off-screen.
+  {
+    int listY = midY + 6;
+    screen.setTextSize(2);
+    screen.setTextColor(colorAccent, colorBg);
+    screen.drawString("UPCOMING TRIPS", 30, listY);
+    screen.drawLine(30, listY + 20, 220, listY + 20, colorAccent);
+    listY += 28;
+
+    time_t now = time(nullptr);
+    time_t threeYearsOut = now + (3L * 365L * 86400L);
+
+    int order[TRIPS_MAX];
+    int orderCount = 0;
+    for (int i = 0; i < g_tripsCount; i++) {
+      if (i == nextIdx) continue;
+      if (g_trips[i].returnUnix < now) continue;
+      if (g_trips[i].departUnix > threeYearsOut) continue;
+      order[orderCount++] = i;
+    }
+    for (int a = 1; a < orderCount; a++) {
+      int key = order[a];
+      int b = a - 1;
+      while (b >= 0 && g_trips[order[b]].departUnix > g_trips[key].departUnix) {
+        order[b + 1] = order[b];
+        b--;
+      }
+      order[b + 1] = key;
+    }
+
+    screen.setTextSize(1);
+    screen.setTextColor(colorText, colorBg);
+    for (int i = 0; i < orderCount && listY < HEIGHT - 20; i++) {
+      Trip& t = g_trips[order[i]];
+      char line[96];
+      snprintf(line, sizeof(line), "%s to %s   %s (%s)",
+               t.depart.c_str(), t.returnDate.c_str(), t.name.c_str(), t.location.c_str());
+      screen.drawString(line, 30, listY);
+      listY += 20;
+    }
+    if (orderCount == 0) {
+      screen.setTextColor(colorDim, colorBg);
+      screen.drawString("No further trips scheduled", 30, listY);
+    }
+  }
 }
 
 void screen_manager_draw() {
@@ -4202,6 +4410,7 @@ void screen_manager_draw() {
     case 6: draw_imagery(); break;
     case 7: draw_trends(); break;
     case 8: draw_wv_astro(); break;
+    case 9: draw_world_trips(); break;
   }
 
   // Skipped on the WV Astro page (tab 8) only -- frees up a bit of
