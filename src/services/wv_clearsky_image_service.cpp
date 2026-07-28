@@ -132,9 +132,24 @@ static bool decodeAndStoreClearSkyJpeg(uint8_t *buf, size_t bufLen) {
     // own crisp labels drawn separately in screen_manager.cpp, in a
     // dedicated column reserved outside the image itself. Combined with
     // the existing 12.5% right crop, 80% of the source width is kept.
-    float leftCropFrac = 0.075f;
+    // Right crop made an explicit named fraction (was previously just
+    // implied by decodedW=0.80w combined with the old 0.075 left crop --
+    // 0.075+0.80=0.875, i.e. an unnamed 12.5% off the right). Kept at
+    // the same 0.125 value so the right edge doesn't move.
+    //
+    // leftCropFrac increased from 0.075 to 0.10 -- 0.075 still left a
+    // sliver of the source chart's own embedded label column visible (a
+    // gray legend box and partial ghosted text behind our overlaid
+    // labels, per on-device photo). decodedW now derives from both
+    // fractions so only the left edge of the crop window moves; decode
+    // scale (full JPEG_SCALE, no downscale) and croppedH (bottom crop)
+    // are both untouched, so resolution/height stay exactly as before.
+    // If leftCropFrac overshoots and starts cutting real chart columns,
+    // back off toward 0.075 again.
+    float leftCropFrac = 0.10f;
+    float rightCropFrac = 0.125f;
     s_decodeLeftCropOffset = (int)(w * leftCropFrac);
-    int decodedW = (int)(w * 0.80f);
+    int decodedW = (int)(w * (1.0f - leftCropFrac - rightCropFrac));
     int decodedH = croppedH;
 
     size_t decodeBufBytes = (size_t)decodedW * decodedH * sizeof(uint16_t);

@@ -4092,7 +4092,7 @@ static void draw_wv_astro() {
     // from visual inspection of a device photo, not precisely measured --
     // right edge clips off-screen silently past x=800, same established
     // safe-clipping behavior as the earlier left-edge adjustment above.
-    int chartX = 35;
+    int chartX = 39;
     // Reverted from the reserved-column approach (x=156, 640px image)
     // back to the full-width x=0 layout that was already working well --
     // our own row labels are now drawn overlaid directly on the image
@@ -4119,9 +4119,14 @@ static void draw_wv_astro() {
       // exactly. Group gap (Darkness->Smoke) confirmed as ~2 row-heights,
       // so the bottom group continues the same 0.070 step after a
       // 2x (0.140) gap, replacing the earlier ad hoc +4px nudge.
+      // Cloud Cover (top group anchor) and Smoke (bottom group anchor)
+      // confirmed correct per on-device photo -- held fixed. Every row
+      // below each anchor was drifting further down with each step, so
+      // the per-row increment was too large; reduced from 0.070 to 0.055
+      // in both groups while keeping the anchors themselves unchanged.
       const float rowFracs[9] = {
-        0.235f, 0.305f, 0.375f, 0.445f, 0.515f,
-        0.655f, 0.725f, 0.795f, 0.865f
+        0.235f, 0.290f, 0.345f, 0.400f, 0.455f,
+        0.655f, 0.710f, 0.765f, 0.820f
       };
       screen.setTextColor(colorText, colorBg);
       for (int i = 0; i < 9; i++) {
