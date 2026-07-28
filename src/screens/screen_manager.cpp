@@ -3784,23 +3784,6 @@ static void draw_wv_astro() {
   {
     int barX = 520, barY = 76, barW = 260, barH = 8;
 
-    screen.setTextSize(1);
-    int labelX = barX;
-    int labelY = 55;
-    screen.setTextColor(colorSuccess, colorBg);
-    screen.drawString("WV", labelX, labelY);
-    labelX += screen.textWidth("WV");
-    char wvNum[12];
-    snprintf(wvNum, sizeof(wvNum), " %.1f", (double)WV_BORTLE_CLASS);
-    screen.drawString(wvNum, labelX, labelY);
-    labelX += screen.textWidth(wvNum);
-    screen.setTextColor(colorDim, colorBg);
-    screen.drawString(" vs Home ", labelX, labelY);
-    labelX += screen.textWidth(" vs Home ");
-    char homeNum[12];
-    snprintf(homeNum, sizeof(homeNum), "%.1f", (double)HOME_BORTLE_CLASS);
-    screen.drawString(homeNum, labelX, labelY);
-
     static const uint8_t bortleStops[5][3] = {
       {80, 200, 120}, {160, 200, 60}, {230, 200, 40}, {230, 130, 40}, {220, 60, 60}
     };
@@ -3815,6 +3798,30 @@ static void draw_wv_astro() {
     float homeFrac = constrain((HOME_BORTLE_CLASS - 1.0f) / 8.0f, 0.0f, 1.0f);
     int homePointerX = barX + (int)(homeFrac * (barW - 1));
     screen.fillTriangle(homePointerX - 4, barY + barH + 5, homePointerX + 4, barY + barH + 5, homePointerX, barY + barH + 1, colorDim);
+
+    // Labels centered over their own markers -- "WV 2.0" over the green
+    // triangle, "Home 7.4" over the dim triangle, "vs" centered in the
+    // gap between them -- rather than one flat left-aligned line, now
+    // that marker positions are known before the labels are drawn.
+    screen.setTextSize(1);
+    int labelY = 55;
+
+    char wvLabel[16];
+    snprintf(wvLabel, sizeof(wvLabel), "WV %.1f", (double)WV_BORTLE_CLASS);
+    int wvLabelW = screen.textWidth(wvLabel);
+    screen.setTextColor(colorSuccess, colorBg);
+    screen.drawString(wvLabel, wvPointerX - wvLabelW / 2, labelY);
+
+    char homeLabel[16];
+    snprintf(homeLabel, sizeof(homeLabel), "Home %.1f", (double)HOME_BORTLE_CLASS);
+    int homeLabelW = screen.textWidth(homeLabel);
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString(homeLabel, homePointerX - homeLabelW / 2, labelY);
+
+    int vsLabelW = screen.textWidth("vs");
+    int vsCenterX = (wvPointerX + homePointerX) / 2;
+    screen.setTextColor(colorDim, colorBg);
+    screen.drawString("vs", vsCenterX - vsLabelW / 2, labelY);
   }
 
   // Best Night across the 3 real-data days -- days 4-5 have no seeing/
