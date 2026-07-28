@@ -120,7 +120,15 @@ static bool decodeAndStoreClearSkyJpeg(uint8_t *buf, size_t bufLen) {
     // request going forward. Decode is still full resolution -- no
     // JPEGDEC scale-down at all -- so this remains the maximum real
     // detail available from whatever gets fetched.
-    int decodedW = (int)(w * 0.875f); // cumulative 1.25in crop now (5th 1/4in step)
+    // Left crop added: 0.075 * w (~0.75in equivalent) trimmed off the
+    // left edge to remove the source chart's own blurry embedded row
+    // labels (illegible at this display resolution) -- replaced with our
+    // own crisp labels drawn separately in screen_manager.cpp, in a
+    // dedicated column reserved outside the image itself. Combined with
+    // the existing 12.5% right crop, 80% of the source width is kept.
+    float leftCropFrac = 0.075f;
+    s_decodeLeftCropOffset = (int)(w * leftCropFrac);
+    int decodedW = (int)(w * 0.80f);
     int decodedH = croppedH;
 
     size_t decodeBufBytes = (size_t)decodedW * decodedH * sizeof(uint16_t);
@@ -133,6 +141,7 @@ static bool decodeAndStoreClearSkyJpeg(uint8_t *buf, size_t bufLen) {
       s_decodeTargetH = decodedH;
       jpeg.decode(0, 0, 0);
       s_decodeTarget = nullptr;
+      s_decodeLeftCropOffset = 0;
 
       // Target box widened to use the visible space on the right side of
       // the page (previously only ~747px of the available ~780px) --
@@ -149,13 +158,15 @@ static bool decodeAndStoreClearSkyJpeg(uint8_t *buf, size_t bufLen) {
       // resolution (JPEG_SCALE full, not EIGHTH/QUARTER/HALF), so every
       // pixel written to the final buffer is a real downsample, never
       // an upsample guess.
-      int targetW = 800;
+      // Narrowed from 800 to 640 -- 160px on the left is now reserved on
+      // the DISPLAY side (not this image) for our own crisp row labels,
+      // drawn separately in screen_manager.cpp, replacing the source
+      // chart's own illegible embedded label column that was just
+      // cropped off above.
+      int targetW = 640;
       int targetH = (int)((float)targetW * croppedH / decodedW);
       if (targetH < 1) targetH = 1;
-      if (targetH > 190) targetH = 190; // raised from 170 (slightly taller) --
-                                          // the diagnostic HTTP-code line
-                                          // this cap used to clear has since
-                                          // been removed from the page
+      if (targetH > 190) targetH = 190;
 
       uint16_t *finalBuf = (uint16_t *)heap_caps_malloc((size_t)targetW * targetH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
       if (finalBuf != nullptr) {

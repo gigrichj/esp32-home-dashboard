@@ -4073,13 +4073,36 @@ static void draw_wv_astro() {
     // per follow-up feedback -- still leaves a ~10px gap above the
     // diagnostic HTTP line at the image's actual ~145px height.
     int chartY = 276; // raised 20px so the taller image (170->190px cap) grows upward, keeping the same bottom edge rather than pushing toward the screen edge
+    // Image moved from x=0 to x=156 -- 150px reserved at x=4 for our own
+    // row labels (see below), replacing the source chart's own embedded
+    // label column that's now cropped out of the fetched image (see
+    // wv_clearsky_image_service.cpp's left-crop).
+    int chartImageX = 156;
     screen.setTextSize(1);
     screen.setTextColor(colorDim, colorBg);
-    // x=0 -- full width, edge-to-edge with the top banner (which also
-    // spans x=0 to WIDTH with no margin), matching the exact 800px
-    // display width computed in wv_clearsky_image_service.cpp.
     if (g_wvClearSkyImageValid && g_wvClearSkyImagePixels != nullptr) {
-      screen.drawRGBBitmap(0, chartY, g_wvClearSkyImagePixels, g_wvClearSkyImageWidth, g_wvClearSkyImageHeight);
+      screen.drawRGBBitmap(chartImageX, chartY, g_wvClearSkyImagePixels, g_wvClearSkyImageWidth, g_wvClearSkyImageHeight);
+
+      // Our own row labels, replacing the source chart's illegible
+      // embedded ones. Y positions are FIRST-PASS ESTIMATES of each
+      // row's fraction of the image height (header ~20%, 5 evenly-
+      // spaced "Sky" rows, a gap, then 4 evenly-spaced "Ground" rows),
+      // eyeballed from a reference screenshot of the actual chart, not
+      // measured precisely -- expect these to need visual tuning once
+      // seen on-device.
+      const char* rowLabels[9] = {
+        "Cloud Cover", "ECMWF Cloud", "Transparency", "Seeing", "Darkness",
+        "Smoke", "Wind", "Humidity", "Temperature"
+      };
+      const float rowFracs[9] = {
+        0.235f, 0.305f, 0.375f, 0.445f, 0.515f,
+        0.635f, 0.705f, 0.775f, 0.845f
+      };
+      screen.setTextColor(colorText, colorBg);
+      for (int i = 0; i < 9; i++) {
+        int labelY = chartY + (int)(rowFracs[i] * g_wvClearSkyImageHeight) - 6;
+        screen.drawString(rowLabels[i], 4, labelY);
+      }
     } else {
       char chartHttpLine[32];
       snprintf(chartHttpLine, sizeof(chartHttpLine), "Chart not loaded (HTTP %d)", g_wvClearSkyImageLastHttpCode);
