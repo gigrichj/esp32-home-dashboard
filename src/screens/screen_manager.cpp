@@ -4092,7 +4092,7 @@ static void draw_wv_astro() {
     // from visual inspection of a device photo, not precisely measured --
     // right edge clips off-screen silently past x=800, same established
     // safe-clipping behavior as the earlier left-edge adjustment above.
-    int chartX = 39;
+    int chartX = 69;
     // Reverted from the reserved-column approach (x=156, 640px image)
     // back to the full-width x=0 layout that was already working well --
     // our own row labels are now drawn overlaid directly on the image
@@ -4128,9 +4128,18 @@ static void draw_wv_astro() {
         0.235f, 0.290f, 0.345f, 0.400f, 0.455f,
         0.655f, 0.710f, 0.765f, 0.820f
       };
+      // Exact per-row pixel corrections from on-device photo review,
+      // on top of the existing fraction-based estimate -- more precise
+      // than re-deriving rowFracs again. Order matches rowLabels[]:
+      // Cloud Cover, ECMWF Cloud, Transparency, Seeing, Darkness,
+      // Smoke, Wind, Humidity, Temperature.
+      const int rowPixelAdjust[9] = {
+        -1, 0, 2, 2, 3,
+        0, 1, 2, 5
+      };
       screen.setTextColor(colorText, colorBg);
       for (int i = 0; i < 9; i++) {
-        int labelY = chartY + 20 + (int)(rowFracs[i] * g_wvClearSkyImageHeight) - 6;
+        int labelY = chartY + 20 + (int)(rowFracs[i] * g_wvClearSkyImageHeight) - 6 + rowPixelAdjust[i];
         screen.drawString(rowLabels[i], 4, labelY);
       }
     } else {
