@@ -4283,29 +4283,25 @@ static void draw_world_trips() {
 
   int midY = countdownY + 85;
 
-  // Next trip details -- order per follow-up feedback: Dates, Name,
-  // Location. All size2 (name was size3 in the original design) to
-  // keep this block compact enough to leave room for the list below.
+  // Next trip details -- combined into 2 lines per follow-up feedback:
+  // Line 1 = Dates & Name, Line 2 = Location & Company. Frees up 56px
+  // vs. the earlier 4-line version, directly helping the upcoming-trips
+  // list below (already tight given the 160px banner).
   if (nextIdx >= 0) {
     Trip& t = g_trips[nextIdx];
-    char dateLine[48];
-    snprintf(dateLine, sizeof(dateLine), "%s to %s", t.depart.c_str(), t.returnDate.c_str());
+    char line1[64];
+    snprintf(line1, sizeof(line1), "%s to %s   %s", t.depart.c_str(), t.returnDate.c_str(), t.name.c_str());
+    char line2[64];
+    snprintf(line2, sizeof(line2), "%s   %s", t.location.c_str(), t.company.c_str());
 
     screen.setTextSize(2);
     screen.setTextColor(colorAccent, colorBg);
     screen.setTextDatum(textdatum_t::middle_center);
-    screen.drawString(dateLine, centerX, midY);
-    midY += 28;
-
-    screen.setTextColor(colorText, colorBg);
-    screen.drawString(t.name.c_str(), centerX, midY);
+    screen.drawString(line1, centerX, midY);
     midY += 28;
 
     screen.setTextColor(colorDim, colorBg);
-    screen.drawString(t.location.c_str(), centerX, midY);
-    midY += 28;
-
-    screen.drawString(t.company.c_str(), centerX, midY);
+    screen.drawString(line2, centerX, midY);
     midY += 28;
     screen.setTextDatum(textdatum_t::top_left);
   } else {
@@ -4356,11 +4352,24 @@ static void draw_world_trips() {
     screen.setTextColor(colorText, colorBg);
     for (int i = 0; i < orderCount && listY < HEIGHT - 20; i++) {
       Trip& t = g_trips[order[i]];
-      char line[96];
-      snprintf(line, sizeof(line), "%s to %s   %s (%s)",
-               t.depart.c_str(), t.returnDate.c_str(), t.name.c_str(), t.company.c_str());
-      screen.drawString(line, 30, listY);
-      listY += 20;
+      char line1[64];
+      snprintf(line1, sizeof(line1), "%s to %s   %s", t.depart.c_str(), t.returnDate.c_str(), t.name.c_str());
+      screen.setTextColor(colorText, colorBg);
+      screen.drawString(line1, 30, listY);
+      listY += 12;
+
+      char line2[64];
+      snprintf(line2, sizeof(line2), "%s   %s", t.location.c_str(), t.company.c_str());
+      screen.setTextColor(colorDim, colorBg);
+      screen.drawString(line2, 30, listY);
+      listY += 14;
+
+      // Divider between entries -- omitted after the last one so the
+      // list doesn't end with a trailing line.
+      if (i < orderCount - 1) {
+        screen.drawLine(30, listY, WIDTH - 30, listY, colorDim);
+        listY += 8;
+      }
     }
     if (orderCount == 0) {
       screen.setTextColor(colorDim, colorBg);

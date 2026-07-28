@@ -11,3 +11,4 @@ include/secrets.h
 # OS junk
 .DS_Store
 Thumbs.db
+trip_data/
