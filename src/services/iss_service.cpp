@@ -1,6 +1,5 @@
 #include "iss_service.h"
 #include <WiFiClient.h>
-#include <NetworkClientSecure.h>
 #include <esp_heap_caps.h>
 #include "wifi_manager.h"
 #include "secrets.h"
@@ -311,23 +310,19 @@ void iss_service_update() {
   // Confirmed on-device: this fetch was failing from heap FRAGMENTATION,
   // not exhaustion -- a real log showed 125528 bytes total free internal
   // heap but only a 40948-byte largest contiguous block. TLS handshakes
-  // need one large contiguous allocation for session buffers; the
-  // default NetworkClientSecure RX/TX buffer sizes (commonly ~16KB each,
-  // 32KB+ combined plus handshake overhead) don't fit in a 41KB largest
-  // block once other allocations elsewhere have fragmented the heap.
-  // Fix: create the TLS client explicitly and shrink its buffers via
-  // setBufferSizes() before connecting, so the handshake needs less
-  // contiguous space to succeed. setInsecure() preserves the same no-
-  // certificate-validation behavior the old bare http.begin(url) had.
-  NetworkClientSecure client;
-  client.setInsecure();
-  client.setBufferSizes(4096, 1024);
-
+  // need one large contiguous allocation for session buffers.
+  // BUILD NOTE: attempted a per-connection fix via
+  // NetworkClientSecure::setBufferSizes(), which turned out to be an
+  // ESP8266-only (BearSSL) API -- ESP32's NetworkClientSecure (mbedTLS)
+  // doesn't expose that method, so it didn't compile. Reverted to the
+  // plain http.begin(url) for now; the real fix on ESP32 is a build-time
+  // mbedTLS buffer size reduction (CONFIG_MBEDTLS_SSL_IN/OUT_CONTENT_LEN
+  // in sdkconfig), a bigger project-wide change to consider separately.
   Serial.printf("[ISS] free internal heap before HTTPS: %u bytes, largest free block: %u bytes\n",
                 (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
 
-  http.begin(client, url);
+  http.begin(url);
   int code = http.GET();
   state_lock();
   g_iss.lastHttpCode = code;
