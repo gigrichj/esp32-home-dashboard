@@ -146,7 +146,10 @@ static bool decodeAndStoreClearSkyJpeg(uint8_t *buf, size_t bufLen) {
     // are both untouched, so resolution/height stay exactly as before.
     // If leftCropFrac overshoots and starts cutting real chart columns,
     // back off toward 0.075 again.
-    float leftCropFrac = 0.10f;
+    // +5px more crop requested on top of the existing 0.10 -- source is
+    // fetched at w=1800 (see wsrv.nl URL below), so 5px = 5/1800 = ~0.00278
+    // added as a fraction. 0.10 + 0.00278 = ~0.10278.
+    float leftCropFrac = 0.10278f;
     float rightCropFrac = 0.125f;
     s_decodeLeftCropOffset = (int)(w * leftCropFrac);
     int decodedW = (int)(w * (1.0f - leftCropFrac - rightCropFrac));
