@@ -4131,7 +4131,7 @@ static void draw_wv_astro() {
     // from visual inspection of a device photo, not precisely measured --
     // right edge clips off-screen silently past x=800, same established
     // safe-clipping behavior as the earlier left-edge adjustment above.
-    int chartX = 56;
+    int chartX = 57;
     // Reverted from the reserved-column approach (x=156, 640px image)
     // back to the full-width x=0 layout that was already working well --
     // our own row labels are now drawn overlaid directly on the image
@@ -4207,6 +4207,19 @@ static void draw_wv_astro() {
 
 }
 
+// Formats a trip date as "D Mon YYYY" (e.g. "5 Dec 2026") for on-screen
+// display, per follow-up feedback -- storage/JSON still uses plain
+// "YYYY-MM-DD" strings (trips_service.cpp), this only affects rendering.
+// %d in printf naturally omits any leading zero on the day, unlike
+// strftime's %d/%e which always pad -- so the month is fetched via
+// strftime("%b") alone and the day/year are assembled with snprintf.
+static void formatTripDate(time_t unixTime, char* out, size_t outLen) {
+  struct tm* ti = localtime(&unixTime);
+  char monthBuf[8];
+  strftime(monthBuf, sizeof(monthBuf), "%b", ti);
+  snprintf(out, outLen, "%d %s %d", ti->tm_mday, monthBuf, ti->tm_year + 1900);
+}
+
 static void draw_world_trips() {
   StateLockGuard lockGuard;
   int centerX = WIDTH / 2;
@@ -4218,10 +4231,24 @@ static void draw_world_trips() {
   // sun/palm-tree icon per follow-up feedback. Drawn flush under the
   // top header banner (y=40), full 800px width.
   int bannerY = 40;
+  // Top 20px (1/4in at this project's established 80px/in convention)
+  // cropped off per follow-up feedback, to reclaim room for the
+  // upcoming-trips list below -- done by simply skipping the first 20
+  // rows of the already-decoded banner rather than re-cropping/
+  // re-embedding all 8 source images again. Cropped from the top rather
+  // than the bottom: across most of these 8 images, the main subject
+  // (buildings/globe/tiles/icons) sits toward the vertical center-to-
+  // bottom of the already-tight crop, often right at the bottom edge,
+  // while the top edge is more likely to still have a sliver of
+  // background before the busy content starts.
+  int cropRows = 20;
+  int displayedBannerHeight = g_worldTripsBannerValid ? (g_worldTripsBannerHeight - cropRows) : 0;
+  if (displayedBannerHeight < 0) displayedBannerHeight = 0;
   if (g_worldTripsBannerValid && g_worldTripsBannerPixels != nullptr) {
-    screen.drawRGBBitmap(0, bannerY, g_worldTripsBannerPixels, g_worldTripsBannerWidth, g_worldTripsBannerHeight);
+    const uint16_t* croppedPixels = g_worldTripsBannerPixels + (size_t)cropRows * g_worldTripsBannerWidth;
+    screen.drawRGBBitmap(0, bannerY, croppedPixels, g_worldTripsBannerWidth, displayedBannerHeight);
   }
-  int bannerBottom = bannerY + (g_worldTripsBannerValid ? g_worldTripsBannerHeight : 0);
+  int bannerBottom = bannerY + displayedBannerHeight;
 
   int nextIdx = trips_service_next_index();
   bool ongoing = (nextIdx >= 0) && trips_service_is_ongoing(nextIdx);
@@ -4249,10 +4276,17 @@ static void draw_world_trips() {
     int col1 = centerX - colSpacing, col2 = centerX, col3 = centerX + colSpacing;
 
     screen.setTextSize(4);
-    screen.setTextColor(colorAccent, colorBg);
     screen.setTextDatum(textdatum_t::middle_center);
+    // Days in red (colorDanger, genuinely red in both day/night modes)
+    // and Hours in explicit white -- not colorText, since colorText is
+    // actually red in night mode (this project's night theme), which
+    // would clash with Days rather than contrast against it. Minutes
+    // left unchanged (colorAccent) since not requested.
+    screen.setTextColor(colorDanger, colorBg);
     screen.drawString(daysStr, col1, countdownY);
+    screen.setTextColor(screen.color565(255, 255, 255), colorBg);
     screen.drawString(hoursStr, col2, countdownY);
+    screen.setTextColor(colorAccent, colorBg);
     screen.drawString(minsStr, col3, countdownY);
 
     screen.setTextSize(2);
@@ -4289,18 +4323,37 @@ static void draw_world_trips() {
   // list below (already tight given the 160px banner).
   if (nextIdx >= 0) {
     Trip& t = g_trips[nextIdx];
-    char line1[64];
-    snprintf(line1, sizeof(line1), "%s to %s   %s", t.depart.c_str(), t.returnDate.c_str(), t.name.c_str());
+    char departDisp[16], returnDisp[16];
+    formatTripDate(t.departUnix, departDisp, sizeof(departDisp));
+    formatTripDate(t.returnUnix, returnDisp, sizeof(returnDisp));
+    char datesStr[48];
+    snprintf(datesStr, sizeof(datesStr), "%s to %s   ", departDisp, returnDisp);
     char line2[64];
     snprintf(line2, sizeof(line2), "%s   %s", t.location.c_str(), t.company.c_str());
 
     screen.setTextSize(2);
+    // Line 1 split into two colored segments (dates in accent, name in
+    // red) rather than one drawString call, per follow-up feedback --
+    // this project's textdatum_t only offers top_left/top_right/
+    // middle_center (no middle_left), so horizontal centering is done
+    // manually via textWidth() and a -8px vertical offset (half this
+    // project's ~16px size2 line height) replicates middle_center's
+    // vertical centering while still allowing two different colors on
+    // one line. First-pass vertical offset estimate, adjustable like
+    // every other pixel value in this project.
+    screen.setTextDatum(textdatum_t::top_left);
+    int datesWidth = screen.textWidth(datesStr);
+    int nameWidth = screen.textWidth(t.name.c_str());
+    int line1StartX = centerX - (datesWidth + nameWidth) / 2;
+    int line1Y = midY - 8;
     screen.setTextColor(colorAccent, colorBg);
-    screen.setTextDatum(textdatum_t::middle_center);
-    screen.drawString(line1, centerX, midY);
+    screen.drawString(datesStr, line1StartX, line1Y);
+    screen.setTextColor(colorDanger, colorBg);
+    screen.drawString(t.name.c_str(), line1StartX + datesWidth, line1Y);
     midY += 28;
 
     screen.setTextColor(colorDim, colorBg);
+    screen.setTextDatum(textdatum_t::middle_center);
     screen.drawString(line2, centerX, midY);
     midY += 28;
     screen.setTextDatum(textdatum_t::top_left);
@@ -4320,7 +4373,7 @@ static void draw_world_trips() {
   // screen -- the listY < HEIGHT-20 loop bound below handles this
   // gracefully (list just truncates) rather than overflowing off-screen.
   {
-    int listY = midY + 6;
+    int listY = midY - 4;
     screen.setTextSize(2);
     screen.setTextColor(colorAccent, colorBg);
     screen.drawString("UPCOMING TRIPS", 30, listY);
@@ -4352,16 +4405,14 @@ static void draw_world_trips() {
     screen.setTextColor(colorText, colorBg);
     for (int i = 0; i < orderCount && listY < HEIGHT - 20; i++) {
       Trip& t = g_trips[order[i]];
-      char line1[64];
-      snprintf(line1, sizeof(line1), "%s to %s   %s", t.depart.c_str(), t.returnDate.c_str(), t.name.c_str());
+      char departDisp[16], returnDisp[16];
+      formatTripDate(t.departUnix, departDisp, sizeof(departDisp));
+      formatTripDate(t.returnUnix, returnDisp, sizeof(returnDisp));
+      char line[128];
+      snprintf(line, sizeof(line), "%s to %s / %s / %s / %s",
+               departDisp, returnDisp, t.name.c_str(), t.location.c_str(), t.company.c_str());
       screen.setTextColor(colorText, colorBg);
-      screen.drawString(line1, 30, listY);
-      listY += 12;
-
-      char line2[64];
-      snprintf(line2, sizeof(line2), "%s   %s", t.location.c_str(), t.company.c_str());
-      screen.setTextColor(colorDim, colorBg);
-      screen.drawString(line2, 30, listY);
+      screen.drawString(line, 30, listY);
       listY += 14;
 
       // Divider between entries -- omitted after the last one so the
