@@ -4092,7 +4092,7 @@ static void draw_wv_astro() {
     // from visual inspection of a device photo, not precisely measured --
     // right edge clips off-screen silently past x=800, same established
     // safe-clipping behavior as the earlier left-edge adjustment above.
-    int chartX = 15;
+    int chartX = 35;
     // Reverted from the reserved-column approach (x=156, 640px image)
     // back to the full-width x=0 layout that was already working well --
     // our own row labels are now drawn overlaid directly on the image
@@ -4114,14 +4114,18 @@ static void draw_wv_astro() {
         "Cloud Cover", "ECMWF Cloud", "Transparency", "Seeing", "Darkness",
         "Smoke", "Wind", "Humidity", "Temperature"
       };
+      // Top group (Cloud Cover..Darkness) confirmed equal-height bands
+      // with zero gap between them -- uniform 0.070 step matches that
+      // exactly. Group gap (Darkness->Smoke) confirmed as ~2 row-heights,
+      // so the bottom group continues the same 0.070 step after a
+      // 2x (0.140) gap, replacing the earlier ad hoc +4px nudge.
       const float rowFracs[9] = {
         0.235f, 0.305f, 0.375f, 0.445f, 0.515f,
-        0.635f, 0.705f, 0.775f, 0.845f
+        0.655f, 0.725f, 0.795f, 0.865f
       };
       screen.setTextColor(colorText, colorBg);
       for (int i = 0; i < 9; i++) {
         int labelY = chartY + 20 + (int)(rowFracs[i] * g_wvClearSkyImageHeight) - 6;
-        if (i >= 5) labelY += 4; // extra gap between Darkness (i=4) and Smoke (i=5)
         screen.drawString(rowLabels[i], 4, labelY);
       }
     } else {
