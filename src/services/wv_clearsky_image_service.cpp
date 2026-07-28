@@ -209,12 +209,17 @@ bool wv_clearsky_fetch_image() {
   // not a photo, so JPEG's lossy compression was likely softening the
   // hard edges between blocks; max quality should sharpen those edges
   // at the cost of a somewhat larger fetch.
-  // sharp=1 -- wsrv.nl's sharpen filter (accurate sharpen of the L
-  // channel in LAB color space), sigma=1 as a moderate starting value.
-  // Should help sharpen the hard edges between color blocks that JPEG's
-  // lossy compression can soften, on top of the quality/resolution bump.
+  // w=1800 (backed off from 2400) -- the 2400 request produced a
+  // ~2.2MB full-resolution decode buffer (single contiguous PSRAM
+  // allocation), which correlated with a real on-device failure: a
+  // "[WV ClearSky] JPEG openRAM failed" immediately preceded by an
+  // unrelated ISS fetch failing with an SSL memory allocation error a
+  // few seconds earlier -- both consistent with PSRAM exhaustion/
+  // fragmentation from that one oversized buffer. 1800 keeps most of
+  // the quality/sharpen gains while cutting the decode buffer to a
+  // safer size.
   String sourceUrl = "https://www.cleardarksky.com/c/spruce_WVcsk.gif?c=2372454";
-  String proxiedUrl = "https://wsrv.nl/?url=" + urlEncode(sourceUrl) + "&output=jpg&w=2400&q=100&sharp=1";
+  String proxiedUrl = "https://wsrv.nl/?url=" + urlEncode(sourceUrl) + "&output=jpg&w=1800&q=100&sharp=5";
 
   HTTPClient http;
   http.begin(proxiedUrl);
