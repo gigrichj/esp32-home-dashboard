@@ -220,17 +220,22 @@ bool wv_clearsky_fetch_image() {
   // not a photo, so JPEG's lossy compression was likely softening the
   // hard edges between blocks; max quality should sharpen those edges
   // at the cost of a somewhat larger fetch.
-  // w=1800 (backed off from 2400) -- the 2400 request produced a
-  // ~2.2MB full-resolution decode buffer (single contiguous PSRAM
-  // allocation), which correlated with a real on-device failure: a
-  // "[WV ClearSky] JPEG openRAM failed" immediately preceded by an
-  // unrelated ISS fetch failing with an SSL memory allocation error a
-  // few seconds earlier -- both consistent with PSRAM exhaustion/
-  // fragmentation from that one oversized buffer. 1800 keeps most of
-  // the quality/sharpen gains while cutting the decode buffer to a
-  // safer size.
+  // q=85 (reverted from 100) -- diagnostics on-device ruled out the
+  // memory-exhaustion theory (3.4MB free PSRAM, and the fetched file
+  // itself was a fully-read, valid JPEG: readTotal matched Content-
+  // Length exactly, magic number FF D8 FF DB) -- yet jpeg.openRAM()
+  // still failed on a 638KB file. That's a huge file for this decoder
+  // (SpaceX images are typically ~100KB), and JPEGDEC needs its own
+  // internal working buffers (Huffman tables, MCU state) separate from
+  // the PSRAM output buffer we control -- likely allocated from the
+  // much smaller internal SRAM pool, not the PSRAM this diagnostic
+  // measured. q=100 is almost certainly why the file ballooned (JPEG
+  // compression gets dramatically less efficient near-lossless,
+  // especially on hard block edges like this chart). Reverting to the
+  // known-good q=85 to test that theory directly, one variable at a
+  // time, while keeping the width/sharpen changes.
   String sourceUrl = "https://www.cleardarksky.com/c/spruce_WVcsk.gif?c=2372454";
-  String proxiedUrl = "https://wsrv.nl/?url=" + urlEncode(sourceUrl) + "&output=jpg&w=1800&q=100&sharp=5";
+  String proxiedUrl = "https://wsrv.nl/?url=" + urlEncode(sourceUrl) + "&output=jpg&w=1800&q=85&sharp=5";
 
   HTTPClient http;
   http.begin(proxiedUrl);
