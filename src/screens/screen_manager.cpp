@@ -4092,7 +4092,7 @@ static void draw_wv_astro() {
     // from visual inspection of a device photo, not precisely measured --
     // right edge clips off-screen silently past x=800, same established
     // safe-clipping behavior as the earlier left-edge adjustment above.
-    int chartX = 69;
+    int chartX = 59;
     // Reverted from the reserved-column approach (x=156, 640px image)
     // back to the full-width x=0 layout that was already working well --
     // our own row labels are now drawn overlaid directly on the image
@@ -4111,8 +4111,8 @@ static void draw_wv_astro() {
       // separation specifically between Darkness and Smoke (the boundary
       // between the chart's "Sky" and "Ground" row groups).
       const char* rowLabels[9] = {
-        "Cloud Cover", "ECMWF Cloud", "Transparency", "Seeing", "Darkness",
-        "Smoke", "Wind", "Humidity", "Temperature"
+        "Clouds", "ECMWF Cl", "Transpcy", "Seeing", "Darkness",
+        "Smoke", "Wind", "Humidity", "Temp"
       };
       // Top group (Cloud Cover..Darkness) confirmed equal-height bands
       // with zero gap between them -- uniform 0.070 step matches that

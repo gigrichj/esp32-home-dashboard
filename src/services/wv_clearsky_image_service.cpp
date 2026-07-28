@@ -275,7 +275,15 @@ bool wv_clearsky_fetch_image() {
   // known-good q=85 to test that theory directly, one variable at a
   // time, while keeping the width/sharpen changes.
   String sourceUrl = "https://www.cleardarksky.com/c/spruce_WVcsk.gif?c=2372454";
-  String proxiedUrl = "https://wsrv.nl/?url=" + urlEncode(sourceUrl) + "&output=jpg&w=1800&q=85&sharp=10";
+  // Cache-buster (&t=millis()) added to the wsrv.nl proxy URL -- without
+  // it, wsrv.nl caches based on the full URL, which never changed
+  // between fetches, so it kept serving the same stale cached JPEG even
+  // after the actual source chart on cleardarsky.com had moved on
+  // (confirmed by comparing the live source GIF directly against what
+  // was showing on-device). Appending a value that changes on every
+  // single fetch forces wsrv.nl to treat each request as new and pull
+  // fresh from source every time.
+  String proxiedUrl = "https://wsrv.nl/?url=" + urlEncode(sourceUrl) + "&output=jpg&w=1800&q=85&sharp=10&t=" + String(millis());
 
   HTTPClient http;
   http.begin(proxiedUrl);
