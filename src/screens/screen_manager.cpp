@@ -4458,6 +4458,7 @@ static uint16_t lastTouchY = 0;
 
 static const int AVIATION_TAB_INDEX = 1;
 static const int IMAGERY_TAB_INDEX = 6;
+static const int WORLD_TRIPS_TAB_INDEX = 9;
 
 void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
   uint32_t now = millis();
@@ -4564,6 +4565,18 @@ void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
         imagery_update();
       }
 
+      // Tap-to-cycle hotspot over the World Trips banner image itself
+      // (y=40 to y=200, full width) -- lets the images be checked one by
+      // one on demand instead of waiting for the 3-hour rotation timer,
+      // same "manual override" idea as the Imagery page's hotspot above,
+      // just placed over the visible image rather than a hidden banner
+      // strip since there's no separate title-bar clear space to use here.
+      bool hitWorldTripsHotspot = currentTab == WORLD_TRIPS_TAB_INDEX &&
+                                   lastTouchY >= 40 && lastTouchY <= 200;
+      if (hitWorldTripsHotspot) {
+        world_trips_banner_update();
+      }
+
       bool handledAviation = false;
       if (currentTab == AVIATION_TAB_INDEX) {
         if (g_selectedAircraftIndex >= 0) {
@@ -4598,6 +4611,9 @@ void screen_manager_handle_touch(bool touched, uint16_t x, uint16_t y) {
       } else if (hitImageryHotspot) {
         // Already handled above -- just prevents falling through to
         // tap-to-advance.
+      } else if (hitWorldTripsHotspot) {
+        // Same as hitImageryHotspot above -- already handled, just
+        // prevents this tap from also advancing to the next tab.
       } else if (!handledAviation && !g_pageLocked) {
         currentTab = (currentTab + 1) % TAB_COUNT;
       }
