@@ -164,15 +164,22 @@ static bool decodeAndStoreClearSkyJpeg(uint8_t *buf, size_t bufLen) {
       // resolution (JPEG_SCALE full, not EIGHTH/QUARTER/HALF), so every
       // pixel written to the final buffer is a real downsample, never
       // an upsample guess.
-      // Narrowed from 800 to 640 -- 160px on the left is now reserved on
-      // the DISPLAY side (not this image) for our own crisp row labels,
-      // drawn separately in screen_manager.cpp, replacing the source
-      // chart's own illegible embedded label column that was just
-      // cropped off above.
-      int targetW = 640;
+      // Reverted back to the full 800px width -- the reserved-column
+      // approach (shrinking this to 640 and moving the image right) was
+      // undone per follow-up feedback; the left crop above already
+      // removes the source chart's own embedded label column, and our
+      // own replacement labels are now drawn overlaid on the image
+      // itself (screen_manager.cpp) rather than in a separate reserved
+      // strip -- same "crop the source, stretch across the full display
+      // width" pattern already used for the right-edge crop.
+      int targetW = 800;
       int targetH = (int)((float)targetW * croppedH / decodedW);
       if (targetH < 1) targetH = 1;
-      if (targetH > 190) targetH = 190;
+      // Raised from 190 to 200 -- the version number that used to sit
+      // right at chartY+190 has been removed from this page (see
+      // screen_manager.cpp), freeing genuine room down toward the
+      // actual screen edge, not just an arbitrary bump.
+      if (targetH > 200) targetH = 200;
 
       uint16_t *finalBuf = (uint16_t *)heap_caps_malloc((size_t)targetW * targetH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
       if (finalBuf != nullptr) {

@@ -3772,7 +3772,7 @@ static void draw_wv_astro() {
   screen.setTextDatum(textdatum_t::top_left);
 
   screen.setTextSize(2);
-  screen.setTextColor(colorAccent, colorBg);
+  screen.setTextColor(screen.color565(255, 255, 255), colorBg); // fixed white, per follow-up feedback
   screen.drawString("SPRUCE KNOB, WV - 5 DAY FORECAST", 20, 50);
 
   // Bortle scale comparison, moved to the right edge (matching the home
@@ -3797,7 +3797,8 @@ static void draw_wv_astro() {
 
     float homeFrac = constrain((HOME_BORTLE_CLASS - 1.0f) / 8.0f, 0.0f, 1.0f);
     int homePointerX = barX + (int)(homeFrac * (barW - 1));
-    screen.fillTriangle(homePointerX - 4, barY + barH + 5, homePointerX + 4, barY + barH + 5, homePointerX, barY + barH + 1, colorDim);
+    uint16_t homeMarkerColor = screen.color565(230, 130, 40); // orange, matching this project's established POOR/warning color
+    screen.fillTriangle(homePointerX - 4, barY + barH + 5, homePointerX + 4, barY + barH + 5, homePointerX, barY + barH + 1, homeMarkerColor);
 
     // Labels centered over their own markers -- "WV 2.0" over the green
     // triangle, "Home 7.4" over the dim triangle, "vs" centered in the
@@ -3815,7 +3816,7 @@ static void draw_wv_astro() {
     char homeLabel[16];
     snprintf(homeLabel, sizeof(homeLabel), "Home %.1f", (double)HOME_BORTLE_CLASS);
     int homeLabelW = screen.textWidth(homeLabel);
-    screen.setTextColor(colorDim, colorBg);
+    screen.setTextColor(homeMarkerColor, colorBg);
     screen.drawString(homeLabel, homePointerX - homeLabelW / 2, labelY);
 
     int vsLabelW = screen.textWidth("vs");
@@ -3841,10 +3842,10 @@ static void draw_wv_astro() {
     }
     if (bestOverallIdx >= 0) {
       uint16_t bestColor;
-      if (bestOverallBadness < 0.25f) bestColor = colorSuccess;
-      else if (bestOverallBadness < 0.5f) bestColor = screen.color565(230, 200, 40);
-      else if (bestOverallBadness < 0.75f) bestColor = screen.color565(230, 130, 40);
-      else bestColor = colorDanger;
+      // Fixed to always-green per follow-up feedback (was previously
+      // dynamic, scaling with how good/bad the best night's conditions
+      // were).
+      bestColor = colorSuccess;
 
       char bestDateBuf[16];
       char bestTimeBuf[16];
@@ -3859,18 +3860,31 @@ static void draw_wv_astro() {
   }
 
   // Aurora/Kp -- single planetary value, identical for WV and home, so
-  // shown once here rather than duplicated per forecast day.
+  // shown once here rather than duplicated per forecast day. Rating word
+  // color-coded on a Likely=green -> Unlikely=red scale, same GOOD->BAD
+  // ramp already used for the S:/T:/C: condition labels elsewhere.
   {
-    char auroraLine[64];
+    char auroraPrefix[32];
+    const char* auroraLabel = nullptr;
+    uint16_t auroraLabelColor = colorText;
     if (g_kpObservedValid) {
-      snprintf(auroraLine, sizeof(auroraLine), "AURORA (Kp %.1f): %s",
-               (double)g_currentKp, aurora_visibility_label(g_currentKp));
+      snprintf(auroraPrefix, sizeof(auroraPrefix), "AURORA (Kp %.1f): ", (double)g_currentKp);
+      auroraLabel = aurora_visibility_label(g_currentKp);
+      if (strcmp(auroraLabel, "Likely") == 0) auroraLabelColor = colorSuccess;
+      else if (strcmp(auroraLabel, "Possible") == 0) auroraLabelColor = screen.color565(230, 200, 40);
+      else if (strcmp(auroraLabel, "Slight Chance") == 0) auroraLabelColor = screen.color565(230, 130, 40);
+      else auroraLabelColor = colorDanger;
     } else {
-      snprintf(auroraLine, sizeof(auroraLine), "AURORA: no data yet");
+      snprintf(auroraPrefix, sizeof(auroraPrefix), "AURORA: no data yet");
     }
     screen.setTextSize(2);
     screen.setTextColor(colorAccent, colorBg);
-    screen.drawString(auroraLine, 20, 120);
+    screen.drawString(auroraPrefix, 20, 120);
+    if (auroraLabel != nullptr) {
+      int labelX = 20 + screen.textWidth(auroraPrefix);
+      screen.setTextColor(auroraLabelColor, colorBg);
+      screen.drawString(auroraLabel, labelX, 120);
+    }
   }
 
   if (g_wvAstroForecastCount == 0) {
@@ -4073,23 +4087,23 @@ static void draw_wv_astro() {
     // per follow-up feedback -- still leaves a ~10px gap above the
     // diagnostic HTTP line at the image's actual ~145px height.
     int chartY = 276; // raised 20px so the taller image (170->190px cap) grows upward, keeping the same bottom edge rather than pushing toward the screen edge
-    // Image moved from x=0 to x=156 -- 150px reserved at x=4 for our own
-    // row labels (see below), replacing the source chart's own embedded
-    // label column that's now cropped out of the fetched image (see
-    // wv_clearsky_image_service.cpp's left-crop).
-    int chartImageX = 156;
+    // Reverted from the reserved-column approach (x=156, 640px image)
+    // back to the full-width x=0 layout that was already working well --
+    // our own row labels are now drawn overlaid directly on the image
+    // instead of in a separate reserved strip.
     screen.setTextSize(1);
     screen.setTextColor(colorDim, colorBg);
     if (g_wvClearSkyImageValid && g_wvClearSkyImagePixels != nullptr) {
-      screen.drawRGBBitmap(chartImageX, chartY, g_wvClearSkyImagePixels, g_wvClearSkyImageWidth, g_wvClearSkyImageHeight);
+      screen.drawRGBBitmap(0, chartY, g_wvClearSkyImagePixels, g_wvClearSkyImageWidth, g_wvClearSkyImageHeight);
 
-      // Our own row labels, replacing the source chart's illegible
-      // embedded ones. Y positions are FIRST-PASS ESTIMATES of each
-      // row's fraction of the image height (header ~20%, 5 evenly-
-      // spaced "Sky" rows, a gap, then 4 evenly-spaced "Ground" rows),
-      // eyeballed from a reference screenshot of the actual chart, not
-      // measured precisely -- expect these to need visual tuning once
-      // seen on-device.
+      // Our own row labels, overlaid on the image (replacing the source
+      // chart's illegible embedded ones, now cropped off the source
+      // entirely). Y positions are FIRST-PASS ESTIMATES of each row's
+      // fraction of the image height, eyeballed from a reference
+      // screenshot, not measured precisely. Per follow-up feedback:
+      // shifted down 1/4in (20px) overall, plus an extra 4px of
+      // separation specifically between Darkness and Smoke (the boundary
+      // between the chart's "Sky" and "Ground" row groups).
       const char* rowLabels[9] = {
         "Cloud Cover", "ECMWF Cloud", "Transparency", "Seeing", "Darkness",
         "Smoke", "Wind", "Humidity", "Temperature"
@@ -4100,7 +4114,8 @@ static void draw_wv_astro() {
       };
       screen.setTextColor(colorText, colorBg);
       for (int i = 0; i < 9; i++) {
-        int labelY = chartY + (int)(rowFracs[i] * g_wvClearSkyImageHeight) - 6;
+        int labelY = chartY + 20 + (int)(rowFracs[i] * g_wvClearSkyImageHeight) - 6;
+        if (i >= 5) labelY += 4; // extra gap between Darkness (i=4) and Smoke (i=5)
         screen.drawString(rowLabels[i], 4, labelY);
       }
     } else {
@@ -4165,10 +4180,15 @@ void screen_manager_draw() {
     case 8: draw_wv_astro(); break;
   }
 
-  screen.setTextSize(1);
-  screen.setTextColor(colorDim, colorBg);
-  screen.setTextDatum(textdatum_t::top_right);
-  screen.drawString(FIRMWARE_VERSION, WIDTH - 6, HEIGHT - 14);
+  // Skipped on the WV Astro page (tab 8) only -- frees up a bit of
+  // bottom-right room for the Clear Sky Chart to grow into, per
+  // follow-up feedback. Still shown on every other page.
+  if (currentTab != 8) {
+    screen.setTextSize(1);
+    screen.setTextColor(colorDim, colorBg);
+    screen.setTextDatum(textdatum_t::top_right);
+    screen.drawString(FIRMWARE_VERSION, WIDTH - 6, HEIGHT - 14);
+  }
 
   if (g_nightModeActive) {
     screen.setTextColor(colorDim, colorBg);
