@@ -307,6 +307,23 @@ void iss_service_update() {
     "https://api.n2yo.com/rest/v1/satellite/positions/25544/%f/%f/0/1/&apiKey=%s",
     (double)HOME_LAT, (double)HOME_LON, N2YO_API_KEY);
 
+  // Diagnostic: this fetch has been intermittently failing with
+  // "SSL - Memory allocation failed" at TLS handshake time, consistently
+  // at roughly the same point in the fetch cycle regardless of whether
+  // other fetches (SpaceX, WV ClearSky) succeeded or failed that round.
+  // TLS/mbedTLS session buffers need a large CONTIGUOUS block of internal
+  // SRAM (not PSRAM) -- if something upstream (e.g. JPEGDEC's own
+  // internal working buffers during a JPEG decode, which this project
+  // confirmed pull from internal SRAM, not PSRAM, while debugging the WV
+  // ClearSky chart) fragments internal heap, total free bytes can look
+  // fine while no single block is big enough for TLS to allocate.
+  // Logging both total free AND largest contiguous free block here
+  // distinguishes "genuinely out of memory" from "fragmented" -- a high
+  // total with a small largest block would point straight at fragmentation.
+  Serial.printf("[ISS] free internal heap before HTTPS: %u bytes, largest free block: %u bytes\n",
+                (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+
   http.begin(url);
   int code = http.GET();
   state_lock();

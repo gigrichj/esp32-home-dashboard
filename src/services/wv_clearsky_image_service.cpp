@@ -120,7 +120,7 @@ static bool decodeAndStoreClearSkyJpeg(uint8_t *buf, size_t bufLen) {
     // request going forward. Decode is still full resolution -- no
     // JPEGDEC scale-down at all -- so this remains the maximum real
     // detail available from whatever gets fetched.
-    int decodedW = (int)(w * 0.925f);
+    int decodedW = (int)(w * 0.90f); // cumulative 1in crop now (4th 1/4in step) -- height stays capped at 170px regardless, so no repositioning needed
     int decodedH = croppedH;
 
     size_t decodeBufBytes = (size_t)decodedW * decodedH * sizeof(uint16_t);
@@ -235,7 +235,7 @@ bool wv_clearsky_fetch_image() {
   // known-good q=85 to test that theory directly, one variable at a
   // time, while keeping the width/sharpen changes.
   String sourceUrl = "https://www.cleardarksky.com/c/spruce_WVcsk.gif?c=2372454";
-  String proxiedUrl = "https://wsrv.nl/?url=" + urlEncode(sourceUrl) + "&output=jpg&w=1800&q=85&sharp=5";
+  String proxiedUrl = "https://wsrv.nl/?url=" + urlEncode(sourceUrl) + "&output=jpg&w=1800&q=85&sharp=7";
 
   HTTPClient http;
   http.begin(proxiedUrl);
