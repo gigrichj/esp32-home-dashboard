@@ -11,6 +11,7 @@
 // re-fetched on a poll cadence.
 struct Trip {
   String name;
+  String company;     // e.g. cruise line / tour operator ("Viking")
   String location;
   String depart;      // "YYYY-MM-DD", kept as the original string for display
   String returnDate;  // "YYYY-MM-DD" -- named returnDate, not "return" (reserved word)

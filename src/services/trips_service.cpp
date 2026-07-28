@@ -23,11 +23,14 @@ bool g_tripsValid = false;
 // Expected JSON format:
 // {
 //   "trips": [
-//     { "name": "Yellowstone", "location": "Wyoming",
-//       "depart": "2026-09-12", "return": "2026-09-19" },
+//     { "name": "Rivers of India", "company": "Viking", "location": "India",
+//       "depart": "2026-09-01", "return": "2026-09-25" },
 //     ...
 //   ]
 // }
+//
+// "company" is optional (e.g. cruise line / tour operator) -- defaults to
+// an empty string if omitted, same as name/location.
 //
 // Dates are plain "YYYY-MM-DD" strings -- deliberately not requiring the
 // list to be pre-sorted; trips_service_next_index() below does the
@@ -86,6 +89,7 @@ static bool parseAndApply(const String& json) {
       break;
     }
     const char* name = t["name"] | "";
+    const char* company = t["company"] | "";
     const char* location = t["location"] | "";
     const char* depart = t["depart"] | "";
     const char* ret = t["return"] | "";
@@ -101,6 +105,7 @@ static bool parseAndApply(const String& json) {
     }
 
     scratch[scratchCount].name = name;
+    scratch[scratchCount].company = company;
     scratch[scratchCount].location = location;
     scratch[scratchCount].depart = depart;
     scratch[scratchCount].returnDate = ret;

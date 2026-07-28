@@ -4304,6 +4304,9 @@ static void draw_world_trips() {
     screen.setTextColor(colorDim, colorBg);
     screen.drawString(t.location.c_str(), centerX, midY);
     midY += 28;
+
+    screen.drawString(t.company.c_str(), centerX, midY);
+    midY += 28;
     screen.setTextDatum(textdatum_t::top_left);
   } else {
     midY += 28;
@@ -4355,7 +4358,7 @@ static void draw_world_trips() {
       Trip& t = g_trips[order[i]];
       char line[96];
       snprintf(line, sizeof(line), "%s to %s   %s (%s)",
-               t.depart.c_str(), t.returnDate.c_str(), t.name.c_str(), t.location.c_str());
+               t.depart.c_str(), t.returnDate.c_str(), t.name.c_str(), t.company.c_str());
       screen.drawString(line, 30, listY);
       listY += 20;
     }
