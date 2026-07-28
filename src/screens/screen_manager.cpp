@@ -757,6 +757,11 @@ static void draw_dashboard() {
       }
     }
   }
+  y2 += 34; // BUG FIX: this increment was missing, causing the Aurora line
+            // below to draw on the exact same row as "Next pass in Xh Ym"
+            // (or "ISS visible now!") -- both overlapped character-for-
+            // character, which is the stray grey print seen behind
+            // "UNLIKELY" on-device.
   {
     // Aurora/Kp teaser, added under OVERHEAD below the Next Pass line --
     // same data/color/threshold convention as the WV_ASTRO page's
@@ -4183,8 +4188,10 @@ static void draw_wv_astro() {
         int groundHeaderY = chartY + 20 + (int)(rowFracs[5] * g_wvClearSkyImageHeight) - 6 + rowPixelAdjust[5] - 16;
         screen.setTextColor(colorAccent, colorBg);
         screen.drawString("SKY", 4, skyHeaderY);
+        screen.drawLine(4, skyHeaderY + 10, 4 + screen.textWidth("SKY"), skyHeaderY + 10, colorAccent);
         screen.setTextColor(colorSuccess, colorBg);
         screen.drawString("GROUND", 4, groundHeaderY);
+        screen.drawLine(4, groundHeaderY + 10, 4 + screen.textWidth("GROUND"), groundHeaderY + 10, colorSuccess);
       }
       for (int i = 0; i < 9; i++) {
         int labelY = chartY + 20 + (int)(rowFracs[i] * g_wvClearSkyImageHeight) - 6 + rowPixelAdjust[i];
