@@ -120,7 +120,7 @@ static bool decodeAndStoreClearSkyJpeg(uint8_t *buf, size_t bufLen) {
     // request going forward. Decode is still full resolution -- no
     // JPEGDEC scale-down at all -- so this remains the maximum real
     // detail available from whatever gets fetched.
-    int decodedW = (int)(w * 0.90f); // cumulative 1in crop now (4th 1/4in step) -- height stays capped at 170px regardless, so no repositioning needed
+    int decodedW = (int)(w * 0.875f); // cumulative 1.25in crop now (5th 1/4in step)
     int decodedH = croppedH;
 
     size_t decodeBufBytes = (size_t)decodedW * decodedH * sizeof(uint16_t);
@@ -152,9 +152,10 @@ static bool decodeAndStoreClearSkyJpeg(uint8_t *buf, size_t bufLen) {
       int targetW = 800;
       int targetH = (int)((float)targetW * croppedH / decodedW);
       if (targetH < 1) targetH = 1;
-      if (targetH > 170) targetH = 170; // safety cap -- keeps clear of the
-                                          // diagnostic HTTP-code line drawn
-                                          // below the image on the page
+      if (targetH > 190) targetH = 190; // raised from 170 (slightly taller) --
+                                          // the diagnostic HTTP-code line
+                                          // this cap used to clear has since
+                                          // been removed from the page
 
       uint16_t *finalBuf = (uint16_t *)heap_caps_malloc((size_t)targetW * targetH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
       if (finalBuf != nullptr) {
@@ -235,7 +236,7 @@ bool wv_clearsky_fetch_image() {
   // known-good q=85 to test that theory directly, one variable at a
   // time, while keeping the width/sharpen changes.
   String sourceUrl = "https://www.cleardarksky.com/c/spruce_WVcsk.gif?c=2372454";
-  String proxiedUrl = "https://wsrv.nl/?url=" + urlEncode(sourceUrl) + "&output=jpg&w=1800&q=85&sharp=7";
+  String proxiedUrl = "https://wsrv.nl/?url=" + urlEncode(sourceUrl) + "&output=jpg&w=1800&q=85&sharp=10";
 
   HTTPClient http;
   http.begin(proxiedUrl);

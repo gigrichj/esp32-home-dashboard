@@ -4065,7 +4065,7 @@ static void draw_wv_astro() {
     // chartY lowered ~1/4in (20px, this project's 80px/in convention)
     // per follow-up feedback -- still leaves a ~10px gap above the
     // diagnostic HTTP line at the image's actual ~145px height.
-    int chartY = 296; // moved down another 1/4in (20px) per follow-up feedback -- no more overlap risk since the HTTP diagnostic line below it was removed
+    int chartY = 276; // raised 20px so the taller image (170->190px cap) grows upward, keeping the same bottom edge rather than pushing toward the screen edge
     screen.setTextSize(1);
     screen.setTextColor(colorDim, colorBg);
     // x=0 -- full width, edge-to-edge with the top banner (which also
