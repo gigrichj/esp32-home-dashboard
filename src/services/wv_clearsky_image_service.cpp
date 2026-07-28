@@ -282,6 +282,21 @@ bool wv_clearsky_fetch_image() {
     return false;
   }
 
+  // Diagnostic: raw byte count read vs. the Content-Length the server
+  // reported, plus the first 4 bytes -- same pattern already used in
+  // spacex_launch_service.cpp. A valid JPEG starts with FF D8 FF. If
+  // readTotal doesn't match len, or the first bytes aren't a JPEG magic
+  // number, the fetched data itself is bad -- a different problem than
+  // the memory-exhaustion one previously assumed, which the last flash's
+  // log (plenty of free PSRAM right before the openRAM failure) now
+  // rules out as the actual cause.
+  Serial.printf("[WV ClearSky] image read %u of %d bytes, first bytes: %02X %02X %02X %02X\n",
+                (unsigned)readTotal, len,
+                readTotal > 0 ? imgBuf[0] : 0,
+                readTotal > 1 ? imgBuf[1] : 0,
+                readTotal > 2 ? imgBuf[2] : 0,
+                readTotal > 3 ? imgBuf[3] : 0);
+
   bool ok = decodeAndStoreClearSkyJpeg(imgBuf, readTotal);
   free(imgBuf);
   return ok;
