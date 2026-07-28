@@ -110,7 +110,7 @@ static const uint32_t WV_ASTRO_RETRY_MS  = 125UL * 1000UL; // staggered from the
 // Clear Sky Chart image doesn't change more than a few times a day --
 // same fast-retry-until-first-success pattern as the rest, but the slow
 // interval can be long since there's no benefit to fetching more often.
-static const uint32_t WV_CLEARSKY_POLL_MS  = 120UL * 60UL * 1000UL; // underlying chart data only updates ~twice a day anyway
+static const uint32_t WV_CLEARSKY_POLL_MS  = 60UL * 60UL * 1000UL; // underlying chart data only updates ~twice a day anyway
 static const uint32_t WV_CLEARSKY_RETRY_MS = 140UL * 1000UL; // staggered from the other retry intervals
 static const uint32_t DRAW_INTERVAL_MS   = 200UL;
 

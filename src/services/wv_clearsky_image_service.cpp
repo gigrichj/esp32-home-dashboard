@@ -20,6 +20,12 @@ int g_wvClearSkyImageLastHttpCode = -999;
 static uint16_t* s_decodeTarget = nullptr;
 static int s_decodeTargetW = 0;
 static int s_decodeTargetH = 0;
+// Left-edge crop offset (in decoded source-pixel space) -- shifts every
+// column left by this amount before jpegDrawCallback's existing bounds
+// check runs, so columns that land negative (the cropped-off left
+// region) get dropped by the same mechanism already used for the
+// right-edge crop, just applied from the other direction.
+static int s_decodeLeftCropOffset = 0;
 
 // Periodic yield counter -- HALF-scale decode processes roughly double
 // the rows that EIGHTH/QUARTER-scale did, edging closer to the PSRAM-
@@ -38,7 +44,7 @@ static int jpegDrawCallback(JPEGDRAW *pDraw) {
     uint16_t *destRow = s_decodeTarget + (size_t)destY * s_decodeTargetW;
     const uint16_t *srcRow = pDraw->pPixels + (size_t)row * pDraw->iWidth;
     for (int col = 0; col < pDraw->iWidth; col++) {
-      int destX = pDraw->x + col;
+      int destX = pDraw->x + col - s_decodeLeftCropOffset;
       if (destX < 0 || destX >= s_decodeTargetW) continue;
       destRow[destX] = srcRow[col];
     }
