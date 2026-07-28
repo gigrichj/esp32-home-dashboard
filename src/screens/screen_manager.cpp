@@ -4087,6 +4087,12 @@ static void draw_wv_astro() {
     // per follow-up feedback -- still leaves a ~10px gap above the
     // diagnostic HTTP line at the image's actual ~145px height.
     int chartY = 276; // raised 20px so the taller image (170->190px cap) grows upward, keeping the same bottom edge rather than pushing toward the screen edge
+    // chartX shifts the image right relative to our fixed-x row labels
+    // (x=4), widening the label-to-row gap. First-pass estimate (15px)
+    // from visual inspection of a device photo, not precisely measured --
+    // right edge clips off-screen silently past x=800, same established
+    // safe-clipping behavior as the earlier left-edge adjustment above.
+    int chartX = 15;
     // Reverted from the reserved-column approach (x=156, 640px image)
     // back to the full-width x=0 layout that was already working well --
     // our own row labels are now drawn overlaid directly on the image
@@ -4094,7 +4100,7 @@ static void draw_wv_astro() {
     screen.setTextSize(1);
     screen.setTextColor(colorDim, colorBg);
     if (g_wvClearSkyImageValid && g_wvClearSkyImagePixels != nullptr) {
-      screen.drawRGBBitmap(0, chartY, g_wvClearSkyImagePixels, g_wvClearSkyImageWidth, g_wvClearSkyImageHeight);
+      screen.drawRGBBitmap(chartX, chartY, g_wvClearSkyImagePixels, g_wvClearSkyImageWidth, g_wvClearSkyImageHeight);
 
       // Our own row labels, overlaid on the image (replacing the source
       // chart's illegible embedded ones, now cropped off the source
