@@ -123,7 +123,10 @@ static bool decodeAndStoreClearSkyJpeg(uint8_t *buf, size_t bufLen) {
     int decodedW = (int)(w * 0.925f);
     int decodedH = croppedH;
 
-    uint16_t *decodeBuf = (uint16_t *)heap_caps_malloc((size_t)decodedW * decodedH * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+    size_t decodeBufBytes = (size_t)decodedW * decodedH * sizeof(uint16_t);
+    Serial.printf("[WV ClearSky] requesting %u bytes for decode buffer, free PSRAM: %u bytes\n",
+                  (unsigned)decodeBufBytes, (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    uint16_t *decodeBuf = (uint16_t *)heap_caps_malloc(decodeBufBytes, MALLOC_CAP_SPIRAM);
     if (decodeBuf != nullptr) {
       s_decodeTarget = decodeBuf;
       s_decodeTargetW = decodedW;
@@ -198,6 +201,14 @@ static bool decodeAndStoreClearSkyJpeg(uint8_t *buf, size_t bufLen) {
 
 bool wv_clearsky_fetch_image() {
   if (!wifi_manager_is_connected()) return false;
+
+  // Diagnostic: free PSRAM at the start of this fetch, to help find the
+  // safe width ceiling empirically -- w=2400 caused a real on-device
+  // failure (see the w=1800 comment below), and rather than keep
+  // guessing widths, logging actual free memory here lets us calculate
+  // margin directly instead of trial-and-error flashing.
+  Serial.printf("[WV ClearSky] free PSRAM before fetch: %u bytes\n",
+                (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
 
   // Spruce Knob Mountain Center Clear Sky Chart -- source is a GIF,
   // routed through wsrv.nl to get a JPEG back, same established pattern
