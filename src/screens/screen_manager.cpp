@@ -4266,14 +4266,23 @@ static void draw_world_trips() {
     int days = secsUntil / 86400;
     int hours = (secsUntil % 86400) / 3600;
     int mins = (secsUntil % 3600) / 60;
+    int secs = secsUntil % 60;
 
-    char daysStr[8], hoursStr[8], minsStr[8];
+    char daysStr[8], hoursStr[8], minsStr[8], secsStr[8];
     snprintf(daysStr, sizeof(daysStr), "%d", days);
     snprintf(hoursStr, sizeof(hoursStr), "%d", hours);
     snprintf(minsStr, sizeof(minsStr), "%d", mins);
+    snprintf(secsStr, sizeof(secsStr), "%d", secs);
 
-    int colSpacing = 150;
-    int col1 = centerX - colSpacing, col2 = centerX, col3 = centerX + colSpacing;
+    // 4 columns now (added Secs per follow-up feedback) -- spacing
+    // tightened from 150 to 110 between adjacent columns to fit all 4
+    // within the 800px width with room to spare (4*110=440 total span,
+    // centered on centerX).
+    int colSpacing = 110;
+    int col1 = centerX - colSpacing * 3 / 2;
+    int col2 = centerX - colSpacing / 2;
+    int col3 = centerX + colSpacing / 2;
+    int col4 = centerX + colSpacing * 3 / 2;
 
     screen.setTextSize(4);
     screen.setTextDatum(textdatum_t::middle_center);
@@ -4281,21 +4290,27 @@ static void draw_world_trips() {
     // and Hours in explicit white -- not colorText, since colorText is
     // actually red in night mode (this project's night theme), which
     // would clash with Days rather than contrast against it. Minutes
-    // left unchanged (colorAccent) since not requested.
+    // stayed colorAccent (blue) as before. Secs uses colorSuccess
+    // (green) as a 4th distinct color -- not specified, picked for
+    // variety, adjustable like everything else here.
     //
     // Drop-shadow effect ("3D" look per follow-up feedback): a dark
     // offset copy drawn first, then the real colored number on top --
-    // since drawString fills its own background too, the main number
+    // since drawChar/drawString ALWAYS fills its own background
+    // rectangle on every call (confirmed in panel_display.cpp -- there
+    // is no transparent-text mode in this Canvas API), the main number
     // erases the overlapping part of the shadow, leaving only the
-    // offset edge peeking out. This project's Canvas API has no
-    // gradient/blur support, so this is the standard pixel-font
-    // technique for a raised/3D look.
-    uint16_t shadowColor = screen.color565(30, 30, 30);
+    // offset edge peeking out. Shadow color bumped from (30,30,30) to
+    // (90,90,90) -- the original was nearly invisible against this
+    // page's near-black background (10,12,16), not distinguishable
+    // enough to read as a shadow.
+    uint16_t shadowColor = screen.color565(90, 90, 90);
     int shadowOffset = 3;
     screen.setTextColor(shadowColor, colorBg);
     screen.drawString(daysStr, col1 + shadowOffset, countdownY + shadowOffset);
     screen.drawString(hoursStr, col2 + shadowOffset, countdownY + shadowOffset);
     screen.drawString(minsStr, col3 + shadowOffset, countdownY + shadowOffset);
+    screen.drawString(secsStr, col4 + shadowOffset, countdownY + shadowOffset);
 
     screen.setTextColor(colorDanger, colorBg);
     screen.drawString(daysStr, col1, countdownY);
@@ -4306,6 +4321,9 @@ static void draw_world_trips() {
     screen.setTextColor(colorAccent, colorBg);
     screen.drawString(minsStr, col3, countdownY);
     int minsNumWidth = screen.textWidth(minsStr);
+    screen.setTextColor(colorSuccess, colorBg);
+    screen.drawString(secsStr, col4, countdownY);
+    int secsNumWidth = screen.textWidth(secsStr);
 
     screen.setTextSize(2);
     screen.setTextColor(colorDim, colorBg);
@@ -4316,6 +4334,8 @@ static void draw_world_trips() {
     int hoursLabelWidth = screen.textWidth("HOURS");
     screen.drawString("MINS", col3, labelY);
     int minsLabelWidth = screen.textWidth("MINS");
+    screen.drawString("SECS", col4, labelY);
+    int secsLabelWidth = screen.textWidth("SECS");
 
     // Light gray outline box around each column (number + label
     // together), per follow-up feedback. No drawRect outline primitive
@@ -4326,14 +4346,14 @@ static void draw_world_trips() {
     // padding) -- adjustable like every other pixel value here once
     // seen on-device. Width per column uses the wider of its number/
     // label text, measured dynamically since "HOURS" is longer than
-    // "DAYS"/"MINS".
+    // "DAYS"/"MINS"/"SECS".
     uint16_t boxColor = screen.color565(200, 200, 200);
     int boxTop = countdownY - 20;
     int boxBottom = labelY + 14;
-    int cols[3] = {col1, col2, col3};
-    int numWidths[3] = {daysNumWidth, hoursNumWidth, minsNumWidth};
-    int labelWidths[3] = {daysLabelWidth, hoursLabelWidth, minsLabelWidth};
-    for (int c = 0; c < 3; c++) {
+    int cols[4] = {col1, col2, col3, col4};
+    int numWidths[4] = {daysNumWidth, hoursNumWidth, minsNumWidth, secsNumWidth};
+    int labelWidths[4] = {daysLabelWidth, hoursLabelWidth, minsLabelWidth, secsLabelWidth};
+    for (int c = 0; c < 4; c++) {
       int boxWidth = (numWidths[c] > labelWidths[c] ? numWidths[c] : labelWidths[c]) + 24;
       int boxLeft = cols[c] - boxWidth / 2;
       int boxRight = cols[c] + boxWidth / 2;
@@ -4455,7 +4475,6 @@ static void draw_world_trips() {
     }
 
     screen.setTextSize(1);
-    screen.setTextColor(colorText, colorBg);
     for (int i = 0; i < orderCount && listY < HEIGHT - 20; i++) {
       Trip& t = g_trips[order[i]];
       char departDisp[16], returnDisp[16];
@@ -4464,7 +4483,11 @@ static void draw_world_trips() {
       char line[128];
       snprintf(line, sizeof(line), "%s to %s / %s / %s / %s",
                departDisp, returnDisp, t.name.c_str(), t.location.c_str(), t.company.c_str());
-      screen.setTextColor(colorText, colorBg);
+      // Alternating row colors (white / blue) per follow-up feedback --
+      // explicit white rather than colorText, which is actually red in
+      // night mode (same reasoning as the Hours countdown number).
+      uint16_t rowColor = (i % 2 == 0) ? screen.color565(255, 255, 255) : colorAccent;
+      screen.setTextColor(rowColor, colorBg);
       screen.drawString(line, 30, listY);
       listY += 14;
 
