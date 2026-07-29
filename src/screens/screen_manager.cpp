@@ -4131,7 +4131,7 @@ static void draw_wv_astro() {
     // from visual inspection of a device photo, not precisely measured --
     // right edge clips off-screen silently past x=800, same established
     // safe-clipping behavior as the earlier left-edge adjustment above.
-    int chartX = 57;
+    int chartX = 58;
     // Reverted from the reserved-column approach (x=156, 640px image)
     // back to the full-width x=0 layout that was already working well --
     // our own row labels are now drawn overlaid directly on the image
@@ -4282,19 +4282,66 @@ static void draw_world_trips() {
     // actually red in night mode (this project's night theme), which
     // would clash with Days rather than contrast against it. Minutes
     // left unchanged (colorAccent) since not requested.
+    //
+    // Drop-shadow effect ("3D" look per follow-up feedback): a dark
+    // offset copy drawn first, then the real colored number on top --
+    // since drawString fills its own background too, the main number
+    // erases the overlapping part of the shadow, leaving only the
+    // offset edge peeking out. This project's Canvas API has no
+    // gradient/blur support, so this is the standard pixel-font
+    // technique for a raised/3D look.
+    uint16_t shadowColor = screen.color565(30, 30, 30);
+    int shadowOffset = 3;
+    screen.setTextColor(shadowColor, colorBg);
+    screen.drawString(daysStr, col1 + shadowOffset, countdownY + shadowOffset);
+    screen.drawString(hoursStr, col2 + shadowOffset, countdownY + shadowOffset);
+    screen.drawString(minsStr, col3 + shadowOffset, countdownY + shadowOffset);
+
     screen.setTextColor(colorDanger, colorBg);
     screen.drawString(daysStr, col1, countdownY);
+    int daysNumWidth = screen.textWidth(daysStr);
     screen.setTextColor(screen.color565(255, 255, 255), colorBg);
     screen.drawString(hoursStr, col2, countdownY);
+    int hoursNumWidth = screen.textWidth(hoursStr);
     screen.setTextColor(colorAccent, colorBg);
     screen.drawString(minsStr, col3, countdownY);
+    int minsNumWidth = screen.textWidth(minsStr);
 
     screen.setTextSize(2);
     screen.setTextColor(colorDim, colorBg);
     int labelY = countdownY + 30;
     screen.drawString("DAYS", col1, labelY);
+    int daysLabelWidth = screen.textWidth("DAYS");
     screen.drawString("HOURS", col2, labelY);
+    int hoursLabelWidth = screen.textWidth("HOURS");
     screen.drawString("MINS", col3, labelY);
+    int minsLabelWidth = screen.textWidth("MINS");
+
+    // Light gray outline box around each column (number + label
+    // together), per follow-up feedback. No drawRect outline primitive
+    // exists in this project's Canvas API (only fillRect), so the
+    // border is built from 4 drawLine calls. Vertical bounds are a
+    // first-pass estimate based on this project's ~8px-base-glyph
+    // scaling convention (32px tall at size4, 16px tall at size2, with
+    // padding) -- adjustable like every other pixel value here once
+    // seen on-device. Width per column uses the wider of its number/
+    // label text, measured dynamically since "HOURS" is longer than
+    // "DAYS"/"MINS".
+    uint16_t boxColor = screen.color565(200, 200, 200);
+    int boxTop = countdownY - 20;
+    int boxBottom = labelY + 14;
+    int cols[3] = {col1, col2, col3};
+    int numWidths[3] = {daysNumWidth, hoursNumWidth, minsNumWidth};
+    int labelWidths[3] = {daysLabelWidth, hoursLabelWidth, minsLabelWidth};
+    for (int c = 0; c < 3; c++) {
+      int boxWidth = (numWidths[c] > labelWidths[c] ? numWidths[c] : labelWidths[c]) + 24;
+      int boxLeft = cols[c] - boxWidth / 2;
+      int boxRight = cols[c] + boxWidth / 2;
+      screen.drawLine(boxLeft, boxTop, boxRight, boxTop, boxColor);
+      screen.drawLine(boxLeft, boxBottom, boxRight, boxBottom, boxColor);
+      screen.drawLine(boxLeft, boxTop, boxLeft, boxBottom, boxColor);
+      screen.drawLine(boxRight, boxTop, boxRight, boxBottom, boxColor);
+    }
   } else if (ongoing) {
     screen.setTextSize(3);
     screen.setTextColor(colorSuccess, colorBg);
@@ -4327,7 +4374,7 @@ static void draw_world_trips() {
     formatTripDate(t.departUnix, departDisp, sizeof(departDisp));
     formatTripDate(t.returnUnix, returnDisp, sizeof(returnDisp));
     char datesStr[48];
-    snprintf(datesStr, sizeof(datesStr), "%s to %s   ", departDisp, returnDisp);
+    snprintf(datesStr, sizeof(datesStr), "%s - %s   ", departDisp, returnDisp);
     char line2[64];
     snprintf(line2, sizeof(line2), "%s   %s", t.location.c_str(), t.company.c_str());
 
@@ -4349,7 +4396,10 @@ static void draw_world_trips() {
     screen.setTextColor(colorAccent, colorBg);
     screen.drawString(datesStr, line1StartX, line1Y);
     screen.setTextColor(colorDanger, colorBg);
+    // Fake bold -- drawn twice with a 1px horizontal offset, since this
+    // project's custom bitmap font has no true bold variant.
     screen.drawString(t.name.c_str(), line1StartX + datesWidth, line1Y);
+    screen.drawString(t.name.c_str(), line1StartX + datesWidth + 1, line1Y);
     midY += 28;
 
     screen.setTextColor(colorDim, colorBg);
@@ -4373,12 +4423,15 @@ static void draw_world_trips() {
   // screen -- the listY < HEIGHT-20 loop bound below handles this
   // gracefully (list just truncates) rather than overflowing off-screen.
   {
-    int listY = midY - 4;
-    screen.setTextSize(2);
+    int listY = midY - 9;
+    screen.setTextSize(1);
     screen.setTextColor(colorAccent, colorBg);
     screen.drawString("UPCOMING TRIPS", 30, listY);
-    screen.drawLine(30, listY + 20, 220, listY + 20, colorAccent);
-    listY += 28;
+    // White separator line (was a blue/colorAccent underline) -- matches
+    // the same style as the between-entry dividers below, but white to
+    // stand apart from them.
+    screen.drawLine(30, listY + 14, WIDTH - 30, listY + 14, screen.color565(255, 255, 255));
+    listY += 22;
 
     time_t now = time(nullptr);
     time_t threeYearsOut = now + (3L * 365L * 86400L);
@@ -4483,10 +4536,10 @@ void screen_manager_draw() {
     case 9: draw_world_trips(); break;
   }
 
-  // Skipped on the WV Astro page (tab 8) only -- frees up a bit of
-  // bottom-right room for the Clear Sky Chart to grow into, per
-  // follow-up feedback. Still shown on every other page.
-  if (currentTab != 8) {
+  // Shown on the Dashboard (tab 0) only, per follow-up feedback --
+  // previously shown on every page except WV Astro (tab 8); now hidden
+  // everywhere except Dashboard instead.
+  if (currentTab == 0) {
     screen.setTextSize(1);
     screen.setTextColor(colorDim, colorBg);
     screen.setTextDatum(textdatum_t::top_right);
