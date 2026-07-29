@@ -277,7 +277,19 @@ bool wv_clearsky_fetch_image() {
   // especially on hard block edges like this chart). Reverting to the
   // known-good q=85 to test that theory directly, one variable at a
   // time, while keeping the width/sharpen changes.
-  String sourceUrl = "https://www.cleardarksky.com/c/spruce_WVcsk.gif?c=2372454";
+  // The "c=" parameter looks like ClearDarkSky's own cache-busting/
+  // versioning token (the kind that normally changes each time you load
+  // their page in a browser) -- it was hardcoded to a single static
+  // value here, meaning every one of our requests hit the exact same
+  // URL. Confirmed via device photo vs. live source comparison: the
+  // live chart had already rolled forward ~10 hours past what was still
+  // showing on-device, even with the wsrv.nl-level cache-buster below
+  // already in place -- meaning ClearDarkSky's own origin (independent
+  // of wsrv.nl entirely) was very likely serving a cached response tied
+  // to this fixed "c=" value. Made dynamic via time(nullptr) (NTP
+  // already synced elsewhere in this project) so ClearDarkSky's origin
+  // also sees a genuinely new URL on every single fetch.
+  String sourceUrl = "https://www.cleardarksky.com/c/spruce_WVcsk.gif?c=" + String((uint32_t)time(nullptr));
   // Cache-buster (&t=millis()) added to the wsrv.nl proxy URL -- without
   // it, wsrv.nl caches based on the full URL, which never changed
   // between fetches, so it kept serving the same stale cached JPEG even
@@ -285,7 +297,9 @@ bool wv_clearsky_fetch_image() {
   // (confirmed by comparing the live source GIF directly against what
   // was showing on-device). Appending a value that changes on every
   // single fetch forces wsrv.nl to treat each request as new and pull
-  // fresh from source every time.
+  // fresh from source every time. Uses millis() here (distinct from the
+  // time(nullptr) used above) simply to avoid both cache-busters ever
+  // coincidentally computing the exact same value.
   String proxiedUrl = "https://wsrv.nl/?url=" + urlEncode(sourceUrl) + "&output=jpg&w=1800&q=85&sharp=10&t=" + String(millis());
 
   HTTPClient http;
