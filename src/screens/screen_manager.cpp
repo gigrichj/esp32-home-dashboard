@@ -2669,7 +2669,16 @@ static void draw_astro() {
     // distFromFull -> 1 (new moon), and grow to 2*moonR (shadow moved
     // completely off the disc, fully lit) as distFromFull -> 0 (full
     // moon), matching the "X pct illuminated" text alongside it.
-    float offsetFromCenter = (1.0f - distFromFull) * 2.0f * moonR;
+    // Small safety margin (+2px) added to the max offset so the shadow
+    // circle never sits at EXACT geometric tangency with the moon
+    // circle at full moon (distFromFull=0) -- two circles of the same
+    // radius with centers exactly 2*radius apart are mathematically
+    // tangent (touching at one point), but pixel rasterization isn't
+    // perfectly precise at that exact boundary and can leak a pixel or
+    // two into the visible circle right at the tangent point -- the
+    // small dent seen on a real full moon. The +2px margin gives a
+    // clean gap instead, eliminating the edge case entirely.
+    float offsetFromCenter = (1.0f - distFromFull) * (2.0f * moonR + 2.0f);
     int shadowCx = waxing ? (int)(moonCx - offsetFromCenter) : (int)(moonCx + offsetFromCenter);
     screen.fillCircle(shadowCx, moonCy, moonR, colorBg);
   }
