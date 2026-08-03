@@ -4222,8 +4222,14 @@ static void draw_wv_astro() {
 // %d in printf naturally omits any leading zero on the day, unlike
 // strftime's %d/%e which always pad -- so the month is fetched via
 // strftime("%b") alone and the day/year are assembled with snprintf.
+// Uses gmtime() (not localtime()) to match trips_service.cpp's now-
+// UTC-based date encoding (daysFromCivil()) -- these are pure calendar
+// dates with no real time-of-day/timezone meaning, so both encode and
+// decode sides deliberately treat them as UTC throughout, avoiding the
+// local-TZ/DST round-tripping that was causing dates to display one
+// day early.
 static void formatTripDate(time_t unixTime, char* out, size_t outLen) {
-  struct tm* ti = localtime(&unixTime);
+  struct tm* ti = gmtime(&unixTime);
   char monthBuf[8];
   strftime(monthBuf, sizeof(monthBuf), "%b", ti);
   snprintf(out, outLen, "%d %s %d", ti->tm_mday, monthBuf, ti->tm_year + 1900);

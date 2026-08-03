@@ -37,6 +37,30 @@ bool g_tripsValid = false;
 // sorting/filtering work so the user can add trips in whatever order is
 // convenient when editing the file locally.
 
+// Manual, timezone-independent Y/M/D -> Unix days-since-epoch conversion
+// (the well-known Howard Hinnant "days_from_civil" algorithm, public
+// domain, exact for the proleptic Gregorian calendar). Used instead of
+// mktime() below -- mktime() interprets/resolves the struct tm using
+// the device's configured local timezone (EST5EDT, set via
+// configTzTime() in main.cpp) and DST rules, which was causing trip
+// dates to display exactly one day early: a "midnight local" struct tm
+// passed through mktime()+localtime() round-tripped incorrectly on
+// this platform's toolchain (this project has separately documented
+// that timegm() isn't available here either -- a sign this toolchain's
+// timezone-aware date functions have real quirks). Trip dates are pure
+// calendar days with no meaningful time-of-day/timezone component, so
+// treating them as UTC throughout (both here and in formatTripDate()
+// in screen_manager.cpp, which uses gmtime() to match) sidesteps the
+// whole local-TZ/DST ambiguity rather than fighting it.
+static int64_t daysFromCivil(int y, int m, int d) {
+  y -= m <= 2;
+  int64_t era = (y >= 0 ? y : y - 399) / 400;
+  unsigned yoe = (unsigned)(y - era * 400);
+  unsigned doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+  unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+  return era * 146097 + (int64_t)doe - 719468;
+}
+
 static bool parseDateToUnix(const String& dateStr, time_t& out) {
   int y, mo, d;
   if (sscanf(dateStr.c_str(), "%d-%d-%d", &y, &mo, &d) != 3) {
@@ -45,19 +69,8 @@ static bool parseDateToUnix(const String& dateStr, time_t& out) {
   if (y < 2000 || y > 2100 || mo < 1 || mo > 12 || d < 1 || d > 31) {
     return false;
   }
-  struct tm t = {};
-  t.tm_year = y - 1900;
-  t.tm_mon = mo - 1;
-  t.tm_mday = d;
-  t.tm_hour = 0;
-  t.tm_min = 0;
-  t.tm_sec = 0;
-  t.tm_isdst = -1; // let mktime figure out DST rather than assuming either way
-  time_t result = mktime(&t);
-  if (result == (time_t)-1) {
-    return false;
-  }
-  out = result;
+  int64_t days = daysFromCivil(y, mo, d);
+  out = (time_t)(days * 86400LL);
   return true;
 }
 
