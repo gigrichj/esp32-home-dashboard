@@ -15,9 +15,24 @@ struct Trip {
   String location;
   String depart;      // "YYYY-MM-DD", kept as the original string for display
   String returnDate;  // "YYYY-MM-DD" -- named returnDate, not "return" (reserved word)
-  time_t departUnix = 0;   // local midnight of the depart date, computed via mktime()
-  time_t returnUnix = 0;   // local midnight of the return date
+  // UTC midnight of the calendar date (day count * 86400) -- NOT local
+  // midnight. Trip dates are pure calendar days with no real time-of-day
+  // meaning, so they're stored timezone-independently (see
+  // daysFromCivil() below) to avoid local-TZ/DST round-tripping bugs.
+  // The countdown/ongoing-check logic compares against the device's
+  // LOCAL calendar day (via daysFromCivil() on localtime() fields), not
+  // this raw epoch value directly.
+  time_t departUnix = 0;
+  time_t returnUnix = 0;
 };
+
+// Manual, timezone-independent Y/M/D -> Unix days-since-epoch conversion
+// (the well-known Howard Hinnant "days_from_civil" algorithm). Exposed
+// here so screen_manager.cpp's countdown calculation can convert the
+// device's LOCAL "now" (via localtime()) into the same day-count space
+// as departUnix/returnUnix, without needing mktime()/localtime() on the
+// stored UTC timestamps themselves.
+int64_t daysFromCivil(int y, int m, int d);
 
 static const int TRIPS_MAX = 20;
 extern Trip g_trips[TRIPS_MAX];

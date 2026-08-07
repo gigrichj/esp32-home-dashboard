@@ -52,7 +52,7 @@ bool g_tripsValid = false;
 // treating them as UTC throughout (both here and in formatTripDate()
 // in screen_manager.cpp, which uses gmtime() to match) sidesteps the
 // whole local-TZ/DST ambiguity rather than fighting it.
-static int64_t daysFromCivil(int y, int m, int d) {
+int64_t daysFromCivil(int y, int m, int d) {
   y -= m <= 2;
   int64_t era = (y >= 0 ? y : y - 399) / 400;
   unsigned yoe = (unsigned)(y - era * 400);
@@ -178,11 +178,26 @@ bool trips_service_save_json(const String& json) {
   return true;
 }
 
+// Returns the device's current LOCAL calendar day as a days-since-epoch
+// count, in the same space as departUnix/returnUnix (both exact
+// multiples of 86400 by construction -- see daysFromCivil() above).
+// Used instead of comparing raw epoch values directly, since departUnix/
+// returnUnix are deliberately UTC-midnight-of-the-calendar-date, not
+// local midnight -- comparing them against time(nullptr) (a real UTC
+// moment) would shift the "is this trip still upcoming" boundary by
+// the local UTC offset (4-5 hours for EST/EDT), same class of bug as
+// the one fixed in formatTripDate()/parseDateToUnix().
+static int64_t localTodayDays() {
+  time_t now = time(nullptr);
+  struct tm* localNow = localtime(&now);
+  return daysFromCivil(localNow->tm_year + 1900, localNow->tm_mon + 1, localNow->tm_mday);
+}
+
 int trips_service_next_index() {
   if (!g_tripsValid || g_tripsCount == 0) {
     return -1;
   }
-  time_t now = time(nullptr);
+  int64_t todayDays = localTodayDays();
   int bestIdx = -1;
   time_t bestDepart = 0;
   for (int i = 0; i < g_tripsCount; i++) {
@@ -190,7 +205,7 @@ int trips_service_next_index() {
     // long as it hasn't ended yet -- that's what lets an ongoing trip
     // still show up as "next" (see trips_service_is_ongoing()) instead
     // of disappearing the moment departure day begins.
-    if (g_trips[i].returnUnix < now) {
+    if (g_trips[i].returnUnix / 86400 < todayDays) {
       continue; // fully in the past
     }
     if (bestIdx == -1 || g_trips[i].departUnix < bestDepart) {
@@ -205,6 +220,7 @@ bool trips_service_is_ongoing(int index) {
   if (index < 0 || index >= g_tripsCount) {
     return false;
   }
-  time_t now = time(nullptr);
-  return now >= g_trips[index].departUnix && now <= g_trips[index].returnUnix;
+  int64_t todayDays = localTodayDays();
+  return todayDays >= g_trips[index].departUnix / 86400 &&
+         todayDays <= g_trips[index].returnUnix / 86400;
 }

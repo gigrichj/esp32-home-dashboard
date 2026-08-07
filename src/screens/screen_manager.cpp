@@ -4275,9 +4275,23 @@ static void draw_world_trips() {
   // fine-tuning once seen on-device, same as every other page's layout.
   int countdownY = bannerBottom + 25;
   if (nextIdx >= 0 && !ongoing) {
+    // Countdown computed in LOCAL calendar-day + local time-of-day space
+    // (matching the Dashboard's own clock), not raw UTC epoch
+    // subtraction -- departUnix is deliberately UTC-midnight-of-the-
+    // calendar-date (see trips_service.h), so subtracting a real UTC
+    // "now" from it would reach zero at UTC midnight rather than local
+    // midnight, off by the EST/EDT offset (4-5 hours) even though the
+    // date label itself is correct. daysUntil is measured between local
+    // "today" and the target calendar day; the partial day is then
+    // filled in using local time-of-day elapsed so far.
     time_t now = time(nullptr);
-    time_t target = g_trips[nextIdx].departUnix;
-    uint32_t secsUntil = (target > now) ? (uint32_t)(target - now) : 0;
+    struct tm* localNow = localtime(&now);
+    int64_t todayDays = daysFromCivil(localNow->tm_year + 1900, localNow->tm_mon + 1, localNow->tm_mday);
+    int64_t targetDays = g_trips[nextIdx].departUnix / 86400;
+    int64_t secondsElapsedToday = localNow->tm_hour * 3600LL + localNow->tm_min * 60LL + localNow->tm_sec;
+    int64_t secsUntil64 = (targetDays - todayDays) * 86400LL - secondsElapsedToday;
+    if (secsUntil64 < 0) secsUntil64 = 0;
+    uint32_t secsUntil = (uint32_t)secsUntil64;
     int days = secsUntil / 86400;
     int hours = (secsUntil % 86400) / 3600;
     int mins = (secsUntil % 3600) / 60;
