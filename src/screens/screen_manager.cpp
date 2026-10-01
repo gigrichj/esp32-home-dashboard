@@ -130,9 +130,10 @@ static uint16_t colorAccent;
 // screen_manager_draw() picks between these every frame and assigns the
 // active set to the colorBg/colorText/etc. statics above, so every
 // existing draw_* function keeps using those same names unchanged.
-static uint16_t colorBgDay, colorSuccessDay, colorDangerDay, colorTextDay, colorDimDay, colorAccentDay, colorStarshipDay;
-static uint16_t colorBgNight, colorSuccessNight, colorDangerNight, colorTextNight, colorDimNight, colorAccentNight, colorStarshipNight;
+static uint16_t colorBgDay, colorSuccessDay, colorDangerDay, colorTextDay, colorDimDay, colorAccentDay, colorStarshipDay, colorCrewDragonDay;
+static uint16_t colorBgNight, colorSuccessNight, colorDangerNight, colorTextNight, colorDimNight, colorAccentNight, colorStarshipNight, colorCrewDragonNight;
 static uint16_t colorStarship;
+static uint16_t colorCrewDragon;
 
 static bool touchWasDown = false;
 static uint32_t touchDownMs = 0;
@@ -210,6 +211,8 @@ static bool g_prevSuperHeavyLaunchToday = false;
 static bool g_prevIssGoodPassSoon = false;
 static bool g_prevStarshipLaunch30Min = false;
 static bool g_prevSuperHeavyLaunch30Min = false;
+static bool g_prevCrewDragonLaunchToday = false;
+static bool g_prevCrewDragonLaunch30Min = false;
 static bool g_alertStatePrimed = false; // avoids firing a false alert on the very first frame,
                                         // before we have a real "previous" state to compare against
 
@@ -398,6 +401,8 @@ static bool isStarshipOrSuperHeavy(const String& rocketName); // defined further
 static void drawRocketIcon(int cx, int cy, uint16_t color); // defined further down
 static bool isFalconClass(const String& rocketName); // defined further down
 static void drawFalconIcon(int cx, int cy, uint16_t color); // defined further down
+static bool isCrewDragon(const String& missionName); // defined further down
+static void drawCrewDragonIcon(int cx, int cy, uint16_t color); // defined further down
 
 static void drawDashboardBackground() {
   StateLockGuard lockGuard;
@@ -3207,6 +3212,7 @@ void screen_manager_init() {
   colorSuccessDay = screen.color565(80, 200, 120);
   colorDangerDay = screen.color565(220, 80, 80);
   colorStarshipDay = screen.color565(255, 165, 0); // orange/gold -- Starship/Super Heavy highlight
+  colorCrewDragonDay = screen.color565(180, 130, 255); // light purple -- crewed Dragon highlight, distinct hue from Starship/Falcon/Success/Danger
 
   // Night mode: shades of red only, to preserve night vision for
   // astrophotography. Meaning that used to come from hue (blue vs green
@@ -3221,6 +3227,10 @@ void screen_manager_init() {
   colorSuccessNight = screen.color565(180, 50, 50);
   colorDangerNight = screen.color565(255, 60, 60);
   colorStarshipNight = screen.color565(255, 130, 130);
+  // Crew Dragon gets its own brightness level of red, between Danger
+  // (255,60,60) and Starship (255,130,130), so it reads as a third
+  // distinct shade rather than overlapping either.
+  colorCrewDragonNight = screen.color565(255, 100, 100);
 
   colorBg = colorBgDay;
   colorText = colorTextDay;
@@ -3229,6 +3239,7 @@ void screen_manager_init() {
   colorSuccess = colorSuccessDay;
   colorDanger = colorDangerDay;
   colorStarship = colorStarshipDay;
+  colorCrewDragon = colorCrewDragonDay;
 
   lastInteractionMs = millis();
   lastAutoAdvanceMs = millis();
@@ -3362,6 +3373,28 @@ static void checkAlertTriggers() {
     }
   }
 
+  // Crewed Dragon launching today / within 30 minutes -- same
+  // local-calendar-date and 30-min-window checks as Starship/Super Heavy
+  // above, keyed off the mission name via isCrewDragon() since Crew
+  // Dragon flies on a standard Falcon 9.
+  bool crewDragonLaunchToday = false;
+  bool crewDragonLaunch30Min = false;
+  if (g_spacexValid && g_spacexLaunchCount > 0 && isCrewDragon(g_spacexLaunches[0].missionName)) {
+    time_t nowUnixCD = time(nullptr);
+    if (nowUnixCD > 100000) {
+      time_t launchUnixCD = (time_t)g_spacexLaunches[0].netUnix;
+      struct tm nowTmCD = *localtime(&nowUnixCD);
+      struct tm launchTmCD = *localtime(&launchUnixCD);
+      crewDragonLaunchToday = (nowTmCD.tm_year == launchTmCD.tm_year && nowTmCD.tm_yday == launchTmCD.tm_yday);
+    }
+    uint32_t nowUnixCD30 = (uint32_t)time(nullptr);
+    if (nowUnixCD30 > 100000) {
+      uint32_t launchUnixCD30 = g_spacexLaunches[0].netUnix;
+      uint32_t windowStartCD30 = (launchUnixCD30 > 1800) ? (launchUnixCD30 - 1800) : 0;
+      crewDragonLaunch30Min = (nowUnixCD30 >= windowStartCD30 && nowUnixCD30 < launchUnixCD30);
+    }
+  }
+
   if (g_alertStatePrimed) {
     // Independent ifs, not else-if -- every condition that newly became
     // true this frame gets queued, so simultaneous events (e.g. a storm
@@ -3391,6 +3424,12 @@ static void checkAlertTriggers() {
     if (superHeavyLaunch30Min && !g_prevSuperHeavyLaunch30Min) {
       enqueueAlert("SUPER HEAVY LAUNCH IN 30 MIN", colorStarship);
     }
+    if (crewDragonLaunchToday && !g_prevCrewDragonLaunchToday) {
+      enqueueAlert("CREW DRAGON LAUNCH TODAY", colorCrewDragon);
+    }
+    if (crewDragonLaunch30Min && !g_prevCrewDragonLaunch30Min) {
+      enqueueAlert("CREW DRAGON LAUNCH IN 30 MIN", colorCrewDragon);
+    }
     if (!astroIsGood && g_prevAstroWasGood && g_alertActive &&
         strcmp(g_alertMessage, "ASTRO CONDITIONS NOW GOOD TONIGHT") == 0) {
       // The banner only ever fired once on the moment of transition and
@@ -3416,6 +3455,8 @@ static void checkAlertTriggers() {
   g_prevIssGoodPassSoon = issGoodPassSoon;
   g_prevStarshipLaunch30Min = starshipLaunch30Min;
   g_prevSuperHeavyLaunch30Min = superHeavyLaunch30Min;
+  g_prevCrewDragonLaunchToday = crewDragonLaunchToday;
+  g_prevCrewDragonLaunch30Min = crewDragonLaunch30Min;
   g_alertStatePrimed = true;
 
 }
@@ -3506,6 +3547,29 @@ static bool isFalconClass(const String& rocketName) {
   return lower.indexOf("falcon") >= 0;
 }
 
+// True if this is a crewed Dragon mission -- SpaceX's human-spaceflight
+// capsule, flying on a standard Falcon 9 but visually/operationally
+// distinct from routine cargo/Starlink flights. Launch Library 2 doesn't
+// expose a clean "crewed" flag in the fields this project already
+// parses, so this matches on known crewed-Dragon mission-naming patterns
+// instead: "Crew-" (NASA Commercial Crew rotations, Crew-1 and up), "Ax-"
+// (Axiom Space private astronaut missions), "Demo-2" (the first crewed
+// Dragon test flight), plus a short list of one-off privately-named
+// crewed missions that don't follow either pattern (Inspiration4,
+// Polaris Dawn, Fram2). New one-off mission names will need adding here
+// as they're announced.
+static bool isCrewDragon(const String& missionName) {
+  String lower = missionName;
+  lower.toLowerCase();
+  if (lower.indexOf("crew-") >= 0) return true;
+  if (lower.indexOf("ax-") >= 0) return true;
+  if (lower.indexOf("demo-2") >= 0) return true;
+  if (lower.indexOf("inspiration4") >= 0) return true;
+  if (lower.indexOf("polaris dawn") >= 0) return true;
+  if (lower.indexOf("fram2") >= 0) return true;
+  return false;
+}
+
 // Compact rocket silhouette (nose cone + body + fins), built from the
 // same fillTriangle/fillRect primitives used throughout this project --
 // no custom bitmap needed. (cx, cy) anchors the top-left of a ~20x32
@@ -3541,6 +3605,42 @@ static void drawFalconIcon(int cx, int cy, uint16_t color) {
   int wingY = cy + 10;
   screen.fillTriangle(centerX, wingY, cx, wingY + 4, centerX - 2, wingY + 14, color);
   screen.fillTriangle(centerX, wingY, cx + w, wingY + 4, centerX + 2, wingY + 14, color);
+}
+
+// Dragon capsule silhouette (rounded dome nose, flared conical body,
+// cylindrical trunk with small fin nubs) for the crewed-Dragon badge --
+// same ~20x32 bounding box and primitive-only construction as
+// drawRocketIcon()/drawFalconIcon(), so all three badges sit at
+// consistent size/position regardless of which one shows.
+static void drawCrewDragonIcon(int cx, int cy, uint16_t color) {
+  int w = 20, h = 32;
+  int centerX = cx + w / 2;
+
+  // Rounded dome nose (capsule's blunt tip, vs. the pointed triangle
+  // nose cone used for Falcon/Starship).
+  int domeR = 5;
+  int domeY = cy + domeR;
+  screen.fillCircle(centerX, domeY, domeR, color);
+
+  // Flared conical body -- narrow at the dome, widening toward the
+  // trunk, built from two triangles so the silhouette reads as a
+  // tapering capsule rather than a straight-sided rocket body.
+  int bodyTopY = domeY;
+  int bodyBottomY = cy + h - 8;
+  int topHalfW = domeR;
+  int bottomHalfW = 8;
+  screen.fillTriangle(centerX - topHalfW, bodyTopY, centerX + topHalfW, bodyTopY,
+                       centerX + bottomHalfW, bodyBottomY, color);
+  screen.fillTriangle(centerX - topHalfW, bodyTopY, centerX + bottomHalfW, bodyBottomY,
+                       centerX - bottomHalfW, bodyBottomY, color);
+
+  // Trunk (cylindrical service module) at the base, plus two small side
+  // nubs suggesting the trunk's fins.
+  int trunkY = bodyBottomY;
+  int trunkH = h - (trunkY - cy);
+  screen.fillRect(centerX - bottomHalfW, trunkY, bottomHalfW * 2, trunkH, color);
+  screen.fillTriangle(centerX - bottomHalfW, trunkY, centerX - bottomHalfW - 5, trunkY + trunkH, centerX - bottomHalfW, trunkY + trunkH, color);
+  screen.fillTriangle(centerX + bottomHalfW, trunkY, centerX + bottomHalfW + 5, trunkY + trunkH, centerX + bottomHalfW, trunkY + trunkH, color);
 }
 
 static void draw_spacex() {
@@ -3620,6 +3720,7 @@ static void draw_spacex() {
   // 350,94, text at 378,99) and the mission-name line below it are the
   // same in all three cases, only the icon/color/label text differ.
   bool nextIsStarship = isStarshipOrSuperHeavy(next.rocketName);
+  bool nextIsCrewDragon = isCrewDragon(next.missionName);
   bool nextIsFalcon = isFalconClass(next.rocketName);
   {
     String badgeLabelStr = next.rocketName;
@@ -3631,6 +3732,14 @@ static void draw_spacex() {
       badgeLabelStr = nextIsSuperHeavy ? "SUPER HEAVY" : "STARSHIP";
       badgeColor = colorStarship;
       drawRocketIcon(350, 94, badgeColor);
+    } else if (nextIsCrewDragon) {
+      // Checked before the generic Falcon branch below -- Crew Dragon
+      // flies on an otherwise-ordinary Falcon 9, so isFalconClass() would
+      // also be true here and needs to lose priority to this more
+      // specific badge.
+      badgeLabelStr = "CREW DRAGON";
+      badgeColor = colorCrewDragon;
+      drawCrewDragonIcon(350, 94, badgeColor);
     } else if (nextIsFalcon) {
       badgeLabelStr.toUpperCase();
       badgeColor = colorAccent;
@@ -3723,9 +3832,9 @@ static void draw_spacex() {
     snprintf(lLine3, sizeof(lLine3), "%s, %s", launch.padName.c_str(), launch.locationName.c_str());
     screen.drawString(lLine3, 20, y + 40);
 
-    // Starship/Super Heavy badge to the right of the row -- plenty of
-    // open space there, rather than folding the rocket name into the
-    // same left-hand text column as every other entry.
+    // Starship/Super Heavy or Crew Dragon badge to the right of the row
+    // -- plenty of open space there, rather than folding the rocket name
+    // into the same left-hand text column as every other entry.
     if (isStarshipOrSuperHeavy(launch.rocketName)) {
       String lowerRocket = launch.rocketName;
       lowerRocket.toLowerCase();
@@ -3735,6 +3844,11 @@ static void draw_spacex() {
       screen.setTextSize(2);
       screen.setTextColor(colorStarship, colorBg);
       screen.drawString(badgeLabel, 588, y + 8);
+    } else if (isCrewDragon(launch.missionName)) {
+      drawCrewDragonIcon(560, y, colorCrewDragon);
+      screen.setTextSize(2);
+      screen.setTextColor(colorCrewDragon, colorBg);
+      screen.drawString("CREW DRAGON", 588, y + 8);
     }
 
     y += 62;
@@ -3757,6 +3871,10 @@ static void draw_spacex() {
     int falconLegendY = legendIconY - 44; // nudged up 1/8in (10px) further to clear icon overlap, 20px total from icon row
     drawFalconIcon(legendIconX, falconLegendY, colorAccent);
     screen.drawString("= Falcon 9/Heavy", legendIconX + 26, falconLegendY + 10);
+
+    int crewDragonLegendY = falconLegendY - 44; // same spacing as the Falcon row above it
+    drawCrewDragonIcon(legendIconX, crewDragonLegendY, colorCrewDragon);
+    screen.drawString("= Crew Dragon", legendIconX + 26, crewDragonLegendY + 10);
   }
 }
 
@@ -4559,6 +4677,7 @@ void screen_manager_draw() {
   colorSuccess = g_nightModeActive ? colorSuccessNight : colorSuccessDay;
   colorDanger = g_nightModeActive ? colorDangerNight : colorDangerDay;
   colorStarship = g_nightModeActive ? colorStarshipNight : colorStarshipDay;
+  colorCrewDragon = g_nightModeActive ? colorCrewDragonNight : colorCrewDragonDay;
 
   // Idle auto-cycle: once nobody has touched the screen for
   // IDLE_TIMEOUT_MS, advance to the next tab every AUTO_CYCLE_INTERVAL_MS.
